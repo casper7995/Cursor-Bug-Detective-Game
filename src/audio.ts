@@ -4,6 +4,12 @@ const AC = new (
     .webkitAudioContext
 )();
 
+function resumeAudio(): void {
+  if (AC.state === "suspended") void AC.resume();
+}
+window.addEventListener("pointerdown", resumeAudio, { once: true });
+window.addEventListener("keydown", resumeAudio, { once: true });
+
 function blip(
   freq: number,
   duration: number,

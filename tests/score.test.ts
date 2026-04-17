@@ -46,3 +46,21 @@ describe("specialty bonus", () => {
     expect(SPECIALTY_BONUS.arrow).toBe(1.1);
   });
 });
+
+describe("boss kill scoring", () => {
+  it("applies combo and arrow bonus to the 500-point boss reward", () => {
+    const s = newScore();
+    for (let i = 0; i < 5; i++) recordKill(s, { value: KILL_VALUE["404"] });
+    const comboBefore = s.combo;
+    const totalBefore = s.total;
+    recordKill(s, {
+      value: KILL_VALUE.boss,
+      bonusMultiplier: SPECIALTY_BONUS.arrow,
+    });
+    const gained = s.total - totalBefore;
+    expect(gained).toBe(
+      Math.round(KILL_VALUE.boss * comboBefore * SPECIALTY_BONUS.arrow),
+    );
+    expect(s.kills).toBe(6);
+  });
+});

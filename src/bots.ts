@@ -63,7 +63,9 @@ export function makeBot(kind: CharacterKind, x: number, y: number): Entity {
             const dye = en.pos.y - this.pos.y;
             if (dxe * dxe + dye * dye <= (en.radius + this.radius) ** 2) {
               en.hp -= 1;
-              if (en.hp <= 0) {
+              if (en.kind === "boss") {
+                en.data.lastDamagerId = this.data.ownerId;
+              } else if (en.hp <= 0) {
                 en.dead = true;
               }
               this.dead = true;

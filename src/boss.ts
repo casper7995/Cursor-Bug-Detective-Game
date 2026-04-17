@@ -9,13 +9,24 @@ export function makeCaptchaBoss(world: World): Entity {
     radius: 36,
     hp: 9,
     team: "bad",
-    data: { fireTimer: 2, age: 0, expireAt: 20, eventDone: false },
+    data: {
+      fireTimer: 2,
+      age: 0,
+      expireAt: 20,
+      eventDone: false,
+      lastDamagerId: 0,
+    },
     update(dt, w) {
       if (this.hp <= 0) {
         if (!(this.data.eventDone as boolean)) {
           this.data.eventDone = true;
-          const player = w.entities.find((x) => x.kind === "player");
-          if (player) w.events.push({ type: "boss-killed", killer: player });
+          const lastId = this.data.lastDamagerId as number;
+          const killer = lastId
+            ? w.entities.find((x) => x.id === lastId)
+            : undefined;
+          if (killer && (killer.kind === "player" || killer.kind === "bot")) {
+            w.events.push({ type: "boss-killed", killer });
+          }
         }
         this.dead = true;
         return;

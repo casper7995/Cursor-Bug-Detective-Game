@@ -20,6 +20,11 @@ window.addEventListener("pointerdown", (e) => {
 window.addEventListener("pointerup", () => {
   pointer.down = false;
 });
+window.addEventListener("blur", () => {
+  keys.clear();
+  pointer.down = false;
+  pointer.justPressed = false;
+});
 
 export const Input = {
   isDown: (k: string): boolean => keys.has(k.toLowerCase()),

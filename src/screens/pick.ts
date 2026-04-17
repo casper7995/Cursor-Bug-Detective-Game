@@ -21,6 +21,7 @@ const ROSTER: { kind: CharacterKind; label: string; tagline: string }[] = [
 export function showPickScreen(
   ctx: CanvasRenderingContext2D,
 ): Promise<PickResult> {
+  Input.consumePress();
   return new Promise((resolve) => {
     function frame(): void {
       const w = window.innerWidth;

@@ -52,6 +52,7 @@ function resolveProjectileHit(
 ): void {
   target.hp -= proj.data.damage as number;
   if (target.kind === "boss") {
+    target.data.lastDamagerId = proj.data.ownerId;
     proj.dead = true;
     return;
   }
@@ -177,7 +178,7 @@ function spawnMeleeSwipe(owner: Entity, world: World, angle: number): void {
         e.hp -= 1;
         hit.add(e.id);
         if (e.kind === "boss") {
-          /* boss death handled in boss.update */
+          e.data.lastDamagerId = this.data.ownerId;
         } else if (e.hp <= 0) {
           e.dead = true;
           if (ownerEnt && ownerEnt.kind === "player") {
@@ -214,7 +215,9 @@ function crosshairHitscan(
     if (d <= e.radius) {
       e.hp -= 3;
       const dist = Math.hypot(e.pos.x - x1, e.pos.y - y1);
-      if (e.kind !== "boss" && e.hp <= 0) {
+      if (e.kind === "boss") {
+        e.data.lastDamagerId = owner.id;
+      } else if (e.hp <= 0) {
         e.dead = true;
         world.events.push({
           type: "kill",

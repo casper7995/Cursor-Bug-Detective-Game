@@ -1,0 +1,7 @@
+name = "cursor-crew-api"
+main = "index.ts"
+compatibility_date = "2026-04-17"
+
+[[kv_namespaces]]
+binding = "LB"
+id = "00000000000000000000000000000001"

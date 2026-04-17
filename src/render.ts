@@ -1,0 +1,79 @@
+import type { World } from "./types";
+
+export function clear(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  color = "#0a0a12",
+): void {
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, w, h);
+}
+
+export function circle(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  fill: string,
+): void {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = fill;
+  ctx.fill();
+}
+
+export function text(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  x: number,
+  y: number,
+  opts?: { color?: string; size?: number; align?: CanvasTextAlign },
+): void {
+  ctx.fillStyle = opts?.color ?? "#ddd";
+  ctx.font = `${opts?.size ?? 14}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+  ctx.textAlign = opts?.align ?? "left";
+  ctx.fillText(s, x, y);
+}
+
+export function spawnHitParticles(
+  world: World,
+  x: number,
+  y: number,
+  color: string,
+  count = 8,
+): void {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = 80 + Math.random() * 120;
+    world.add({
+      id: 0,
+      kind: "particle",
+      pos: { x, y },
+      vel: { x: Math.cos(a) * s, y: Math.sin(a) * s },
+      radius: 2,
+      hp: 1,
+      team: "good",
+      data: { life: 0.4 },
+      update(dt) {
+        const life = this.data.life as number;
+        if (life <= 0) {
+          this.dead = true;
+          return;
+        }
+        this.data.life = life - dt;
+        this.pos.x += this.vel.x * dt;
+        this.pos.y += this.vel.y * dt;
+        this.vel.x *= 0.92;
+        this.vel.y *= 0.92;
+      },
+      draw(ctx) {
+        const life = this.data.life as number;
+        ctx.globalAlpha = Math.max(0, life / 0.4);
+        ctx.fillStyle = color;
+        ctx.fillRect(this.pos.x - 1, this.pos.y - 1, 2, 2);
+        ctx.globalAlpha = 1;
+      },
+    });
+  }
+}

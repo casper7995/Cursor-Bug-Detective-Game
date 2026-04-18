@@ -57,9 +57,11 @@ scene.add(diorama.root);
 
 const mascot = createMascotMesh();
 // Default to intro-scale (small, OS-cursor-sized). Investigation-time the
-// scale is bumped up so the mascot reads as a desk figurine.
-const MASCOT_INTRO_SCALE = 0.08;
-const MASCOT_GAME_SCALE = 0.55;
+// scale is bumped up so the mascot reads as a desk figurine. v3 mascot is
+// taller (humanoid body) so game scale is smaller than v2.
+const MASCOT_INTRO_SCALE = 0.06;
+const MASCOT_GAME_SCALE = 0.35;
+const MASCOT_FEET_OFFSET = 1.05; // local-space distance from origin to soles
 mascot.group.scale.setScalar(MASCOT_INTRO_SCALE);
 scene.add(mascot.group);
 
@@ -422,12 +424,16 @@ function tickIntroChoreography(now: number, dtSec: number): void {
       if (pagePeel.done && !cameraRig.isDollying()) {
         // Switch cursor target + scale up the mascot for landing.
         cursorTracker.setTarget(diorama.desk);
-        cursorTracker.setYOffset(0.18);
+        cursorTracker.setYOffset(MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE);
         cursorTracker.setSmoothing(8);
         cursorTracker.attach(renderer.domElement);
         // Park the mascot at the landing spot so the scale-up doesn't
         // throw it across the desk; cursor tracker will take over at end.
-        mascot.group.position.set(0.4, diorama.deskTopY + 0.18, 0.4);
+        mascot.group.position.set(
+          0.4,
+          diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE,
+          0.4,
+        );
         setIntroStep("landing", now);
       }
       // Smooth scale interpolation from intro -> game scale during the
@@ -445,7 +451,8 @@ function tickIntroChoreography(now: number, dtSec: number): void {
       const t = Math.min(1, (now - introStepStartedAt) / 600);
       mascot.setTilt((1 - t) * -0.15);
       const bounce = Math.sin(Math.PI * t) * 0.05;
-      mascot.group.position.y = diorama.deskTopY + 0.18 + bounce;
+      mascot.group.position.y =
+        diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE + bounce;
       if (t === 0 || (t < 0.2 && now - introStepStartedAt < 50)) {
         sfxMascotLand();
       }
@@ -526,7 +533,8 @@ function frame(now: number): void {
     const idleMs = now - lastIdleAt;
     if (idleMs > 600) {
       const bob = Math.sin((now - lastIdleAt) * 0.0024) * 0.014;
-      mascot.group.position.y = diorama.deskTopY + 0.18 + bob;
+      mascot.group.position.y =
+        diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE + bob;
     }
   }
 

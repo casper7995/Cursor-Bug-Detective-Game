@@ -23,6 +23,32 @@ export function circle(
   ctx.fill();
 }
 
+/** Visible aim point while the OS cursor is hidden (`cursor: none` on body). */
+export function drawAimReticle(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+): void {
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 1;
+  const r = 10;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x - r - 4, y);
+  ctx.lineTo(x - 3, y);
+  ctx.moveTo(x + 3, y);
+  ctx.lineTo(x + r + 4, y);
+  ctx.moveTo(x, y - r - 4);
+  ctx.lineTo(x, y - 3);
+  ctx.moveTo(x, y + 3);
+  ctx.lineTo(x, y + r + 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function text(
   ctx: CanvasRenderingContext2D,
   s: string,

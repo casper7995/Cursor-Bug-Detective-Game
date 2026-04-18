@@ -82,7 +82,7 @@ export function showEndScreen(
           color: "#7dd3fc",
         });
       }
-      text(ctx, "click or press SPACE to play again", w / 2, h - 100, {
+      text(ctx, "click or press SPACE / ENTER to play again", w / 2, h - 100, {
         size: 12,
         align: "center",
         color: "#888",
@@ -110,7 +110,7 @@ export function showEndScreen(
         });
       }
 
-      if (Input.isDown(" ") || Input.consumePress()) {
+      if (Input.isDown(" ") || Input.isDown("enter") || Input.consumePress()) {
         resolve();
         return;
       }

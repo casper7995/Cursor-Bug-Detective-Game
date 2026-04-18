@@ -140,15 +140,18 @@ bug-detective/
 
 ## Known limitations / non-blockers
 
-- **Bundle is 593KB** (158KB gzipped). The Vite build warns about
+- **Bundle is 614KB** (160KB gzipped). The Vite build warns about
   >500KB chunks. Three.js is the bulk; could shave ~100KB by
   selectively importing instead of `import * as THREE` but that's a
   refactor I left out of the jam scope.
 - **No PWA / offline mode.** Worker fallback exists for the daily seed
   (FNV-1a hash of UTC date) so the game is fully playable without
   network — just no leaderboard or score posting.
-- **Mobile gate is a hard "open on desktop" wall.** A touch-driven
-  variant of the page-peel + hover-find would be a v2 feature; not
-  attempted here to keep the jam scope honest.
-- **Cross-browser tested only in Chrome.** Production smoke-test on
-  Safari + Firefox is your job in `DEPLOY.md` § 3.
+- **Mobile = simplified touch flow.** Phones see a dismissable card
+  with a "Play simplified" button that boots a no-peel, tap-to-
+  investigate variant. Touch users can play; the page-peel + hover
+  mechanics are still desktop-only.
+- **Cross-browser tested only in Chrome.** A code-level audit lives in
+  `CROSS_BROWSER.md` (Safari `webkit-` prefixes added, localStorage
+  try/catch wrapping, WebGL fallback card, transmission graceful-
+  degrade). Live Safari + Firefox smoke-test is in `DEPLOY.md` § 3.

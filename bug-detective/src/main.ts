@@ -36,6 +36,8 @@ import { Action } from "./input/actions";
 import { isMobile, mountMobileGate } from "./ui/mobileGate";
 import { showTitleSplash } from "./ui/titleSplash";
 import { createSettingsPanel } from "./ui/settingsPanel";
+import { isSkipIntro } from "./ui/skipIntroPref";
+import { recordRound, showStreakOutro } from "./ui/streakOutro";
 
 // ---------------------------------------------------------------------
 // Boot
@@ -51,6 +53,11 @@ const root = container;
 const forceMobile = new URLSearchParams(window.location.search).get("mobile") === "1";
 if (forceMobile || isMobile()) {
   mountMobileGate(root);
+} else if (isSkipIntro()) {
+  // Returning visitor opted in to "Skip intro" in Settings. Boot the game
+  // immediately. WebAudio will resume on the first hover/click during
+  // investigation (audio module attaches its own listeners).
+  bootGame();
 } else {
   // Show the title splash first; once the user clicks/keys, boot the game.
   // This both gates the heavy 3D init and gives the AudioContext a user
@@ -189,7 +196,14 @@ const hud = createHud(root, diorama);
 hud.element.style.display = "none"; // hidden during intro
 const answerPanel = createAnswerPanel(root);
 const resultsPanel = createResultsPanel(root);
-const settings = createSettingsPanel(document.body);
+const settings = createSettingsPanel(document.body, {
+  onRestart: () => {
+    sfxUiClick();
+    resultsPanel.hide();
+    answerPanel.hide();
+    restartRound();
+  },
+});
 settings.setVisible(false); // hidden during intro
 const input = new InputManager();
 input.attach(window);
@@ -210,7 +224,19 @@ answerPanel.onSubmit((choiceIndex) => {
     const phase = state.phase;
     if (phase.correct) sfxCorrect();
     else sfxWrong();
-    showResults(phase.score, phase.correct, phase.cluesUsed, phase.elapsedMs);
+    // Track session streak. Show "Detective Pro" outro card on every
+    // 3rd consecutive correct (3, 6, 9, ...) before the normal results
+    // panel. Wrong answer resets streak to 0.
+    const streak = recordRound(phase.correct);
+    const showOutro = phase.correct && streak >= 3 && streak % 3 === 0;
+    const proceed = (): void => {
+      showResults(phase.score, phase.correct, phase.cluesUsed, phase.elapsedMs);
+    };
+    if (showOutro) {
+      void showStreakOutro(document.body, streak).then(proceed);
+    } else {
+      proceed();
+    }
     // Persist correct submissions to the worker (best-effort, no UI block).
     if (phase.correct) {
       const name = (localStorage.getItem("bd:name") ?? "anon").slice(0, 16);
@@ -645,6 +671,33 @@ function frame(now: number): void {
   input.endFrame();
   requestAnimationFrame(frame);
 }
+
+// Skip-intro fast path: if the user opted in via Settings → Skip intro
+// (persisted in localStorage), bypass the page-peel choreography and
+// land directly on the desk. The choreography state machine is parked
+// at "done" so its switch never runs, and we manually do the same
+// teardown the landing step does (camera pose, diorama visible, HUD +
+// settings shown, bloom on, cursor target = desk, mascot at game scale).
+if (isSkipIntro()) {
+  pagePeel.mesh.visible = false;
+  diorama.root.visible = true;
+  cameraRig.setStatic(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT);
+  cursorTracker.setTarget(diorama.desk);
+  cursorTracker.setYOffset(MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE);
+  cursorTracker.setSmoothing(12);
+  mascot.group.scale.setScalar(MASCOT_GAME_SCALE);
+  mascot.group.position.set(
+    0.4,
+    diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE,
+    0.4,
+  );
+  hud.element.style.display = "block";
+  settings.setVisible(true);
+  postFx.setBloomEnabled(true);
+  setIntroStep("done", performance.now());
+  startInvestigating(performance.now());
+}
+
 requestAnimationFrame(frame);
 
 function friendlyTagName(tag: string): string {

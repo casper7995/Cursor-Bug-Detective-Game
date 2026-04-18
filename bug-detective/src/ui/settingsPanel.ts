@@ -1,13 +1,20 @@
 /**
  * Settings panel — small gear-icon button in the top-right corner. Opens
- * a panel with mute toggle and an "About" blurb. Wires through to the
- * audio module's mute state.
+ * a panel with mute toggle, restart button, skip-intro toggle, hotkey
+ * reference, and an "About" blurb. Wires through to the audio module's
+ * mute state and to caller-supplied callbacks for restart / skip-intro.
  *
  * Style: minimal, reuses the dark-on-charcoal aesthetic from the mobile
  * gate / answer panel. No external CSS.
  */
 
 import { isMuted, setMuted } from "../audio/audio";
+import { isSkipIntro, setSkipIntro } from "./skipIntroPref";
+
+export interface SettingsPanelOptions {
+  /** Called when the user clicks "Restart" inside the panel. */
+  onRestart: () => void;
+}
 
 export interface SettingsPanel {
   /** The gear button + panel root. */
@@ -16,7 +23,10 @@ export interface SettingsPanel {
   setVisible(v: boolean): void;
 }
 
-export function createSettingsPanel(container: HTMLElement): SettingsPanel {
+export function createSettingsPanel(
+  container: HTMLElement,
+  opts: SettingsPanelOptions,
+): SettingsPanel {
   ensureStyle();
 
   const wrapper = document.createElement("div");
@@ -33,10 +43,25 @@ export function createSettingsPanel(container: HTMLElement): SettingsPanel {
   panel.innerHTML = `
     <div class="bd-settings__row">
       <span>Sound</span>
-      <button class="bd-settings__toggle" type="button" data-on="${(!isMuted()).toString()}">
+      <button class="bd-settings__toggle bd-settings__sound" type="button"
+        data-on="${(!isMuted()).toString()}">
         ${isMuted() ? "Off" : "On"}
       </button>
     </div>
+    <div class="bd-settings__row">
+      <span>Skip intro next load</span>
+      <button class="bd-settings__toggle bd-settings__skip" type="button"
+        data-on="${isSkipIntro().toString()}">
+        ${isSkipIntro() ? "On" : "Off"}
+      </button>
+    </div>
+    <div class="bd-settings__row">
+      <span>Restart round</span>
+      <button class="bd-settings__action bd-settings__restart" type="button">
+        Restart
+      </button>
+    </div>
+    <div class="bd-settings__sep"></div>
     <div class="bd-settings__row">
       <span>Mute hotkey</span>
       <kbd>M</kbd>
@@ -46,7 +71,7 @@ export function createSettingsPanel(container: HTMLElement): SettingsPanel {
       <kbd>Enter</kbd>
     </div>
     <div class="bd-settings__row">
-      <span>Restart</span>
+      <span>Restart hotkey</span>
       <kbd>R</kbd>
     </div>
     <div class="bd-settings__about">
@@ -68,32 +93,50 @@ export function createSettingsPanel(container: HTMLElement): SettingsPanel {
     e.stopPropagation();
     setOpen(!open);
   });
-  // Click outside closes the panel.
   document.addEventListener("click", (e) => {
     if (!open) return;
     if (e.target instanceof Node && wrapper.contains(e.target)) return;
     setOpen(false);
   });
 
-  const toggle = panel.querySelector<HTMLButtonElement>(".bd-settings__toggle");
-  if (toggle) {
-    toggle.addEventListener("click", (e) => {
+  const soundToggle = panel.querySelector<HTMLButtonElement>(".bd-settings__sound");
+  if (soundToggle) {
+    soundToggle.addEventListener("click", (e) => {
       e.stopPropagation();
       const willMute = !isMuted();
       setMuted(willMute);
-      toggle.dataset.on = (!willMute).toString();
-      toggle.textContent = willMute ? "Off" : "On";
+      soundToggle.dataset.on = (!willMute).toString();
+      soundToggle.textContent = willMute ? "Off" : "On";
     });
   }
 
-  // Update toggle label if mute changes via M hotkey while panel is open.
-  // Cheap polling in panel render — only when open.
+  const skipToggle = panel.querySelector<HTMLButtonElement>(".bd-settings__skip");
+  if (skipToggle) {
+    skipToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const next = !isSkipIntro();
+      setSkipIntro(next);
+      skipToggle.dataset.on = next.toString();
+      skipToggle.textContent = next ? "On" : "Off";
+    });
+  }
+
+  const restartBtn = panel.querySelector<HTMLButtonElement>(".bd-settings__restart");
+  if (restartBtn) {
+    restartBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setOpen(false);
+      opts.onRestart();
+    });
+  }
+
+  // Update sound toggle label if M hotkey changes mute while panel is open.
   window.setInterval(() => {
-    if (!open || !toggle) return;
+    if (!open || !soundToggle) return;
     const wantOn = (!isMuted()).toString();
-    if (toggle.dataset.on !== wantOn) {
-      toggle.dataset.on = wantOn;
-      toggle.textContent = isMuted() ? "Off" : "On";
+    if (soundToggle.dataset.on !== wantOn) {
+      soundToggle.dataset.on = wantOn;
+      soundToggle.textContent = isMuted() ? "Off" : "On";
     }
   }, 250);
 
@@ -137,7 +180,7 @@ function ensureStyle(): void {
       position: absolute;
       top: 44px;
       right: 0;
-      min-width: 220px;
+      min-width: 240px;
       background: #1a1d24;
       border: 1px solid #2a2e3a;
       border-radius: 10px;
@@ -151,9 +194,12 @@ function ensureStyle(): void {
       justify-content: space-between;
       align-items: center;
       padding: 6px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-    .bd-settings__row:last-of-type { border-bottom: 0; }
+    .bd-settings__sep {
+      height: 1px;
+      background: rgba(255,255,255,0.08);
+      margin: 6px 0;
+    }
     .bd-settings__row kbd {
       background: #2a2e3a;
       border: 1px solid #3a3f4d;
@@ -162,7 +208,8 @@ function ensureStyle(): void {
       font-size: 12px;
       font-family: ui-monospace, "SF Mono", monospace;
     }
-    .bd-settings__toggle {
+    .bd-settings__toggle,
+    .bd-settings__action {
       appearance: none;
       background: #2a2e3a;
       border: 1px solid #3a3f4d;
@@ -176,6 +223,7 @@ function ensureStyle(): void {
       background: #1d9bf0;
       border-color: #1d9bf0;
     }
+    .bd-settings__action:hover { background: #3a3f4d; }
     .bd-settings__about {
       margin-top: 10px;
       padding-top: 10px;

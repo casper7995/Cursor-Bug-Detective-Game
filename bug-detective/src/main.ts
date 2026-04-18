@@ -6,9 +6,18 @@ import { createMascotMesh } from "./cursor/mascotMesh";
 import { createDesktopDiorama } from "./scene/desktopDiorama";
 import { CursorTracker } from "./intro/cursorTracker";
 import { createHud } from "./ui/hud";
-import { pickAnomaly, ANOMALIES } from "./scene/anomalies";
+import { createAnswerPanel } from "./ui/answerPanel";
+import { createResultsPanel } from "./ui/resultsPanel";
+import { ANOMALIES, pickAnomaly, type PickedAnomaly } from "./scene/anomalies";
 import { fallbackSeed, todayUtc } from "./api/seedClient";
+import { GameState, assertNever } from "./game/gameState";
+import { createTimer, ROUND_DURATION_MS, type Timer } from "./game/timer";
+import { InputManager } from "./input/inputManager";
+import { Action } from "./input/actions";
 
+// ---------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------
 const container = document.getElementById("app");
 if (!(container instanceof HTMLElement)) throw new Error("#app missing");
 const root = container;
@@ -39,48 +48,127 @@ const cursorTracker = new CursorTracker(
 cursorTracker.setYOffset(0.18);
 cursorTracker.attach(renderer.domElement);
 
-// ---- Anomaly selection (Day 3: hardcoded seed for now; Day 7 wires worker)
-// Allow URL override `?seed=N` for dev iteration across the 12 anomalies.
+// ---------------------------------------------------------------------
+// Anomaly selection (Day 7 wires this to worker; for now: URL/today seed)
+// ---------------------------------------------------------------------
 const url = new URL(window.location.href);
 const seedOverride = url.searchParams.get("seed");
 const dateOverride = url.searchParams.get("date");
-// During Day 3 dev iteration we cycle through anomaly indices to verify each
-// `apply()` works. Set `?seed=N` in the URL or a hash like #anomaly=clock-ccw.
 const hashMatch = /anomaly=([a-z-]+)/.exec(window.location.hash);
 let seed: number;
 if (hashMatch) {
-  // Pick the seed that maps to a target anomaly id. We brute-force search the
-  // first 200 seeds and use the first match.
   const target = hashMatch[1] ?? "";
   let found = 0;
   for (let s = 1; s <= 200; s++) {
-    const test = pickAnomaly(s).def.id;
-    if (test === target) { found = s; break; }
+    if (pickAnomaly(s).def.id === target) {
+      found = s;
+      break;
+    }
   }
-  seed = found || (fallbackSeed(dateOverride ?? todayUtc()));
+  seed = found || fallbackSeed(dateOverride ?? todayUtc());
 } else if (seedOverride) {
   seed = Number.parseInt(seedOverride, 10) >>> 0;
 } else {
   seed = fallbackSeed(dateOverride ?? todayUtc());
 }
-const picked = pickAnomaly(seed);
+let picked: PickedAnomaly = pickAnomaly(seed);
 picked.def.apply(diorama);
 console.info(
   `[bug-detective] seed=${seed} anomaly=${picked.def.id} (1 of ${ANOMALIES.length})`,
 );
 
-// ---- HUD
+// ---------------------------------------------------------------------
+// Game state + UI
+// ---------------------------------------------------------------------
+const state = new GameState();
 const hud = createHud(root, diorama);
-hud.setStatusText("find the bug — hover to investigate");
+const answerPanel = createAnswerPanel(root);
+const resultsPanel = createResultsPanel(root);
+const input = new InputManager();
+input.attach(window);
 
-// Hover-driven clue counter: only count distinct anomaly-target hovers, after
-// a 2s grace period (so the player isn't penalised for the first sweep).
+let timer: Timer | null = null;
 const HOVER_GRACE_MS = 2000;
-const hoverStreak = new Map<string, number>(); // tag → ms hovered
-let cluesUsed = 0;
-const startTime = performance.now();
-let lastFrame = startTime;
+const HOVER_CLUE_THRESHOLD_MS = 350;
+const hoverStreak = new Map<string, number>();
 
+answerPanel.onSubmit((choiceIndex) => {
+  state.submit(choiceIndex, picked.correctIndex);
+  answerPanel.hide();
+  if (state.phase.kind === "results") {
+    showResults(state.phase.score, state.phase.correct, state.phase.cluesUsed,
+                state.phase.elapsedMs);
+  }
+});
+
+resultsPanel.onRestart(() => {
+  restartRound();
+});
+resultsPanel.onShare(() => {
+  // Day 8 wires this. For now, just hide so the user knows the click landed.
+  console.info("[bug-detective] share clicked (Day 8 wires this)");
+});
+
+function showResults(
+  score: number,
+  correct: boolean,
+  cluesUsed: number,
+  elapsedMs: number,
+): void {
+  resultsPanel.show({
+    correct,
+    score,
+    cluesUsed,
+    elapsedMs,
+    revealText: picked.def.revealText,
+    rank: null,
+  });
+}
+
+function startInvestigating(now: number): void {
+  state.enterInvestigating(now);
+  timer = createTimer(now);
+  hoverStreak.clear();
+  hud.setCluesUsed(0);
+  hud.setStatusText("find the bug — hover to investigate");
+  resultsPanel.hide();
+  answerPanel.hide();
+}
+
+function enterAnsweringNow(now: number): void {
+  state.enterAnswering(now);
+  hud.setStatusText("which one is the bug?");
+  // Build the prompt from the picked anomaly. Choices are already shuffled.
+  answerPanel.show("which one is the bug?", picked.choices);
+}
+
+function restartRound(): void {
+  // For dev iteration, advance the seed by 1 so each restart shows a new bug.
+  // In production (Day 7), the seed is daily and `restart` will just replay.
+  seed = (seed + 1) >>> 0;
+  // Reset the diorama by swapping in a fresh one. Simple and bulletproof.
+  scene.remove(diorama.root);
+  const fresh = createDesktopDiorama();
+  Object.assign(diorama, fresh);
+  scene.add(fresh.root);
+  // Re-bind cursor tracker to the new desk mesh.
+  cursorTracker.setTarget(fresh.desk);
+  // Re-pick anomaly + apply.
+  picked = pickAnomaly(seed);
+  picked.def.apply(diorama);
+  console.info(
+    `[bug-detective] restart seed=${seed} anomaly=${picked.def.id}`,
+  );
+  startInvestigating(performance.now());
+}
+
+// Day 4: skip the wow opener and go straight to investigating. Day 5/6 wires
+// the proper intro state.
+startInvestigating(performance.now());
+
+// ---------------------------------------------------------------------
+// Render loop
+// ---------------------------------------------------------------------
 function onResize(): void {
   const w = root.clientWidth;
   const h = Math.max(root.clientHeight, 1);
@@ -89,6 +177,9 @@ function onResize(): void {
 }
 window.addEventListener("resize", onResize);
 onResize();
+
+const startTime = performance.now();
+let lastFrame = startTime;
 
 function frame(now: number): void {
   const dtMs = Math.min(50, now - lastFrame);
@@ -105,39 +196,68 @@ function frame(now: number): void {
   const blinkPhase = (elapsed % 4.2) / 4.2;
   mascot.setBlink(blinkPhase > 0.95 ? 0 : 1);
 
-  // Hover detection + tooltip.
-  const hover = hud.update(cameraRig.camera);
-  if (hover.tag) {
-    // Show short hint for the active anomaly's target tag, generic name otherwise.
-    const isAnomalyTarget = hover.tag === picked.def.targetTag;
-    const hint = isAnomalyTarget
-      ? picked.def.tooltipHint
-      : friendlyTagName(hover.tag);
-    hud.setHover(hover.tag, hint);
+  // ---- Phase-driven update ----
+  switch (state.phase.kind) {
+    case "intro":
+      // Day 4 stub: nothing to do; we transition out at boot.
+      break;
+    case "investigating": {
+      if (!timer) break;
+      const remaining = timer.remainingMs(now);
+      const elapsedMs = timer.elapsedMs(now);
+      hud.setTimer(remaining);
 
-    // Count time spent hovering each anomaly target after the grace period.
-    if (isAnomalyTarget && elapsed * 1000 > HOVER_GRACE_MS) {
-      const prev = hoverStreak.get(hover.tag) ?? 0;
-      const next = prev + dtMs;
-      hoverStreak.set(hover.tag, next);
-      // First time a hover passes 350ms on the anomaly target = +1 clue.
-      if (prev < 350 && next >= 350) {
-        cluesUsed += 1;
-        hud.setCluesUsed(cluesUsed);
+      // Hover detection + clue counter.
+      const hover = hud.update(cameraRig.camera);
+      if (hover.tag) {
+        const isAnomalyTarget = hover.tag === picked.def.targetTag;
+        const hint = isAnomalyTarget
+          ? picked.def.tooltipHint
+          : friendlyTagName(hover.tag);
+        hud.setHover(hover.tag, hint);
+        if (isAnomalyTarget && elapsedMs > HOVER_GRACE_MS) {
+          const prev = hoverStreak.get(hover.tag) ?? 0;
+          const next = prev + dtMs;
+          hoverStreak.set(hover.tag, next);
+          if (
+            prev < HOVER_CLUE_THRESHOLD_MS &&
+            next >= HOVER_CLUE_THRESHOLD_MS
+          ) {
+            state.bumpClue();
+            if (state.phase.kind === "investigating") {
+              hud.setCluesUsed(state.phase.cluesUsed);
+            }
+          }
+        }
+        mascot.setMagnifierLifted(isAnomalyTarget ? 1 : 0);
+      } else {
+        hud.setHover(null);
+        mascot.setMagnifierLifted(0);
       }
+
+      // Manual submit (Enter) or timer expiry → answering.
+      if (input.consumePress(Action.Submit) || timer.isExpired(now)) {
+        enterAnsweringNow(now);
+      }
+      break;
     }
-    // Lift mascot's magnifier when hovering the actual anomaly target.
-    mascot.setMagnifierLifted(isAnomalyTarget ? 1 : 0);
-  } else {
-    hud.setHover(null);
-    mascot.setMagnifierLifted(0);
+    case "answering":
+      // Answer panel handles input; nothing per-frame.
+      hud.update(cameraRig.camera);
+      break;
+    case "results":
+      // Results panel up; let mascot still bob and tooltip still raycast.
+      hud.update(cameraRig.camera);
+      if (input.consumePress(Action.Restart)) {
+        restartRound();
+      }
+      break;
+    default:
+      assertNever(state.phase);
   }
 
-  // Day-3 stub: 90s timer counts down for the HUD demo, no game state yet.
-  const remaining = Math.max(0, 90_000 - (now - startTime));
-  hud.setTimer(remaining);
-
   renderer.render(scene, cameraRig.camera);
+  input.endFrame();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -155,3 +275,7 @@ function friendlyTagName(tag: string): string {
       return tag;
   }
 }
+
+// Hush the unused-warning on ROUND_DURATION_MS while keeping the import
+// available for tests that probe the constant.
+void ROUND_DURATION_MS;

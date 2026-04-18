@@ -195,32 +195,133 @@ function restartRound(): void {
   startInvestigating(performance.now());
 }
 
-// Day 5: stay in intro until first mouse move + a short beat. Day 6 will
-// hook this up to the peel/dolly choreography. For now we just transition
-// to the gameplay camera after the beat.
-const INTRO_BEAT_MS = 1400;
+// ---- Wow opener choreography (Day 6) -------------------------------
+// Sequence on first user mouse move (after a small beat):
+//   1. Mascot tilts up + jumps slightly (cursor "noticing" something).
+//   2. Page peel begins (vertex shader rolls bottom edge upward).
+//   3. Camera dollies from intro pose to gameplay pose CONCURRENTLY.
+//   4. Diorama becomes visible mid-dolly (the "reveal").
+//   5. Cursor tracker switches target to desk; mascot scales up + lands.
+//   6. State transitions to investigating, HUD fades in, timer starts.
+const INTRO_BEAT_MS = 600;       // beat after first move before peel begins
+const PEEL_BEGIN_MS = 200;       // delay between mascot reaction and peel start
+const DOLLY_DURATION_MS = 1600;  // total camera dolly time
+const REVEAL_AT_PROGRESS = 0.35; // make diorama visible at 35% of dolly
+
+type IntroStep =
+  | "waiting"           // before first mouse move + beat
+  | "reacting"          // mascot tilts/jumps before peel
+  | "peeling"           // peel + dolly running concurrently
+  | "landing"           // mascot scales up + lands on desk
+  | "done";
+
 let firstMoveAt: number | null = null;
-let introTransitioning = false;
+let introStep: IntroStep = "waiting";
+let introStepStartedAt = 0;
+let dollyStarted = false;
+let dioramaRevealed = false;
+let dollyPromise: Promise<void> | null = null;
+
+function setIntroStep(step: IntroStep, now: number): void {
+  introStep = step;
+  introStepStartedAt = now;
+}
+
+function tickIntroChoreography(now: number, dtSec: number): void {
+  switch (introStep) {
+    case "waiting": {
+      if (firstMoveAt === null) return;
+      if (now - firstMoveAt < INTRO_BEAT_MS) return;
+      setIntroStep("reacting", now);
+      // Detach cursor tracker so mascot stops following mouse — scripted now.
+      cursorTracker.detach();
+      break;
+    }
+    case "reacting": {
+      const t = (now - introStepStartedAt) / 400; // 400ms of reaction
+      // Tilt up to look at the page edge above.
+      mascot.setTilt(-0.3 * Math.min(1, t));
+      // Tiny upward bounce.
+      const bounce = Math.sin(Math.PI * Math.min(1, t)) * 0.04;
+      mascot.group.position.y =
+        -introPlaneHeight * 0.1 + bounce;
+      if (now - introStepStartedAt > PEEL_BEGIN_MS) {
+        pagePeel.start();
+        dollyPromise = cameraRig.scriptedTo(
+          GAME_CAMERA_POS,
+          GAME_CAMERA_LOOKAT,
+          DOLLY_DURATION_MS,
+        );
+        void dollyPromise; // fire and forget; tracked by isDollying()
+        dollyStarted = true;
+        setIntroStep("peeling", now);
+      }
+      break;
+    }
+    case "peeling": {
+      // Continue mascot reaction tilt during peel. Drop the tilt as the
+      // peel approaches completion (mascot relaxes).
+      const peelT = pagePeel.progress01;
+      mascot.setTilt(-0.3 * (1 - peelT));
+      // Reveal the diorama mid-dolly so the room appears as the page lifts.
+      if (!dioramaRevealed && dollyStarted) {
+        const dollyProgress =
+          dollyStarted && cameraRig.isDollying()
+            ? Math.min(1, (now - introStepStartedAt) / DOLLY_DURATION_MS)
+            : 1;
+        if (dollyProgress >= REVEAL_AT_PROGRESS) {
+          diorama.root.visible = true;
+          dioramaRevealed = true;
+        }
+      }
+      // Once both peel and dolly are done, move to landing.
+      if (pagePeel.done && !cameraRig.isDollying()) {
+        // Switch cursor target + scale up the mascot for landing.
+        cursorTracker.setTarget(diorama.desk);
+        cursorTracker.setYOffset(0.18);
+        cursorTracker.setSmoothing(8);
+        cursorTracker.attach(renderer.domElement);
+        // Park the mascot at the landing spot so the scale-up doesn't
+        // throw it across the desk; cursor tracker will take over at end.
+        mascot.group.position.set(0.4, diorama.deskTopY + 0.18, 0.4);
+        setIntroStep("landing", now);
+      }
+      // Smooth scale interpolation from intro -> game scale during the
+      // final 50% of the peel so the mascot grows as the camera pulls back.
+      const scale = THREE.MathUtils.lerp(
+        MASCOT_INTRO_SCALE,
+        MASCOT_GAME_SCALE,
+        Math.min(1, Math.max(0, peelT * 1.2)),
+      );
+      mascot.group.scale.setScalar(scale);
+      break;
+    }
+    case "landing": {
+      // 600ms gentle settle on the desk: small drop + bounce + tilt to 0.
+      const t = Math.min(1, (now - introStepStartedAt) / 600);
+      mascot.setTilt((1 - t) * -0.15);
+      const bounce = Math.sin(Math.PI * t) * 0.05;
+      mascot.group.position.y = diorama.deskTopY + 0.18 + bounce;
+      if (t >= 1) {
+        mascot.setTilt(0);
+        hud.element.style.display = "block";
+        startInvestigating(now);
+        setIntroStep("done", now);
+      }
+      break;
+    }
+    case "done":
+      break;
+    default:
+      assertNever(introStep);
+  }
+  void dtSec;
+}
 
 function maybeBeginIntroExit(now: number): void {
-  if (introTransitioning) return;
-  if (firstMoveAt === null) return;
-  if (now - firstMoveAt < INTRO_BEAT_MS) return;
-  introTransitioning = true;
-  // Day 5 stub: no peel yet — hide the page plane, snap camera + cursor target
-  // to the gameplay scene, plant mascot on the desk, and start investigating.
-  // Day 6 replaces this with peel.start() + cameraRig.scriptedTo() + a
-  // scripted mascot landing.
-  pagePeel.mesh.visible = false;
-  diorama.root.visible = true;
-  cameraRig.setStatic(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT);
-  cursorTracker.setTarget(diorama.desk);
-  cursorTracker.setYOffset(0.18);
-  cursorTracker.setSmoothing(12);
-  mascot.group.scale.setScalar(MASCOT_GAME_SCALE);
-  mascot.group.position.set(0.4, diorama.deskTopY + 0.18, 0.4);
-  hud.element.style.display = "block";
-  startInvestigating(performance.now());
+  // Drives the choreography state machine. State.phase stays in "intro"
+  // until the landing step calls startInvestigating().
+  tickIntroChoreography(now, 0);
 }
 
 // ---------------------------------------------------------------------

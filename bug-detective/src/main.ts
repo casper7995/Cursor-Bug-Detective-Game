@@ -11,7 +11,10 @@ import { createAnswerPanel } from "./ui/answerPanel";
 import { createResultsPanel } from "./ui/resultsPanel";
 import { ANOMALIES, pickAnomaly, type PickedAnomaly } from "./scene/anomalies";
 import { fallbackSeed, fetchSeed, todayUtc } from "./api/seedClient";
-import { postScore } from "./api/scoreClient";
+import { fetchLeaderboard, postScore } from "./api/scoreClient";
+import { renderShareCard, tweetIntent, shareCardBlob } from "./ui/shareCard";
+import { renderLeaderboardPanel } from "./ui/leaderboard";
+import { createCountdown } from "./ui/countdown";
 import { GameState, assertNever } from "./game/gameState";
 import { createTimer, ROUND_DURATION_MS, type Timer } from "./game/timer";
 import { InputManager } from "./input/inputManager";
@@ -180,9 +183,51 @@ answerPanel.onSubmit((choiceIndex) => {
 resultsPanel.onRestart(() => {
   restartRound();
 });
-resultsPanel.onShare(() => {
-  // Day 8 wires this. For now, just hide so the user knows the click landed.
-  console.info("[bug-detective] share clicked (Day 8 wires this)");
+
+const countdown = createCountdown();
+resultsPanel.setCountdownSlot(countdown.element);
+
+let lastResults: {
+  score: number;
+  cluesUsed: number;
+  elapsedMs: number;
+  rank: number | null;
+} | null = null;
+
+resultsPanel.onShare(async () => {
+  if (!lastResults) return;
+  const card = renderShareCard({
+    score: lastResults.score,
+    anomalyName: picked.def.correctChoice,
+    elapsedMs: lastResults.elapsedMs,
+    cluesUsed: lastResults.cluesUsed,
+    dateUtc: targetDate,
+    rank: lastResults.rank,
+  });
+
+  // Try Web Share API with a PNG file first (modern Chrome/Safari iOS).
+  // Fall back to opening Twitter/X intent in a new tab.
+  const blob = await shareCardBlob(card);
+  if (blob && navigator.canShare) {
+    const file = new File([blob], `bug-detective-${targetDate}.png`, {
+      type: "image/png",
+    });
+    const data: ShareData = {
+      title: "Bug Detective",
+      text: `I scored ${lastResults.score} on Bug Detective (${targetDate}).`,
+      url: "https://vibej.am/2026/",
+      files: [file],
+    };
+    if (navigator.canShare(data)) {
+      try {
+        await navigator.share(data);
+        return;
+      } catch {
+        /* fall through to twitter intent */
+      }
+    }
+  }
+  window.open(tweetIntent(lastResults.score, targetDate), "_blank", "noopener");
 });
 
 function showResults(
@@ -191,6 +236,7 @@ function showResults(
   cluesUsed: number,
   elapsedMs: number,
 ): void {
+  lastResults = { score, cluesUsed, elapsedMs, rank: null };
   resultsPanel.show({
     correct,
     score,
@@ -199,6 +245,35 @@ function showResults(
     revealText: picked.def.revealText,
     rank: null,
   });
+  // Refresh the leaderboard slot async (worker round-trip).
+  void fetchLeaderboard(targetDate).then((entries) => {
+    // Find current player's rank in the freshly-fetched list. Match on
+    // score + cluesUsed + elapsedMs (server-side dedupes by ts which we
+    // don't know here, so this matches the "just-submitted" entry well
+    // enough for highlighting).
+    let myRank: number | null = null;
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (
+        e &&
+        correct &&
+        e.score === score &&
+        e.cluesUsed === cluesUsed &&
+        e.elapsedMs === elapsedMs
+      ) {
+        myRank = i + 1;
+        break;
+      }
+    }
+    if (lastResults) lastResults.rank = myRank;
+    const node = renderLeaderboardPanel({
+      entries,
+      myRank,
+      myScore: correct ? score : null,
+    });
+    resultsPanel.setLeaderboardSlot(node);
+  });
+  countdown.start();
 }
 
 function startInvestigating(now: number): void {
@@ -209,6 +284,8 @@ function startInvestigating(now: number): void {
   hud.setStatusText("find the bug — hover to investigate");
   resultsPanel.hide();
   answerPanel.hide();
+  countdown.stop();
+  lastResults = null;
 }
 
 function enterAnsweringNow(now: number): void {

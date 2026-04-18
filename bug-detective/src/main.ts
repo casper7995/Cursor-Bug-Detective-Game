@@ -425,9 +425,13 @@ function enterAnsweringNow(now: number): void {
 }
 
 function restartRound(): void {
-  // For dev iteration, advance the seed by 1 so each restart shows a new bug.
-  // In production (Day 7), the seed is daily and `restart` will just replay.
-  seed = (seed + 1) >>> 0;
+  // Daily-case integrity: by default, restart replays the SAME daily
+  // anomaly. The `?seed=` URL override is the dev-only escape hatch
+  // that bumps the seed each restart so iteration through the anomaly
+  // pool is fast.
+  if (seedOverride !== null) {
+    seed = (seed + 1) >>> 0;
+  }
   // Reset the diorama by swapping in a fresh one. Simple and bulletproof.
   scene.remove(diorama.root);
   const fresh = createDesktopDiorama();
@@ -435,7 +439,7 @@ function restartRound(): void {
   scene.add(fresh.root);
   // Re-bind cursor tracker to the new desk mesh.
   cursorTracker.setTarget(fresh.desk);
-  // Re-pick anomaly + apply.
+  // Re-pick anomaly + apply (same seed → same anomaly, by design).
   picked = pickAnomaly(seed);
   picked.def.apply(diorama);
   console.info(

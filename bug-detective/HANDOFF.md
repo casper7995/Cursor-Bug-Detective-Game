@@ -31,9 +31,18 @@ and Cursor-themed mascot.
    time × 4 − clues × 50 − wrong × 500, floored at 0), today's
    leaderboard (top 10 + your rank), countdown to tomorrow's bug, share
    card (1200×630 PNG with Web Share API + Twitter intent), restart
-   button.
+   button. **3-consecutive-correct** triggers a brief "Detective Pro"
+   outro card before the regular results.
 6. R or click "play again" → re-investigate (same anomaly until UTC
    midnight; tomorrow brings a new seed).
+
+### Settings (gear icon, top-right)
+
+- **Sound** toggle (mirrors M hotkey, persisted in localStorage).
+- **Skip intro next load** toggle — when on, returning visitors land
+  directly on the desk without the title splash + page-peel intro.
+- **Restart round** button (mirrors R hotkey).
+- Hotkey reference: M / Enter / R.
 
 ### Mascot
 

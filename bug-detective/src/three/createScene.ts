@@ -34,7 +34,9 @@ export function createSceneBundle(container: HTMLElement): SceneBundle {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // PCFShadowMap (not PCFSoftShadowMap, which Three.js r184 deprecated and
+  // auto-coerces to PCFShadowMap with a console warning we don't need).
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;

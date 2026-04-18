@@ -254,7 +254,12 @@ const input = new InputManager();
 input.attach(window);
 
 let timer: Timer | null = null;
-const HOVER_GRACE_MS = 2000;
+// Plan Day 3: clue counter increments only AFTER the first 5s of the
+// round, so reflexive carpet-bombing hovers aren't penalised. The
+// HOVER_CLUE_THRESHOLD_MS gate also requires the player to dwell on
+// the anomaly target for ~350ms before it counts (avoids one-frame
+// flyovers).
+const HOVER_GRACE_MS = 5000;
 const HOVER_CLUE_THRESHOLD_MS = 350;
 const hoverStreak = new Map<string, number>();
 let lastHoverTag: string | null = null;

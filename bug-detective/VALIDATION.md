@@ -74,3 +74,20 @@ needing the fallback — peel renders cleanly in Chrome. The fallback
 path is still wired via `USE_PEEL_SHADER` flag in
 `src/intro/pagePeel.ts` if Safari turns out to choke on the GLSL
 during your QA pass.
+
+## Day 6 acceptance: both peel paths verified
+
+Toggled `USE_PEEL_SHADER` between `true` (default, vertex-shader curl)
+and `false` (opacity-fade fallback) and confirmed both transition
+the game cleanly from the fake-page intro to the investigation phase.
+
+- Shader peel: see `/opt/cursor/artifacts/screenshots/post-title-game.png`
+  and `/opt/cursor/artifacts/screenshots/desktop-still-works.png` (page
+  visibly curls during dolly).
+- Fade fallback: see `/opt/cursor/artifacts/screenshots/peel-fallback-mid.png`
+  and `/opt/cursor/artifacts/screenshots/peel-fallback-investigating.png`
+  (page fades out while diorama becomes visible; mascot still lands).
+
+If your Safari smoke test (DEPLOY.md § 3) shows the shader peel
+flickering or rendering wrong, flip `USE_PEEL_SHADER` to `false` in
+`src/intro/pagePeel.ts` and rebuild — the fallback is production-ready.

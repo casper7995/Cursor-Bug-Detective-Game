@@ -182,3 +182,53 @@ describe("worker 404", () => {
     expect(r.status).toBe(404);
   });
 });
+
+/**
+ * Simulates a misconfigured deploy where the KV binding is present but
+ * its operations throw (e.g. account quota exceeded, namespace deleted).
+ * The worker should NOT propagate as a 500 — leaderboard returns empty,
+ * score returns 503 so the client can show a "saved offline" message.
+ */
+class ThrowingKv implements KVNamespace {
+  async get(): Promise<string | null> {
+    throw new Error("simulated KV outage");
+  }
+  async put(): Promise<void> {
+    throw new Error("simulated KV outage");
+  }
+  async delete(): Promise<void> {
+    throw new Error("simulated KV outage");
+  }
+  async list(): Promise<KVNamespaceListResult<unknown, string>> {
+    throw new Error("not implemented");
+  }
+  async getWithMetadata(): Promise<never> {
+    throw new Error("not implemented");
+  }
+}
+
+describe("worker graceful KV failure", () => {
+  it("/leaderboard returns empty list when KV throws", async () => {
+    const env: Env = {
+      BUG_LB: new ThrowingKv() as unknown as KVNamespace,
+    };
+    const r = await call(env, "GET", "/leaderboard?date=2026-04-18");
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { scores: unknown[] };
+    expect(j.scores).toEqual([]);
+  });
+
+  it("/score returns 503 when KV throws", async () => {
+    const env: Env = {
+      BUG_LB: new ThrowingKv() as unknown as KVNamespace,
+    };
+    const r = await call(env, "POST", "/score", {
+      date: "2026-04-18",
+      score: 500,
+      cluesUsed: 0,
+      elapsedMs: 10_000,
+      name: "alice",
+    });
+    expect(r.status).toBe(503);
+  });
+});

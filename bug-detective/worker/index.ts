@@ -81,8 +81,15 @@ export default {
     if (url.pathname === "/leaderboard" && req.method === "GET") {
       const date = url.searchParams.get("date") ?? todayUtc();
       const puzzleId = url.searchParams.get("puzzleId") ?? PUZZLE_ID;
-      const raw = await env.BUG_LB.get(dailyKey(date, puzzleId));
-      const list: ScoreEntry[] = raw ? (JSON.parse(raw) as ScoreEntry[]) : [];
+      // KV binding may be missing in misconfigured deploys — degrade
+      // gracefully to an empty list so the client doesn't see a 500.
+      let list: ScoreEntry[] = [];
+      try {
+        const raw = await env.BUG_LB.get(dailyKey(date, puzzleId));
+        if (raw) list = JSON.parse(raw) as ScoreEntry[];
+      } catch {
+        list = [];
+      }
       return Response.json(
         { date, puzzleId, scores: list.slice(0, TOP_N) },
         { headers: corsHeaders },
@@ -135,8 +142,19 @@ export default {
       }
 
       const k = dailyKey(date, puzzleId);
-      const raw = await env.BUG_LB.get(k);
-      const list: ScoreEntry[] = raw ? (JSON.parse(raw) as ScoreEntry[]) : [];
+      // KV binding may be missing in misconfigured deploys — return a
+      // 503 so the client knows the score wasn't persisted but doesn't
+      // see an unhandled 500.
+      let list: ScoreEntry[] = [];
+      try {
+        const raw = await env.BUG_LB.get(k);
+        if (raw) list = JSON.parse(raw) as ScoreEntry[];
+      } catch {
+        return new Response("leaderboard storage unavailable", {
+          status: 503,
+          headers: corsHeaders,
+        });
+      }
       const entry: ScoreEntry = {
         score: Math.floor(score),
         cluesUsed: Math.floor(cluesUsed),
@@ -147,7 +165,14 @@ export default {
       list.push(entry);
       list.sort(sortScores);
       const trimmed = list.slice(0, STORE_LIMIT);
-      await env.BUG_LB.put(k, JSON.stringify(trimmed));
+      try {
+        await env.BUG_LB.put(k, JSON.stringify(trimmed));
+      } catch {
+        return new Response("leaderboard storage unavailable", {
+          status: 503,
+          headers: corsHeaders,
+        });
+      }
       const rank = trimmed.findIndex((s) => s.ts === entry.ts) + 1;
       return Response.json({ rank }, { headers: corsHeaders });
     }

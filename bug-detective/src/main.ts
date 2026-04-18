@@ -10,7 +10,8 @@ import { createHud } from "./ui/hud";
 import { createAnswerPanel } from "./ui/answerPanel";
 import { createResultsPanel } from "./ui/resultsPanel";
 import { ANOMALIES, pickAnomaly, type PickedAnomaly } from "./scene/anomalies";
-import { fallbackSeed, todayUtc } from "./api/seedClient";
+import { fallbackSeed, fetchSeed, todayUtc } from "./api/seedClient";
+import { postScore } from "./api/scoreClient";
 import { GameState, assertNever } from "./game/gameState";
 import { createTimer, ROUND_DURATION_MS, type Timer } from "./game/timer";
 import { InputManager } from "./input/inputManager";
@@ -81,33 +82,62 @@ cursorTracker.setSmoothing(18);
 cursorTracker.attach(renderer.domElement);
 
 // ---------------------------------------------------------------------
-// Anomaly selection (Day 7 wires this to worker; for now: URL/today seed)
+// Anomaly selection
+// - URL `?seed=N` override → forced seed (dev iteration).
+// - URL `#anomaly=<id>` → search the first seed that maps to that id.
+// - URL `?date=YYYY-MM-DD` → use that date (overrides today, still goes
+//   through the worker so the worker's daily seed for that date is used).
+// - Otherwise: fetchSeed(today) — worker round trip with local fallback.
 // ---------------------------------------------------------------------
 const url = new URL(window.location.href);
 const seedOverride = url.searchParams.get("seed");
 const dateOverride = url.searchParams.get("date");
+const targetDate = dateOverride ?? todayUtc();
 const hashMatch = /anomaly=([a-z-]+)/.exec(window.location.hash);
-let seed: number;
-if (hashMatch) {
-  const target = hashMatch[1] ?? "";
-  let found = 0;
-  for (let s = 1; s <= 200; s++) {
-    if (pickAnomaly(s).def.id === target) {
-      found = s;
-      break;
+
+async function pickSeed(): Promise<number> {
+  if (hashMatch) {
+    const target = hashMatch[1] ?? "";
+    for (let s = 1; s <= 200; s++) {
+      if (pickAnomaly(s).def.id === target) return s;
     }
   }
-  seed = found || fallbackSeed(dateOverride ?? todayUtc());
-} else if (seedOverride) {
-  seed = Number.parseInt(seedOverride, 10) >>> 0;
-} else {
-  seed = fallbackSeed(dateOverride ?? todayUtc());
+  if (seedOverride) return Number.parseInt(seedOverride, 10) >>> 0;
+  // Try the worker; falls back to local FNV-1a if the API isn't configured
+  // or returns an error.
+  return await fetchSeed(targetDate);
 }
-let picked: PickedAnomaly = pickAnomaly(seed);
+
+let picked: PickedAnomaly = pickAnomaly(fallbackSeed(targetDate));
+let seed = fallbackSeed(targetDate);
+// Boot with the local fallback applied immediately so the diorama isn't
+// blank during the worker round-trip; if the worker disagrees, we'll
+// re-apply when its response arrives. In practice the worker mirrors
+// the same FNV-1a so this is a no-op.
 picked.def.apply(diorama);
 console.info(
-  `[bug-detective] seed=${seed} anomaly=${picked.def.id} (1 of ${ANOMALIES.length})`,
+  `[bug-detective] (boot) seed=${seed} anomaly=${picked.def.id} (1 of ${ANOMALIES.length})`,
 );
+
+// Async re-pick from worker. If the worker chooses a different seed
+// (won't, in normal operation, but possible if the server hash drifts),
+// rebuild the diorama and re-apply.
+void pickSeed().then((s) => {
+  if (s === seed) return;
+  seed = s;
+  // Replace diorama with a fresh one and apply the new anomaly.
+  scene.remove(diorama.root);
+  const fresh = createDesktopDiorama();
+  fresh.root.visible = state.phase.kind !== "intro";
+  Object.assign(diorama, fresh);
+  scene.add(fresh.root);
+  cursorTracker.setTarget(state.phase.kind === "intro" ? pagePeel.mesh : fresh.desk);
+  picked = pickAnomaly(seed);
+  picked.def.apply(diorama);
+  console.info(
+    `[bug-detective] worker seed=${seed} anomaly=${picked.def.id}`,
+  );
+});
 
 // ---------------------------------------------------------------------
 // Game state + UI
@@ -129,8 +159,21 @@ answerPanel.onSubmit((choiceIndex) => {
   state.submit(choiceIndex, picked.correctIndex);
   answerPanel.hide();
   if (state.phase.kind === "results") {
-    showResults(state.phase.score, state.phase.correct, state.phase.cluesUsed,
-                state.phase.elapsedMs);
+    const phase = state.phase;
+    showResults(phase.score, phase.correct, phase.cluesUsed, phase.elapsedMs);
+    // Persist correct submissions to the worker (best-effort, no UI block).
+    if (phase.correct) {
+      const name = (localStorage.getItem("bd:name") ?? "anon").slice(0, 16);
+      void postScore({
+        date: targetDate,
+        score: phase.score,
+        cluesUsed: phase.cluesUsed,
+        elapsedMs: phase.elapsedMs,
+        name,
+      }).then((res) => {
+        if (res) console.info(`[bug-detective] posted score, rank=${res.rank}`);
+      });
+    }
   }
 });
 

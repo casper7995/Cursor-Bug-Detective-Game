@@ -1,0 +1,9 @@
+name = "bug-detective-api"
+main = "index.ts"
+compatibility_date = "2026-04-18"
+
+# Replace the placeholder id with the value returned by:
+#   npx wrangler kv namespace create BUG_LB --remote
+[[kv_namespaces]]
+binding = "BUG_LB"
+id = "00000000000000000000000000000002"

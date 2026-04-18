@@ -589,6 +589,12 @@ function tickIntroChoreography(now: number, dtSec: number): void {
       }
       if (t >= 1) {
         mascot.setTilt(0);
+        // Hide the page-peel mesh now that the camera has dollied past
+        // it — otherwise the rolled fragment of the welcome.html plane
+        // stays in front of the monitor and clutters the diorama.
+        // (Skip-intro/simplified paths do this directly in their own
+        // teardown.)
+        pagePeel.mesh.visible = false;
         hud.element.style.display = "block";
         settings.setVisible(true);
         postFx.setBloomEnabled(true);

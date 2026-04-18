@@ -43,43 +43,55 @@ export function createMascotMesh(): MascotMesh {
     metalness: 0.05,
   });
 
-  // ---- Inner head: chunky low-poly hexagonal gem ----------------------
-  // Two truncated hex cones glued at the equator form the gem cut. The
-  // upper cone narrows to a small flat top; the lower cone narrows down
-  // into the body. thetaStart = -PI/6 so a flat face points to +Z (front).
+  // ---- Inner head: cube oriented to read as the Cursor iso logo -------
+  // The Cursor logo is a cube viewed at the canonical isometric angle.
+  // We keep the cube axis-aligned in mascot-local space; the gameplay
+  // camera (positioned 3/4 over the desk) supplies the iso framing for
+  // free. The cube's +Z face faces forward and gets the smiley decal.
   const headGroup = new THREE.Group();
   headGroup.position.set(0, 0.55, 0);
   group.add(headGroup);
 
-  const headEquatorR = 0.6;
-  const headTopR = 0.36;
-  const headBottomR = 0.32;
-  const headTopH = 0.38;
-  const headBottomH = 0.30;
+  const headEdge = 0.78;
 
-  const headTopGeo = new THREE.CylinderGeometry(
-    headTopR, headEquatorR, headTopH, 6, 1, false, -Math.PI / 6, Math.PI * 2,
+  // The dark inner cube. Two-tone material is faked by overlaying a slightly
+  // darker top-face decal so the iso silhouette reads with depth even in
+  // ambient light.
+  const cubeMat = new THREE.MeshStandardMaterial({
+    color: CHARCOAL,
+    roughness: 0.55,
+    metalness: 0.05,
+    flatShading: true,
+  });
+  const headCube = new THREE.Mesh(
+    new THREE.BoxGeometry(headEdge, headEdge, headEdge),
+    cubeMat,
   );
-  const headTop = new THREE.Mesh(headTopGeo, bodyMat);
-  headTop.position.y = headTopH / 2;
-  headTop.castShadow = true;
-  headGroup.add(headTop);
+  headCube.castShadow = true;
+  headGroup.add(headCube);
 
-  const headBottomGeo = new THREE.CylinderGeometry(
-    headEquatorR, headBottomR, headBottomH, 6, 1, false, -Math.PI / 6, Math.PI * 2,
+  // ---- Cursor-arrow decal on the top face -----------------------------
+  // The Cursor logo signature is a small triangular arrow cut into the top
+  // face. We draw it onto a canvas and lay it on the +Y face of the cube.
+  const cursorArrowTex = makeCursorArrowTexture();
+  const cursorArrowMat = new THREE.MeshBasicMaterial({
+    map: cursorArrowTex,
+    transparent: true,
+    depthWrite: false,
+  });
+  const cursorArrowMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(headEdge * 0.95, headEdge * 0.95),
+    cursorArrowMat,
   );
-  const headBottom = new THREE.Mesh(headBottomGeo, bodyMat);
-  headBottom.position.y = -headBottomH / 2;
-  headBottom.castShadow = true;
-  headGroup.add(headBottom);
+  cursorArrowMesh.rotation.x = -Math.PI / 2;
+  cursorArrowMesh.position.y = headEdge / 2 + 0.001;
+  headCube.add(cursorArrowMesh);
 
-  // ---- Smiley face on the front gem face ------------------------------
-  // The hex face directly facing +Z has its midpoint at z = R*cos(30°).
-  // We attach the face plane there in head-local space (no billboarding —
-  // the face *is* on the gem, like the reference toy).
-  const faceZ = headEquatorR * Math.cos(Math.PI / 6) + 0.005;
+  // ---- Smiley face on the FRONT face of the cube ---------------------
+  // Welded to the +Z face of the cube. headGroup's local +Z is the world's
+  // forward axis, which is what the camera looks at from 3/4.
   const faceAnchor = new THREE.Object3D();
-  faceAnchor.position.set(0, 0.0, faceZ);
+  faceAnchor.position.set(0, 0, headEdge / 2 + 0.001);
   headGroup.add(faceAnchor);
 
   const faceTextures = makeFaceTextures();
@@ -90,17 +102,13 @@ export function createMascotMesh(): MascotMesh {
     side: THREE.DoubleSide,
     depthTest: false,
   });
-  const faceGeo = new THREE.PlaneGeometry(0.6, 0.42);
+  const faceGeo = new THREE.PlaneGeometry(0.55, 0.4);
   const faceMesh = new THREE.Mesh(faceGeo, faceMat);
   faceMesh.renderOrder = 999;
   faceAnchor.add(faceMesh);
 
-  // ---- Outer glass shell (same gem shape, slightly larger) -----------
-  const shellEquatorR = headEquatorR + 0.08;
-  const shellTopR = headTopR + 0.04;
-  const shellBottomR = headBottomR + 0.05;
-  const shellTopH = headTopH + 0.04;
-  const shellBottomH = headBottomH + 0.04;
+  // ---- Outer glass shell (same iso cube, slightly larger) ------------
+  const shellEdge = headEdge + 0.12;
   const shellMat = new THREE.MeshPhysicalMaterial({
     color: 0xe8efff,
     roughness: 0.05,
@@ -114,22 +122,12 @@ export function createMascotMesh(): MascotMesh {
     transparent: true,
     side: THREE.DoubleSide,
   });
-
-  const shellTopGeo = new THREE.CylinderGeometry(
-    shellTopR, shellEquatorR, shellTopH, 6, 1, false, -Math.PI / 6, Math.PI * 2,
+  const shellCube = new THREE.Mesh(
+    new THREE.BoxGeometry(shellEdge, shellEdge, shellEdge),
+    shellMat,
   );
-  const shellTop = new THREE.Mesh(shellTopGeo, shellMat);
-  shellTop.position.y = shellTopH / 2;
-  shellTop.renderOrder = 2;
-  headGroup.add(shellTop);
-
-  const shellBottomGeo = new THREE.CylinderGeometry(
-    shellEquatorR, shellBottomR, shellBottomH, 6, 1, false, -Math.PI / 6, Math.PI * 2,
-  );
-  const shellBottom = new THREE.Mesh(shellBottomGeo, shellMat);
-  shellBottom.position.y = -shellBottomH / 2;
-  shellBottom.renderOrder = 2;
-  headGroup.add(shellBottom);
+  shellCube.renderOrder = 2;
+  headGroup.add(shellCube);
 
   // ---- Body (small chunky torso, head dominates the silhouette) ------
   const torsoGeo = new THREE.SphereGeometry(0.32, 20, 14);
@@ -320,4 +318,42 @@ function drawFace(eyes: "open" | "closed"): THREE.CanvasTexture {
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * The Cursor logo's signature: a triangular arrow-cursor cut into the top
+ * face of the cube. Drawn as a faint lighter triangle over the dark cube to
+ * read clearly in low light.
+ */
+function makeCursorArrowTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("2d context unavailable");
+  ctx.clearRect(0, 0, size, size);
+
+  // Cursor arrow silhouette: a chunky pointer pointing toward the upper-left
+  // corner of the top face. Brighter than the cube so it reads as a logo
+  // mark even from across the desk.
+  const cx = size * 0.5;
+  const cy = size * 0.5;
+  ctx.fillStyle = "rgba(232,239,255,0.78)";
+  ctx.beginPath();
+  ctx.moveTo(cx - size * 0.32, cy - size * 0.32);          // tip (upper-left)
+  ctx.lineTo(cx + size * 0.20, cy - size * 0.06);          // right shoulder
+  ctx.lineTo(cx - size * 0.06, cy + size * 0.06);          // mid notch
+  ctx.lineTo(cx - size * 0.06, cy + size * 0.32);          // tail-bottom-left
+  ctx.lineTo(cx - size * 0.22, cy + size * 0.32);          // tail-bottom-right
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(232,239,255,1)";
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
 }

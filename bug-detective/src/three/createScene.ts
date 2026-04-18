@@ -43,8 +43,11 @@ export function createSceneBundle(container: HTMLElement): SceneBundle {
   container.appendChild(renderer.domElement);
 
   // Procedural environment map → critical for transmission to read as glass.
+  // Bake once and dispose the generator (the bake target is ~2MB of GPU
+  // memory we don't need to keep around for the rest of the session).
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
 
   // Cool ambient fill (city glow through a window).
   const ambient = new THREE.AmbientLight(0x394867, 0.45);
@@ -62,6 +65,11 @@ export function createSceneBundle(container: HTMLElement): SceneBundle {
   key.shadow.camera.top = 10;
   key.shadow.camera.bottom = -10;
   key.shadow.bias = -0.0005;
+  // The key light + the casters it sees (desk, monitor, mug, etc.) are
+  // all static. Bake the shadow map once and stop re-rendering it every
+  // frame — the lamp's PointLight in the diorama does the same trick.
+  key.shadow.autoUpdate = false;
+  key.shadow.needsUpdate = true;
   scene.add(key);
 
   return { scene, renderer };

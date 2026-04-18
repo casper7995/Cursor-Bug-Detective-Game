@@ -210,7 +210,10 @@ export function createDesktopDiorama(): DioramaObjects {
   keyboard.add(kbBody);
   hoverables.push(kbBody);
 
-  // Key tops grid — purely decorative
+  // Key tops grid — purely decorative. Drawn as a single InstancedMesh
+  // (one draw call) instead of 48 individual meshes (47 extra draws +
+  // 47 scene-graph entries the renderer would have to traverse and
+  // frustum-cull every frame).
   const keyMat = new THREE.MeshStandardMaterial({
     color: 0x242833,
     roughness: 0.6,
@@ -218,18 +221,17 @@ export function createDesktopDiorama(): DioramaObjects {
   const keyGeo = new THREE.BoxGeometry(0.16, 0.04, 0.16);
   const cols = 12;
   const rows = 4;
+  const keys = new THREE.InstancedMesh(keyGeo, keyMat, rows * cols);
+  keys.castShadow = false;
+  const keyMatrix = new THREE.Matrix4();
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const k = new THREE.Mesh(keyGeo, keyMat);
-      k.position.set(
-        -1.0 + c * 0.18,
-        0.06,
-        -0.27 + r * 0.16,
-      );
-      k.castShadow = false;
-      keyboard.add(k);
+      keyMatrix.makeTranslation(-1.0 + c * 0.18, 0.06, -0.27 + r * 0.16);
+      keys.setMatrixAt(r * cols + c, keyMatrix);
     }
   }
+  keys.instanceMatrix.needsUpdate = true;
+  keyboard.add(keys);
 
   // ---- Mug + steam --------------------------------------------------
   const mug = new THREE.Group();
@@ -458,6 +460,12 @@ export function createDesktopDiorama(): DioramaObjects {
   lampLight.castShadow = true;
   lampLight.shadow.mapSize.setScalar(512);
   lampLight.shadow.bias = -0.001;
+  // Point-light shadows render 6 cube faces per frame. The lamp + its
+  // casters are static, so we bake once and skip the per-frame
+  // re-render. This is one of the bigger fillrate wins for integrated
+  // GPUs.
+  lampLight.shadow.autoUpdate = false;
+  lampLight.shadow.needsUpdate = true;
   lamp.add(lampLight);
 
   // Shadow-casting prop (small block) used by lamp-shadow-wrong anomaly.

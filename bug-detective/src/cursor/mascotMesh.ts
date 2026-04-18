@@ -319,7 +319,7 @@ export function createMascotMesh(): MascotMesh {
   const tmpQuatA = new THREE.Quaternion();
   const tmpQuatB = new THREE.Quaternion();
   const setMagnifierLifted = (t01: number): void => {
-    const t = clamp01(t01);
+    const t = THREE.MathUtils.clamp(t01, 0, 1);
     magnifier.position.lerpVectors(idlePos, activePos, t);
     tmpQuatA.setFromEuler(idleEuler);
     tmpQuatB.setFromEuler(activeEuler);
@@ -528,6 +528,3 @@ function drawEye(
   }
 }
 
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}

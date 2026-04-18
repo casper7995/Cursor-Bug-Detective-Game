@@ -201,7 +201,8 @@ const hashMatch = /anomaly=([a-z-]+)/.exec(window.location.hash);
 
 async function pickSeed(): Promise<number> {
   if (hashMatch) {
-    const target = hashMatch[1] ?? "";
+    // Regex requires at least one capture char so [1] is always set.
+    const target = hashMatch[1] as string;
     for (let s = 1; s <= 200; s++) {
       if (pickAnomaly(s).def.id === target) return s;
     }
@@ -212,8 +213,8 @@ async function pickSeed(): Promise<number> {
   return await fetchSeed(targetDate);
 }
 
-let picked: PickedAnomaly = pickAnomaly(fallbackSeed(targetDate));
 let seed = fallbackSeed(targetDate);
+let picked: PickedAnomaly = pickAnomaly(seed);
 // Boot with the local fallback applied immediately so the diorama isn't
 // blank during the worker round-trip; if the worker disagrees, we'll
 // re-apply when its response arrives. In practice the worker mirrors
@@ -566,10 +567,12 @@ function tickIntroChoreography(now: number, dtSec: number): void {
       }
       // Smooth scale interpolation from intro -> game scale during the
       // final 50% of the peel so the mascot grows as the camera pulls back.
+      // peelT is already in [0,1] so we only need an upper clamp on the
+      // 1.2× overshoot.
       const scale = THREE.MathUtils.lerp(
         MASCOT_INTRO_SCALE,
         MASCOT_GAME_SCALE,
-        Math.min(1, Math.max(0, peelT * 1.2)),
+        Math.min(1, peelT * 1.2),
       );
       mascot.group.scale.setScalar(scale);
       break;
@@ -799,23 +802,22 @@ if (isSkipIntro() || simplified) {
 // idle clue counting would keep ticking up on the most recent prop).
 if (simplified) {
   const HOVER_HOLD_MS = 2500;
-  let clearAt = 0;
-  const onTap = (e: PointerEvent | MouseEvent | Touch): void => {
+  // Pointer/Touch both expose clientX/clientY natively, so the handler
+  // accepts a minimal structural type and skips runtime guards/casts.
+  let clearTimer: ReturnType<typeof setTimeout> | null = null;
+  const onTap = (p: { clientX: number; clientY: number }): void => {
     const rect = renderer.domElement.getBoundingClientRect();
-    const cx =
-      "clientX" in e
-        ? (e as { clientX: number }).clientX
-        : (e as Touch).clientX;
-    const cy =
-      "clientY" in e
-        ? (e as { clientY: number }).clientY
-        : (e as Touch).clientY;
-    const x = cx - rect.left;
-    const y = cy - rect.top;
-    cursorTracker.setMouse(x, y);
-    clearAt = performance.now() + HOVER_HOLD_MS;
+    cursorTracker.setMouse(p.clientX - rect.left, p.clientY - rect.top);
+    // Schedule a one-shot clear so the held hover doesn't keep ticking
+    // up the clue counter forever. setTimeout (vs setInterval) means
+    // we don't wake every 200ms on idle.
+    if (clearTimer !== null) clearTimeout(clearTimer);
+    clearTimer = setTimeout(() => {
+      cursorTracker.setMouse(-9999, -9999); // off-canvas → no hit
+      clearTimer = null;
+    }, HOVER_HOLD_MS);
   };
-  renderer.domElement.addEventListener("pointerdown", (e) => onTap(e), {
+  renderer.domElement.addEventListener("pointerdown", onTap, {
     passive: true,
   });
   renderer.domElement.addEventListener(
@@ -826,15 +828,6 @@ if (simplified) {
     },
     { passive: true },
   );
-
-  // Periodically clear the held hover so clue tick doesn't compound.
-  // Done outside the per-frame hot loop to keep main.ts diff small.
-  window.setInterval(() => {
-    if (clearAt > 0 && performance.now() > clearAt) {
-      cursorTracker.setMouse(-9999, -9999); // off-canvas → no hit
-      clearAt = 0;
-    }
-  }, 200);
 }
 
 requestAnimationFrame(frame);

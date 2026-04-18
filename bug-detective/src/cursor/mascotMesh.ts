@@ -88,10 +88,12 @@ export function createMascotMesh(): MascotMesh {
   headCube.add(cursorArrowMesh);
 
   // ---- Smiley face on the FRONT face of the cube ---------------------
-  // Welded to the +Z face of the cube. headGroup's local +Z is the world's
-  // forward axis, which is what the camera looks at from 3/4.
+  // Position the face plane just OUTSIDE the glass shell (shellEdge/2),
+  // not on the inner cube face — otherwise the transmissive shell would
+  // sit on top of the face and wash it out.
+  const shellHalf = (headEdge + 0.12) / 2;
   const faceAnchor = new THREE.Object3D();
-  faceAnchor.position.set(0, 0, headEdge / 2 + 0.001);
+  faceAnchor.position.set(0, 0, shellHalf + 0.005);
   headGroup.add(faceAnchor);
 
   const faceTextures = makeFaceTextures();
@@ -100,11 +102,13 @@ export function createMascotMesh(): MascotMesh {
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-    depthTest: false,
   });
   const faceGeo = new THREE.PlaneGeometry(0.55, 0.4);
   const faceMesh = new THREE.Mesh(faceGeo, faceMat);
-  faceMesh.renderOrder = 999;
+  // High renderOrder + transparent so it draws over the glass shell's
+  // transmission pass, but with normal depthTest so it doesn't bleed
+  // through opaque scene geometry (monitor, walls, etc.).
+  faceMesh.renderOrder = 5;
   faceAnchor.add(faceMesh);
 
   // ---- Outer glass shell (same iso cube, slightly larger) ------------
@@ -231,12 +235,19 @@ export function createMascotMesh(): MascotMesh {
     faceMat.needsUpdate = true;
   };
 
-  // The face is printed on the gem's front facet (matches the reference toy
-  // where the smile is permanently on one face). No per-frame billboarding —
-  // the face only reads correctly when the player looks at the mascot from
-  // somewhere within the front hemisphere, which our camera does.
-  const faceCamera = (_camera: THREE.Camera): void => {
-    /* no-op; face is welded to the front gem facet */
+  // The face/cursor decals are welded to the cube's +Z face. Yaw the entire
+  // mascot so its +Z axis points roughly at the camera each frame — keeps
+  // the smile and cursor-arrow logo readable from any desk position.
+  const tmpCamPos = new THREE.Vector3();
+  const tmpSelfPos = new THREE.Vector3();
+  const faceCamera = (camera: THREE.Camera): void => {
+    camera.getWorldPosition(tmpCamPos);
+    group.getWorldPosition(tmpSelfPos);
+    const dx = tmpCamPos.x - tmpSelfPos.x;
+    const dz = tmpCamPos.z - tmpSelfPos.z;
+    if (dx * dx + dz * dz > 1e-4) {
+      group.rotation.y = Math.atan2(dx, dz);
+    }
   };
 
   return {

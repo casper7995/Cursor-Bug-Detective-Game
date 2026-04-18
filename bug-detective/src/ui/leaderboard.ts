@@ -1,4 +1,5 @@
 import type { LeaderboardEntry } from "../api/scoreClient";
+import { formatTime } from "../game/timer";
 
 const STYLE_WRAP =
   "margin:0 0 16px;padding:12px 14px;background:#0f1218;border:1px solid rgba(232,239,255,0.08);border-radius:12px;font:13px ui-sans-serif,system-ui,sans-serif;";
@@ -93,9 +94,3 @@ function appendCell(row: HTMLElement, text: string): void {
   row.appendChild(c);
 }
 
-function formatTime(ms: number): string {
-  const sec = Math.max(0, ms / 1000);
-  const m = Math.floor(sec / 60);
-  const s = (sec - m * 60).toFixed(1).padStart(4, "0");
-  return `${m}:${s}`;
-}

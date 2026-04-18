@@ -1,3 +1,5 @@
+import { formatTime } from "../game/timer";
+
 export interface ShareCardInput {
   score: number;
   anomalyName: string;
@@ -109,13 +111,6 @@ export function tweetIntent(score: number, dateUtc: string): string {
     hashtags: "VibeJam2026,BugDetective",
   });
   return `https://twitter.com/intent/tweet?${params.toString()}`;
-}
-
-function formatTime(ms: number): string {
-  const sec = Math.max(0, ms / 1000);
-  const m = Math.floor(sec / 60);
-  const s = (sec - m * 60).toFixed(1).padStart(4, "0");
-  return `${m}:${s}`;
 }
 
 /**

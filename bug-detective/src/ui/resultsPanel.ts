@@ -1,3 +1,5 @@
+import { formatTime } from "../game/timer";
+
 export interface ResultsView {
   readonly correct: boolean;
   readonly score: number;
@@ -164,9 +166,3 @@ function makeStat(label: string): { box: HTMLElement; value: HTMLElement } {
   return { box, value: valueEl };
 }
 
-function formatTime(ms: number): string {
-  const sec = Math.max(0, ms / 1000);
-  const m = Math.floor(sec / 60);
-  const s = (sec - m * 60).toFixed(1).padStart(4, "0");
-  return `${m}:${s}`;
-}

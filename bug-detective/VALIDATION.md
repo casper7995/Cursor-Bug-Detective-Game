@@ -70,24 +70,21 @@ in `DEPLOY.md` § 3.
 
 The plan specifies 10+ anomalies; ships 12. The plan's Day 6 decision
 gate (peel-shader vs simpler dolly fallback) was passed without
-needing the fallback — peel renders cleanly in Chrome. The fallback
-path is still wired via `USE_PEEL_SHADER` flag in
-`src/intro/pagePeel.ts` if Safari turns out to choke on the GLSL
-during your QA pass.
+needing the fallback — peel renders cleanly in Chrome.
 
-## Day 6 acceptance: both peel paths verified
+## Day 6 acceptance: peel verified
 
-Toggled `USE_PEEL_SHADER` between `true` (default, vertex-shader curl)
-and `false` (opacity-fade fallback) and confirmed both transition
-the game cleanly from the fake-page intro to the investigation phase.
+Vertex-shader page curl was tested side-by-side with the simpler
+opacity-fade fallback before the gate. Shader path was visibly
+better and the fallback was retired during the /simplify pass to
+keep the renderer focused.
 
 - Shader peel: see `/opt/cursor/artifacts/screenshots/post-title-game.png`
   and `/opt/cursor/artifacts/screenshots/desktop-still-works.png` (page
   visibly curls during dolly).
-- Fade fallback: see `/opt/cursor/artifacts/screenshots/peel-fallback-mid.png`
-  and `/opt/cursor/artifacts/screenshots/peel-fallback-investigating.png`
-  (page fades out while diorama becomes visible; mascot still lands).
 
 If your Safari smoke test (DEPLOY.md § 3) shows the shader peel
-flickering or rendering wrong, flip `USE_PEEL_SHADER` to `false` in
-`src/intro/pagePeel.ts` and rebuild — the fallback is production-ready.
+flickering, the cleanest workaround is to set the page-peel mesh's
+material to a `MeshBasicMaterial` with `transparent:true` in
+`src/intro/pagePeel.ts` and animate `opacity` as a fade — about
+five lines of change.

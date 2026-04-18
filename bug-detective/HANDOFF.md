@@ -127,9 +127,11 @@ bug-detective/
   + filters, generated at runtime. Zero licensing risk, zero
   asset-sourcing time.
 - **Page-peel uses a custom GLSL shader** (in `src/intro/pagePeel.ts`)
-  to roll the page convincingly. There's a fallback flag
-  `USE_PEEL_SHADER` that swaps to a simpler vertex-displaced plane if a
-  driver chokes on the shader.
+  to roll the page convincingly. The opacity-fade fallback path that
+  briefly shipped was retired during the /simplify pass — if a driver
+  chokes on the GLSL during your Safari smoke test, swap the
+  `ShaderMaterial` for a `MeshBasicMaterial` and animate opacity (a
+  five-line change documented in VALIDATION.md).
 - **Cloudflare Pages replaces the shooting-game site** (per your
   direction). Both projects stay in the repo; only the Pages build
   settings change. Old shooting-game settings documented in

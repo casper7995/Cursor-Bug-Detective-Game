@@ -34,6 +34,8 @@ import { createTimer, ROUND_DURATION_MS, type Timer } from "./game/timer";
 import { InputManager } from "./input/inputManager";
 import { Action } from "./input/actions";
 import { isMobile, mountMobileGate } from "./ui/mobileGate";
+import { showTitleSplash } from "./ui/titleSplash";
+import { createSettingsPanel } from "./ui/settingsPanel";
 
 // ---------------------------------------------------------------------
 // Boot
@@ -50,7 +52,11 @@ const forceMobile = new URLSearchParams(window.location.search).get("mobile") ==
 if (forceMobile || isMobile()) {
   mountMobileGate(root);
 } else {
-  bootGame();
+  // Show the title splash first; once the user clicks/keys, boot the game.
+  // This both gates the heavy 3D init and gives the AudioContext a user
+  // gesture so the ambient pad/SFX can resume on Chrome's autoplay policy.
+  const splash = showTitleSplash(document.body);
+  splash.ready.then(() => bootGame());
 }
 
 function bootGame(): void {
@@ -183,6 +189,8 @@ const hud = createHud(root, diorama);
 hud.element.style.display = "none"; // hidden during intro
 const answerPanel = createAnswerPanel(root);
 const resultsPanel = createResultsPanel(root);
+const settings = createSettingsPanel(document.body);
+settings.setVisible(false); // hidden during intro
 const input = new InputManager();
 input.attach(window);
 
@@ -473,6 +481,7 @@ function tickIntroChoreography(now: number, dtSec: number): void {
       if (t >= 1) {
         mascot.setTilt(0);
         hud.element.style.display = "block";
+        settings.setVisible(true);
         postFx.setBloomEnabled(true);
         startInvestigating(now);
         setIntroStep("done", now);

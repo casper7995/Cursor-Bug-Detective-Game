@@ -1,6 +1,6 @@
 import "./style.css";
 import * as THREE from "three";
-import { createSceneBundle } from "./three/createScene";
+import { createSceneBundle, WebGLUnsupportedError } from "./three/createScene";
 import { CameraRig } from "./three/cameraRig";
 import { createMascotMesh } from "./cursor/mascotMesh";
 import { createDesktopDiorama } from "./scene/desktopDiorama";
@@ -82,6 +82,36 @@ interface BootOpts {
 
 function bootGame(opts: BootOpts): void {
   const simplified = opts.simplified;
+  try {
+    bootGameInner(simplified);
+  } catch (err) {
+    if (err instanceof WebGLUnsupportedError) {
+      showWebGLError(root);
+      return;
+    }
+    throw err;
+  }
+}
+
+function showWebGLError(container: HTMLElement): void {
+  const card = document.createElement("div");
+  card.style.cssText =
+    "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0e0f15;color:#f1f3f7;padding:24px;font-family:ui-sans-serif,system-ui,sans-serif;z-index:1000;";
+  card.innerHTML = `
+    <div style="max-width:420px;text-align:center;background:#1a1d24;border:1px solid #2a2e3a;border-radius:14px;padding:28px;">
+      <div style="font-size:48px;line-height:1;margin-bottom:8px;">🛠️</div>
+      <h1 style="font-size:20px;margin:8px 0 12px;">WebGL is required</h1>
+      <p style="font-size:14px;line-height:1.5;opacity:0.8;margin:0 0 14px;">
+        Bug Detective needs WebGL to render the 3D desktop. Try a modern
+        browser (Chrome, Edge, Safari 16+, Firefox) on a device with
+        hardware acceleration enabled.
+      </p>
+    </div>
+  `;
+  container.appendChild(card);
+}
+
+function bootGameInner(simplified: boolean): void {
 
 const { scene, renderer } = createSceneBundle(root);
 
@@ -254,7 +284,13 @@ answerPanel.onSubmit((choiceIndex) => {
     }
     // Persist correct submissions to the worker (best-effort, no UI block).
     if (phase.correct) {
-      const name = (localStorage.getItem("bd:name") ?? "anon").slice(0, 16);
+      // localStorage can throw in Safari Private Browsing — fall back to "anon".
+      let name = "anon";
+      try {
+        name = (localStorage.getItem("bd:name") ?? "anon").slice(0, 16);
+      } catch {
+        /* ignore */
+      }
       void postScore({
         date: targetDate,
         score: phase.score,
@@ -782,4 +818,4 @@ function friendlyTagName(tag: string): string {
 // available for tests that probe the constant.
 void ROUND_DURATION_MS;
 
-} // end bootGame
+} // end bootGameInner

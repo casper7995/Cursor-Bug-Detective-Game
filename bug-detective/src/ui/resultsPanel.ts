@@ -20,7 +20,7 @@ export interface ResultsPanel {
 }
 
 const STYLE_OVERLAY =
-  "position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(20,20,28,0.86);backdrop-filter:blur(6px);pointer-events:auto;z-index:11;padding:24px;font-family:ui-sans-serif,system-ui,sans-serif;";
+  "position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(20,20,28,0.86);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);pointer-events:auto;z-index:11;padding:24px;font-family:ui-sans-serif,system-ui,sans-serif;";
 const STYLE_PANEL =
   "background:#1a1d24;color:#e8efff;padding:28px 32px;border-radius:20px;border:1px solid rgba(232,239,255,0.18);box-shadow:0 20px 56px rgba(0,0,0,0.6);width:min(560px,92vw);";
 const STYLE_HEADLINE =

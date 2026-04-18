@@ -173,6 +173,7 @@ function ensureStyle(): void {
       cursor: pointer;
       display: grid;
       place-items: center;
+      -webkit-backdrop-filter: blur(6px);
       backdrop-filter: blur(6px);
     }
     .bd-settings__btn:hover { background: rgba(40, 44, 56, 0.85); }

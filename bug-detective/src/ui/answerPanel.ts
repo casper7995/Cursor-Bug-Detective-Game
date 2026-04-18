@@ -7,7 +7,7 @@ export interface AnswerPanel {
 }
 
 const STYLE_OVERLAY =
-  "position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(20,20,28,0.78);backdrop-filter:blur(4px);pointer-events:auto;z-index:10;";
+  "position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(20,20,28,0.78);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);pointer-events:auto;z-index:10;";
 const STYLE_PANEL =
   "background:#1a1d24;color:#e8efff;padding:24px 28px;border-radius:18px;border:1px solid rgba(232,239,255,0.18);box-shadow:0 18px 48px rgba(0,0,0,0.55);min-width:360px;max-width:520px;width:90%;font-family:ui-sans-serif,system-ui,sans-serif;";
 const STYLE_PROMPT =

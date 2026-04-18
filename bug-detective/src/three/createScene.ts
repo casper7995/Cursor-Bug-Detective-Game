@@ -11,12 +11,26 @@ export interface SceneBundle {
  * mascot's transmissive glass shell. Background and fog match the dark
  * "after-hours" vibe of the diorama.
  */
+export class WebGLUnsupportedError extends Error {
+  constructor() {
+    super("WebGL is not available in this browser.");
+    this.name = "WebGLUnsupportedError";
+  }
+}
+
 export function createSceneBundle(container: HTMLElement): SceneBundle {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x14141c);
   scene.fog = new THREE.Fog(0x14141c, 28, 90);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // Wrap renderer construction so we can show a friendly fallback on
+  // browsers without WebGL (very old Safari, locked-down enterprise).
+  let renderer: THREE.WebGLRenderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+  } catch {
+    throw new WebGLUnsupportedError();
+  }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.shadowMap.enabled = true;

@@ -33,6 +33,7 @@ import { GameState, assertNever } from "./game/gameState";
 import { createTimer, ROUND_DURATION_MS, type Timer } from "./game/timer";
 import { InputManager } from "./input/inputManager";
 import { Action } from "./input/actions";
+import { isMobile, mountMobileGate } from "./ui/mobileGate";
 
 // ---------------------------------------------------------------------
 // Boot
@@ -40,6 +41,19 @@ import { Action } from "./input/actions";
 const container = document.getElementById("app");
 if (!(container instanceof HTMLElement)) throw new Error("#app missing");
 const root = container;
+
+// Mobile fallback: Bug Detective requires a mouse for the page-peel intro
+// and hover-to-investigate. On phones / coarse-pointer narrow viewports we
+// show a friendly "open on desktop" gate instead of a broken touch path.
+// URL ?mobile=1 forces the gate (handy for QA on desktop browsers).
+const forceMobile = new URLSearchParams(window.location.search).get("mobile") === "1";
+if (forceMobile || isMobile()) {
+  mountMobileGate(root);
+} else {
+  bootGame();
+}
+
+function bootGame(): void {
 
 const { scene, renderer } = createSceneBundle(root);
 
@@ -641,3 +655,5 @@ function friendlyTagName(tag: string): string {
 // Hush the unused-warning on ROUND_DURATION_MS while keeping the import
 // available for tests that probe the constant.
 void ROUND_DURATION_MS;
+
+} // end bootGame

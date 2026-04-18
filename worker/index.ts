@@ -57,21 +57,14 @@ export default {
         combo: number;
         name: string;
       };
-      if (
-        typeof body.score !== "number" ||
-        body.score < 0 ||
-        body.score > MAX_SCORE
-      ) {
+      if (typeof body.score !== "number" || body.score < 0 || body.score > MAX_SCORE) {
         return new Response("invalid score", { status: 400, headers: cors });
       }
       const k = dailyKey(body.date, body.character);
       const raw = await env.LB.get(k);
-      const list: Array<{
-        score: number;
-        combo: number;
-        name: string;
-        ts: number;
-      }> = raw ? (JSON.parse(raw) as typeof list) : [];
+      const list: Array<{ score: number; combo: number; name: string; ts: number }> = raw
+        ? (JSON.parse(raw) as typeof list)
+        : [];
       list.push({
         score: body.score,
         combo: body.combo,

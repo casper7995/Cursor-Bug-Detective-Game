@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  newScore,
-  recordKill,
-  takeDamage,
-  SPECIALTY_BONUS,
-  KILL_VALUE,
-} from "../src/score";
+import { newScore, recordKill, takeDamage, SPECIALTY_BONUS, KILL_VALUE } from "../src/score";
 
 describe("score", () => {
   it("starts at 0 with combo multiplier 1.0", () => {
@@ -36,10 +30,7 @@ describe("score", () => {
 describe("specialty bonus", () => {
   it("crosshair snipe applies 1.5x on top of combo", () => {
     const s = newScore();
-    recordKill(s, {
-      value: KILL_VALUE["404"],
-      bonusMultiplier: SPECIALTY_BONUS.crosshair,
-    });
+    recordKill(s, { value: KILL_VALUE["404"], bonusMultiplier: SPECIALTY_BONUS.crosshair });
     expect(s.total).toBe(15);
   });
   it("arrow always-on bonus is 1.1", () => {

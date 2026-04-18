@@ -15,6 +15,20 @@ import { fetchLeaderboard, postScore } from "./api/scoreClient";
 import { renderShareCard, tweetIntent, shareCardBlob } from "./ui/shareCard";
 import { renderLeaderboardPanel } from "./ui/leaderboard";
 import { createCountdown } from "./ui/countdown";
+import { createPostFx } from "./three/postFx";
+import {
+  isMuted,
+  sfxClueFound,
+  sfxCorrect,
+  sfxHover,
+  sfxMascotLand,
+  sfxPeelTear,
+  sfxSubmit,
+  sfxUiClick,
+  sfxWrong,
+  toggleMute,
+} from "./audio/audio";
+void isMuted; // exported for the Day 11 settings panel
 import { GameState, assertNever } from "./game/gameState";
 import { createTimer, ROUND_DURATION_MS, type Timer } from "./game/timer";
 import { InputManager } from "./input/inputManager";
@@ -70,6 +84,9 @@ cameraRig.setStatic(
   new THREE.Vector3(0, 0, INTRO_CAMERA_Z),
   new THREE.Vector3(0, 0, 0),
 );
+
+// Post-processing: bloom on the lamp + vignette around the corners.
+const postFx = createPostFx(renderer, scene, cameraRig.camera);
 
 // Mascot sits in front of the plane during the intro, just above the
 // "ground" of the page (slightly toward bottom of viewport).
@@ -157,12 +174,18 @@ let timer: Timer | null = null;
 const HOVER_GRACE_MS = 2000;
 const HOVER_CLUE_THRESHOLD_MS = 350;
 const hoverStreak = new Map<string, number>();
+let lastHoverTag: string | null = null;
+let lastIdleAt = performance.now();
+const lastMascotPos = new THREE.Vector3();
 
 answerPanel.onSubmit((choiceIndex) => {
+  sfxUiClick();
   state.submit(choiceIndex, picked.correctIndex);
   answerPanel.hide();
   if (state.phase.kind === "results") {
     const phase = state.phase;
+    if (phase.correct) sfxCorrect();
+    else sfxWrong();
     showResults(phase.score, phase.correct, phase.cluesUsed, phase.elapsedMs);
     // Persist correct submissions to the worker (best-effort, no UI block).
     if (phase.correct) {
@@ -367,6 +390,7 @@ function tickIntroChoreography(now: number, dtSec: number): void {
         -introPlaneHeight * 0.1 + bounce;
       if (now - introStepStartedAt > PEEL_BEGIN_MS) {
         pagePeel.start();
+        sfxPeelTear();
         dollyPromise = cameraRig.scriptedTo(
           GAME_CAMERA_POS,
           GAME_CAMERA_LOOKAT,
@@ -422,9 +446,13 @@ function tickIntroChoreography(now: number, dtSec: number): void {
       mascot.setTilt((1 - t) * -0.15);
       const bounce = Math.sin(Math.PI * t) * 0.05;
       mascot.group.position.y = diorama.deskTopY + 0.18 + bounce;
+      if (t === 0 || (t < 0.2 && now - introStepStartedAt < 50)) {
+        sfxMascotLand();
+      }
       if (t >= 1) {
         mascot.setTilt(0);
         hud.element.style.display = "block";
+        postFx.setBloomEnabled(true);
         startInvestigating(now);
         setIntroStep("done", now);
       }
@@ -453,6 +481,7 @@ function onResize(): void {
   const aspect = w / h;
   cameraRig.setAspect(aspect);
   renderer.setSize(w, h);
+  postFx.setSize(w, h);
   // While the page-peel intro is up, resize the page plane so it keeps
   // filling the viewport at any aspect ratio.
   if (state.phase.kind === "intro" && pagePeel.mesh.visible) {
@@ -482,6 +511,29 @@ function frame(now: number): void {
   // Periodic blink for personality.
   const blinkPhase = (elapsed % 4.2) / 4.2;
   mascot.setBlink(blinkPhase > 0.95 ? 0 : 1);
+
+  // Idle bob: track mascot position deltas as a "did the cursor move?"
+  // heuristic. When stationary >0.6s, gently float up/down.
+  if (state.phase.kind === "investigating") {
+    const movedDelta = mascot.group.position
+      .clone()
+      .sub(lastMascotPos)
+      .lengthSq();
+    if (movedDelta > 1e-6) {
+      lastIdleAt = now;
+    }
+    lastMascotPos.copy(mascot.group.position);
+    const idleMs = now - lastIdleAt;
+    if (idleMs > 600) {
+      const bob = Math.sin((now - lastIdleAt) * 0.0024) * 0.014;
+      mascot.group.position.y = diorama.deskTopY + 0.18 + bob;
+    }
+  }
+
+  // Global Mute toggle.
+  if (input.consumePress(Action.Mute)) {
+    toggleMute();
+  }
 
   // Detect first mouse move while in intro.
   if (state.phase.kind === "intro" && firstMoveAt === null && cursorTracker.hasUserMoved()) {
@@ -518,19 +570,27 @@ function frame(now: number): void {
             next >= HOVER_CLUE_THRESHOLD_MS
           ) {
             state.bumpClue();
+            sfxClueFound();
             if (state.phase.kind === "investigating") {
               hud.setCluesUsed(state.phase.cluesUsed);
             }
           }
         }
+        // Subtle hover tick (throttled — only when newly entering this tag).
+        if (lastHoverTag !== hover.tag) {
+          if (hover.tag !== null) sfxHover();
+          lastHoverTag = hover.tag;
+        }
         mascot.setMagnifierLifted(isAnomalyTarget ? 1 : 0);
       } else {
         hud.setHover(null);
         mascot.setMagnifierLifted(0);
+        lastHoverTag = null;
       }
 
       // Manual submit (Enter) or timer expiry → answering.
       if (input.consumePress(Action.Submit) || timer.isExpired(now)) {
+        sfxSubmit();
         enterAnsweringNow(now);
       }
       break;
@@ -550,7 +610,7 @@ function frame(now: number): void {
       assertNever(state.phase);
   }
 
-  renderer.render(scene, cameraRig.camera);
+  postFx.render();
   input.endFrame();
   requestAnimationFrame(frame);
 }

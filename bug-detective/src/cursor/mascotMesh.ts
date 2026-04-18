@@ -92,8 +92,11 @@ export function createMascotMesh(): MascotMesh {
   group.add(head);
 
   // ---- Smiley face (camera-billboarded plane on front of head) --------
+  // Anchor sits just in front of the head's front face. lookAt() will rotate
+  // the anchor's -Z toward the camera; DoubleSide on the plane material lets
+  // either face be visible regardless of which way lookAt orients us.
   const faceAnchor = new THREE.Object3D();
-  faceAnchor.position.set(0, 0.32, 0.32); // front of pyramid head
+  faceAnchor.position.set(0, 0.4, 0.22);
   group.add(faceAnchor);
 
   const faceTextures = makeFaceTextures();
@@ -101,10 +104,12 @@ export function createMascotMesh(): MascotMesh {
     map: faceTextures.open,
     transparent: true,
     depthWrite: false,
+    side: THREE.DoubleSide,
+    depthTest: false,
   });
-  const faceGeo = new THREE.PlaneGeometry(0.45, 0.32);
+  const faceGeo = new THREE.PlaneGeometry(0.5, 0.36);
   const faceMesh = new THREE.Mesh(faceGeo, faceMat);
-  faceMesh.renderOrder = 3;
+  faceMesh.renderOrder = 999; // draw last, on top of glass shell transmission
   faceAnchor.add(faceMesh);
 
   // ---- Outer glass shell (transmissive) -------------------------------

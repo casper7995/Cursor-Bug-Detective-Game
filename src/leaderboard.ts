@@ -43,13 +43,18 @@ export async function fetchLeaderboard(
   character: string,
 ): Promise<Array<{ score: number; combo: number; name: string }>> {
   if (!hasLeaderboardApi()) return [];
-  const r = await fetch(
-    `${API}/leaderboard?date=${encodeURIComponent(date)}&character=${encodeURIComponent(character)}`,
-  );
-  const j = (await r.json()) as {
-    scores: Array<{ score: number; combo: number; name: string }>;
-  };
-  return j.scores ?? [];
+  try {
+    const r = await fetch(
+      `${API}/leaderboard?date=${encodeURIComponent(date)}&character=${encodeURIComponent(character)}`,
+    );
+    if (!r.ok) return [];
+    const j = (await r.json()) as {
+      scores: Array<{ score: number; combo: number; name: string }>;
+    };
+    return j.scores ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function postScore(
@@ -60,11 +65,15 @@ export async function postScore(
   name: string,
 ): Promise<{ rank: number } | null> {
   if (!hasLeaderboardApi()) return null;
-  const r = await fetch(`${API}/score`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ date, character, score, combo, name }),
-  });
-  if (!r.ok) return null;
-  return (await r.json()) as { rank: number };
+  try {
+    const r = await fetch(`${API}/score`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ date, character, score, combo, name }),
+    });
+    if (!r.ok) return null;
+    return (await r.json()) as { rank: number };
+  } catch {
+    return null;
+  }
 }

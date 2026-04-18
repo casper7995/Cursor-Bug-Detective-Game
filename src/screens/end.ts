@@ -43,6 +43,7 @@ export function showEndScreen(
     loaded = true;
   })();
 
+  Input.consumePress();
   return new Promise((resolve) => {
     function frame(): void {
       const w = window.innerWidth;

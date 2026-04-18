@@ -90,7 +90,19 @@ export async function runMatch(
 
   const exitPortal = { x: w - 72, y: h - 72, r: 36 };
 
+  const onResize = (): void => {
+    world.width = window.innerWidth;
+    world.height = window.innerHeight;
+    exitPortal.x = world.width - 72;
+    exitPortal.y = world.height - 72;
+  };
+  window.addEventListener("resize", onResize);
+
   return new Promise<MatchResult>((resolve) => {
+    const finish = (result: MatchResult): void => {
+      window.removeEventListener("resize", onResize);
+      resolve(result);
+    };
     let last = performance.now();
     function frame(now: number): void {
       const dtRaw = Math.min(0.05, (now - last) / 1000);
@@ -141,12 +153,12 @@ export async function runMatch(
 
       const player = world.entities.find((e) => e.kind === "player");
       if (player && player.hp <= 0) {
-        resolve({ score, character: pick.character });
+        finish({ score, character: pick.character });
         return;
       }
 
       if (world.elapsed >= MATCH_LENGTH) {
-        resolve({ score, character: pick.character });
+        finish({ score, character: pick.character });
         return;
       }
 
@@ -163,7 +175,7 @@ export async function runMatch(
         }
       }
 
-      clear(ctx, w, h);
+      clear(ctx, world.width, world.height);
       const sx = (Math.random() - 0.5) * shake;
       const sy = (Math.random() - 0.5) * shake;
       ctx.save();
@@ -241,8 +253,18 @@ function handleEvents(world: World, score: Score, juice: JuiceCb): void {
     } else if (ev.type === "damage") {
       takeDamage(score);
     } else if (ev.type === "boss-killed") {
-      score.total += 500;
       for (const e of world.entities) if (e.kind === "enemy") e.dead = true;
+      if (ev.killer.kind === "player") {
+        const characterKind = ev.killer.data.character as
+          | CharacterKind
+          | undefined;
+        const bonus =
+          characterKind === "arrow" ? SPECIALTY_BONUS.arrow : 1.0;
+        recordKill(score, {
+          value: KILL_VALUE.boss,
+          bonusMultiplier: bonus,
+        });
+      }
     }
   }
   world.events.length = 0;

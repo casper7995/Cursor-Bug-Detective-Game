@@ -55,7 +55,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "calendar-tomorrow",
     targetTag: "calendar",
-    tooltipHint: "Calendar...",
+    tooltipHint: "calendar — date looks off",
     revealText: "The calendar shows tomorrow's date — one day too far ahead.",
     correctChoice: "Calendar shows tomorrow",
     distractorPool: [
@@ -81,7 +81,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "mug-name",
     targetTag: "mug",
-    tooltipHint: "Mug label...",
+    tooltipHint: "mug — label feels familiar",
     revealText: "The mug has YOUR name printed on it. Someone left it for you.",
     correctChoice: "Mug has your name on it",
     distractorPool: [
@@ -98,7 +98,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "clock-ccw",
     targetTag: "clock",
-    tooltipHint: "Clock hands...",
+    tooltipHint: "clock — hands moving wrong",
     revealText: "The clock hands are turning counter-clockwise. Time is reversing here.",
     correctChoice: "Clock runs backwards",
     distractorPool: [
@@ -114,7 +114,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "monitor-reflection",
     targetTag: "monitor-screen",
-    tooltipHint: "Monitor...",
+    tooltipHint: "monitor — reflection looks off",
     revealText: "The monitor reflects a different room — not the one you're in.",
     correctChoice: "Monitor reflection is wrong",
     distractorPool: [
@@ -130,7 +130,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "photo-self",
     targetTag: "photo",
-    tooltipHint: "Photo...",
+    tooltipHint: "photo — that face is familiar",
     revealText: "The photo on the desk shows your own face — looking back at you.",
     correctChoice: "Photo shows your own face",
     distractorPool: [
@@ -147,7 +147,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "sticky-warning",
     targetTag: "sticky",
-    tooltipHint: "Sticky note...",
+    tooltipHint: "sticky — that wasn't there yesterday",
     revealText: "The sticky note reads \u201Cthey're behind you\u201D. It wasn't there yesterday.",
     correctChoice: "Sticky note has a warning",
     distractorPool: [
@@ -164,7 +164,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "pen-floating",
     targetTag: "pen",
-    tooltipHint: "Pen...",
+    tooltipHint: "pen — what's holding it up?",
     revealText: "The pen is floating just above the desk. No support.",
     correctChoice: "Pen floats above the desk",
     distractorPool: [
@@ -180,7 +180,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "lamp-shadow-wrong",
     targetTag: "lamp-shadow",
-    tooltipHint: "Shadow...",
+    tooltipHint: "shadow — wrong direction",
     revealText: "The shadow points TOWARD the light, not away from it.",
     correctChoice: "Shadow points the wrong way",
     distractorPool: [
@@ -200,7 +200,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "steam-down",
     targetTag: "coffee-steam",
-    tooltipHint: "Steam...",
+    tooltipHint: "steam — drifting the wrong way",
     revealText: "The coffee steam is drifting downward instead of rising.",
     correctChoice: "Steam falls instead of rising",
     distractorPool: [
@@ -216,7 +216,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "blank-book",
     targetTag: "book",
-    tooltipHint: "Book...",
+    tooltipHint: "book — strangely silent",
     revealText: "Every page in the open book is completely blank.",
     correctChoice: "Open book has blank pages",
     distractorPool: [
@@ -233,7 +233,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "keyboard-extra-key",
     targetTag: "keyboard",
-    tooltipHint: "Keyboard...",
+    tooltipHint: "keyboard — one key too many",
     revealText: "There's a giant red key on the keyboard that doesn't belong.",
     correctChoice: "Keyboard has an extra red key",
     distractorPool: [
@@ -256,7 +256,7 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "plant-glitching",
     targetTag: "plant",
-    tooltipHint: "Plant...",
+    tooltipHint: "plant — leaves twitching",
     revealText: "The plant's leaves twitch and snap as if rendered wrong.",
     correctChoice: "Plant is glitching",
     distractorPool: [

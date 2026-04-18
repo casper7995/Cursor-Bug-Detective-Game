@@ -52,10 +52,14 @@ export function renderShareCard(input: ShareCardInput): HTMLCanvasElement {
   ctx.textAlign = "center";
   ctx.fillText(String(input.score), CARD_W / 2, CARD_H / 2 + 20);
 
-  // Anomaly name
+  // Anomaly name — phrased differently depending on outcome
   ctx.fillStyle = "#a9c4ff";
   ctx.font = "600 30px ui-sans-serif, system-ui, sans-serif";
-  ctx.fillText(`I found: ${input.anomalyName}`, CARD_W / 2, CARD_H / 2 + 110);
+  const verdict =
+    input.score > 0
+      ? `cracked it: ${input.anomalyName}`
+      : `the bug: ${input.anomalyName}`;
+  ctx.fillText(verdict, CARD_W / 2, CARD_H / 2 + 110);
 
   // Stat strip: time + clues + rank
   const stats: Array<[string, string]> = [
@@ -99,10 +103,14 @@ export function shareCardBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
 
 /** Build the X/Twitter intent URL with score + jam URL prefilled. */
 export function tweetIntent(score: number, dateUtc: string): string {
-  const text = `I scored ${score} on Bug Detective (${dateUtc}). #VibeJam2026`;
+  const text =
+    score > 0
+      ? `🔎 I cracked today's Bug Detective case (${dateUtc}) — ${score} pts. Find the bug:`
+      : `🐛 Got fooled by today's Bug Detective case (${dateUtc}). Can you spot it?`;
   const params = new URLSearchParams({
     text,
     url: JAM_URL,
+    hashtags: "VibeJam2026,BugDetective",
   });
   return `https://twitter.com/intent/tweet?${params.toString()}`;
 }

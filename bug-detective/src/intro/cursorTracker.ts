@@ -56,6 +56,29 @@ export class CursorTracker {
     return this.hasMoved;
   }
 
+  /**
+   * Programmatically inject a "mouse" position in canvas-local pixels.
+   * Used by the simplified touch flow (mobile) to translate a tap into
+   * the same NDC update path mousemove takes.
+   *
+   * Pass coordinates outside the canvas (e.g. -9999, -9999) to put the
+   * cursor "off-screen" so the next raycast misses everything.
+   */
+  setMouse(canvasX: number, canvasY: number): void {
+    const target = this.domTarget;
+    if (!target) {
+      // No DOM target attached → fake one off the renderer canvas size.
+      this.ndc.x = canvasX;
+      this.ndc.y = canvasY;
+      this.hasMoved = true;
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    this.ndc.x = (canvasX / rect.width) * 2 - 1;
+    this.ndc.y = -(canvasY / rect.height) * 2 + 1;
+    this.hasMoved = true;
+  }
+
   /** Advance mascot toward latest raycast hit. */
   update(dt: number): void {
     if (!this.hasMoved) return;

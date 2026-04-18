@@ -52,21 +52,36 @@ const root = container;
 // URL ?mobile=1 forces the gate (handy for QA on desktop browsers).
 const forceMobile = new URLSearchParams(window.location.search).get("mobile") === "1";
 if (forceMobile || isMobile()) {
-  mountMobileGate(root);
+  // Mobile users get a dismissable card explaining the desktop trade-off
+  // and a "Play simplified" button. If they pick simplified, boot the
+  // touch-friendly flow (skip-intro path + tap-to-investigate).
+  void mountMobileGate(root).then((choice) => {
+    if (choice === "simplified") bootGame({ simplified: true });
+  });
 } else if (isSkipIntro()) {
   // Returning visitor opted in to "Skip intro" in Settings. Boot the game
   // immediately. WebAudio will resume on the first hover/click during
   // investigation (audio module attaches its own listeners).
-  bootGame();
+  bootGame({ simplified: false });
 } else {
   // Show the title splash first; once the user clicks/keys, boot the game.
   // This both gates the heavy 3D init and gives the AudioContext a user
   // gesture so the ambient pad/SFX can resume on Chrome's autoplay policy.
   const splash = showTitleSplash(document.body);
-  splash.ready.then(() => bootGame());
+  splash.ready.then(() => bootGame({ simplified: false }));
 }
 
-function bootGame(): void {
+interface BootOpts {
+  /**
+   * Simplified touch flow for phones. Skips the page-peel intro and the
+   * mouse-driven cursor tracker; raycasts each tap to register as a
+   * "hover" on the picked prop.
+   */
+  readonly simplified: boolean;
+}
+
+function bootGame(opts: BootOpts): void {
+  const simplified = opts.simplified;
 
 const { scene, renderer } = createSceneBundle(root);
 
@@ -672,13 +687,15 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
-// Skip-intro fast path: if the user opted in via Settings → Skip intro
-// (persisted in localStorage), bypass the page-peel choreography and
-// land directly on the desk. The choreography state machine is parked
-// at "done" so its switch never runs, and we manually do the same
-// teardown the landing step does (camera pose, diorama visible, HUD +
-// settings shown, bloom on, cursor target = desk, mascot at game scale).
-if (isSkipIntro()) {
+// Skip-intro fast path: bypass the page-peel choreography and land
+// directly on the desk. Triggered by:
+//   - Settings → "Skip intro next load" toggle (returning desktop visitors)
+//   - Mobile gate "Play simplified" choice (touch users)
+// In both cases, the choreography state machine is parked at "done" so
+// its switch never runs, and we manually do the same teardown the
+// landing step does (camera pose, diorama visible, HUD + settings
+// shown, bloom on, cursor target = desk, mascot at game scale).
+if (isSkipIntro() || simplified) {
   pagePeel.mesh.visible = false;
   diorama.root.visible = true;
   cameraRig.setStatic(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT);
@@ -696,6 +713,53 @@ if (isSkipIntro()) {
   postFx.setBloomEnabled(true);
   setIntroStep("done", performance.now());
   startInvestigating(performance.now());
+}
+
+// Simplified touch flow: each tap on the canvas raycasts against the
+// hoverables and writes the hit's NDC coords into the cursor tracker
+// just like a mouse hover would. The HUD update loop already runs each
+// frame; it picks up the new mouse coords and registers a hover (which
+// drives tooltip + clue counting). After 2.5s the registered hover
+// auto-clears so the next tap is treated as a fresh hover (otherwise
+// idle clue counting would keep ticking up on the most recent prop).
+if (simplified) {
+  const HOVER_HOLD_MS = 2500;
+  let clearAt = 0;
+  const onTap = (e: PointerEvent | MouseEvent | Touch): void => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    const cx =
+      "clientX" in e
+        ? (e as { clientX: number }).clientX
+        : (e as Touch).clientX;
+    const cy =
+      "clientY" in e
+        ? (e as { clientY: number }).clientY
+        : (e as Touch).clientY;
+    const x = cx - rect.left;
+    const y = cy - rect.top;
+    cursorTracker.setMouse(x, y);
+    clearAt = performance.now() + HOVER_HOLD_MS;
+  };
+  renderer.domElement.addEventListener("pointerdown", (e) => onTap(e), {
+    passive: true,
+  });
+  renderer.domElement.addEventListener(
+    "touchstart",
+    (e) => {
+      const t = e.touches[0];
+      if (t) onTap(t);
+    },
+    { passive: true },
+  );
+
+  // Periodically clear the held hover so clue tick doesn't compound.
+  // Done outside the per-frame hot loop to keep main.ts diff small.
+  window.setInterval(() => {
+    if (clearAt > 0 && performance.now() > clearAt) {
+      cursorTracker.setMouse(-9999, -9999); // off-canvas → no hit
+      clearAt = 0;
+    }
+  }, 200);
 }
 
 requestAnimationFrame(frame);

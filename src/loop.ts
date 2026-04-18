@@ -1,4 +1,5 @@
-import { clear, text, spawnHitParticles } from "./render";
+import { clear, text, spawnHitParticles, drawAimReticle } from "./render";
+import { Input } from "./input";
 import {
   newScore,
   recordKill,
@@ -183,6 +184,10 @@ export async function runMatch(
 
       for (const e of world.entities) e.draw(ctx);
 
+      if (player) {
+        drawAimReticle(ctx, Input.pointer.x, Input.pointer.y);
+      }
+
       if (refParam) {
         ctx.strokeStyle = "#a78bfa";
         ctx.lineWidth = 3;
@@ -206,6 +211,10 @@ export async function runMatch(
         16,
         24,
       );
+      text(ctx, "WASD move · click attack (spinner: hold click)", 16, world.height - 14, {
+        color: "#64748b",
+        size: 11,
+      });
 
       requestAnimationFrame(frame);
     }

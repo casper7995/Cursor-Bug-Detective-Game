@@ -23,12 +23,27 @@ export function showPickScreen(
 ): Promise<PickResult> {
   Input.consumePress();
   return new Promise((resolve) => {
+    let selected = 0;
+    let confirmWithKeyboard = false;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        selected = (selected + 1) % ROSTER.length;
+        e.preventDefault();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        selected = (selected - 1 + ROSTER.length) % ROSTER.length;
+        e.preventDefault();
+      } else if (e.key === "Enter" || e.key === " ") {
+        confirmWithKeyboard = true;
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
     function frame(): void {
       const w = window.innerWidth;
       const h = window.innerHeight;
       clear(ctx, w, h);
       text(ctx, "CURSOR CREW", w / 2, 80, { size: 36, align: "center" });
-      text(ctx, "pick your cursor → click a card to start", w / 2, 110, {
+      text(ctx, "pick your cursor — click a card or ← → then ENTER", w / 2, 110, {
         color: "#888",
         align: "center",
       });
@@ -45,9 +60,12 @@ export function showPickScreen(
         const cx = x0 + i * (cardW + gap);
         const isHover =
           px >= cx && px <= cx + cardW && py >= y0 && py <= y0 + cardH;
-        ctx.fillStyle = isHover ? "#1e1e2e" : "#0f0f18";
+        const isSelected = i === selected;
+        const highlight = isHover || isSelected;
+        ctx.fillStyle = highlight ? "#1e1e2e" : "#0f0f18";
         ctx.fillRect(cx, y0, cardW, cardH);
-        ctx.strokeStyle = isHover ? "#fff" : "#444";
+        ctx.strokeStyle = highlight ? "#fff" : "#444";
+        ctx.lineWidth = isSelected ? 2 : 1;
         ctx.strokeRect(cx, y0, cardW, cardH);
         text(ctx, ROSTER[i]!.label, cx + cardW / 2, y0 + 40, {
           align: "center",
@@ -60,7 +78,14 @@ export function showPickScreen(
         });
         if (isHover) hovered = ROSTER[i]!.kind;
       }
+      if (confirmWithKeyboard) {
+        confirmWithKeyboard = false;
+        window.removeEventListener("keydown", onKey);
+        resolve({ character: ROSTER[selected]!.kind });
+        return;
+      }
       if (hovered && Input.consumePress()) {
+        window.removeEventListener("keydown", onKey);
         resolve({ character: hovered });
         return;
       }

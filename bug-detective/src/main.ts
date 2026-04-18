@@ -5,6 +5,7 @@ import { CameraRig } from "./three/cameraRig";
 import { createMascotMesh } from "./cursor/mascotMesh";
 import { createDesktopDiorama } from "./scene/desktopDiorama";
 import { CursorTracker } from "./intro/cursorTracker";
+import { createPagePeel, type PagePeel } from "./intro/pagePeel";
 import { createHud } from "./ui/hud";
 import { createAnswerPanel } from "./ui/answerPanel";
 import { createResultsPanel } from "./ui/resultsPanel";
@@ -27,25 +28,56 @@ const { scene, renderer } = createSceneBundle(root);
 const cameraRig = new CameraRig(
   root.clientWidth / Math.max(root.clientHeight, 1),
 );
-cameraRig.setStatic(
-  new THREE.Vector3(3.2, 2.4, 5.2),
-  new THREE.Vector3(-0.2, 0.3, -0.4),
-);
+
+// Game-time camera pose (used during investigation phase).
+const GAME_CAMERA_POS = new THREE.Vector3(3.2, 2.4, 5.2);
+const GAME_CAMERA_LOOKAT = new THREE.Vector3(-0.2, 0.3, -0.4);
 
 const diorama = createDesktopDiorama();
+diorama.root.visible = false; // hidden during the page-peel intro
 scene.add(diorama.root);
 
 const mascot = createMascotMesh();
-mascot.group.scale.setScalar(0.55);
-mascot.group.position.set(0.4, diorama.deskTopY + 0.18, 0.4);
+// Default to intro-scale (small, OS-cursor-sized). Investigation-time the
+// scale is bumped up so the mascot reads as a desk figurine.
+const MASCOT_INTRO_SCALE = 0.08;
+const MASCOT_GAME_SCALE = 0.55;
+mascot.group.scale.setScalar(MASCOT_INTRO_SCALE);
 scene.add(mascot.group);
+
+// ---- Page-peel intro setup ------------------------------------------
+// The page plane sits at z = 0, centered. We position the camera close
+// to it on +Z so the plane fills the frustum exactly. Plane size derived
+// from camera FOV + distance + viewport aspect.
+const INTRO_CAMERA_Z = 1.2;
+const fovTanHalf = Math.tan((cameraRig.camera.fov * Math.PI) / 180 / 2);
+const introPlaneHeight = INTRO_CAMERA_Z * fovTanHalf * 2;
+const introPlaneWidth =
+  introPlaneHeight * (root.clientWidth / Math.max(root.clientHeight, 1));
+
+let pagePeel: PagePeel = createPagePeel({
+  width: introPlaneWidth,
+  height: introPlaneHeight,
+  center: new THREE.Vector3(0, 0, 0),
+});
+scene.add(pagePeel.mesh);
+
+cameraRig.setStatic(
+  new THREE.Vector3(0, 0, INTRO_CAMERA_Z),
+  new THREE.Vector3(0, 0, 0),
+);
+
+// Mascot sits in front of the plane during the intro, just above the
+// "ground" of the page (slightly toward bottom of viewport).
+mascot.group.position.set(0, -introPlaneHeight * 0.1, 0.05);
 
 const cursorTracker = new CursorTracker(
   cameraRig.camera,
   mascot.group,
-  diorama.desk,
+  pagePeel.mesh, // initially track on the page plane
 );
-cursorTracker.setYOffset(0.18);
+cursorTracker.setYOffset(0.0);
+cursorTracker.setSmoothing(18);
 cursorTracker.attach(renderer.domElement);
 
 // ---------------------------------------------------------------------
@@ -82,6 +114,7 @@ console.info(
 // ---------------------------------------------------------------------
 const state = new GameState();
 const hud = createHud(root, diorama);
+hud.element.style.display = "none"; // hidden during intro
 const answerPanel = createAnswerPanel(root);
 const resultsPanel = createResultsPanel(root);
 const input = new InputManager();
@@ -162,9 +195,33 @@ function restartRound(): void {
   startInvestigating(performance.now());
 }
 
-// Day 4: skip the wow opener and go straight to investigating. Day 5/6 wires
-// the proper intro state.
-startInvestigating(performance.now());
+// Day 5: stay in intro until first mouse move + a short beat. Day 6 will
+// hook this up to the peel/dolly choreography. For now we just transition
+// to the gameplay camera after the beat.
+const INTRO_BEAT_MS = 1400;
+let firstMoveAt: number | null = null;
+let introTransitioning = false;
+
+function maybeBeginIntroExit(now: number): void {
+  if (introTransitioning) return;
+  if (firstMoveAt === null) return;
+  if (now - firstMoveAt < INTRO_BEAT_MS) return;
+  introTransitioning = true;
+  // Day 5 stub: no peel yet — hide the page plane, snap camera + cursor target
+  // to the gameplay scene, plant mascot on the desk, and start investigating.
+  // Day 6 replaces this with peel.start() + cameraRig.scriptedTo() + a
+  // scripted mascot landing.
+  pagePeel.mesh.visible = false;
+  diorama.root.visible = true;
+  cameraRig.setStatic(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT);
+  cursorTracker.setTarget(diorama.desk);
+  cursorTracker.setYOffset(0.18);
+  cursorTracker.setSmoothing(12);
+  mascot.group.scale.setScalar(MASCOT_GAME_SCALE);
+  mascot.group.position.set(0.4, diorama.deskTopY + 0.18, 0.4);
+  hud.element.style.display = "block";
+  startInvestigating(performance.now());
+}
 
 // ---------------------------------------------------------------------
 // Render loop
@@ -172,8 +229,16 @@ startInvestigating(performance.now());
 function onResize(): void {
   const w = root.clientWidth;
   const h = Math.max(root.clientHeight, 1);
-  cameraRig.setAspect(w / h);
+  const aspect = w / h;
+  cameraRig.setAspect(aspect);
   renderer.setSize(w, h);
+  // While the page-peel intro is up, resize the page plane so it keeps
+  // filling the viewport at any aspect ratio.
+  if (state.phase.kind === "intro" && pagePeel.mesh.visible) {
+    const newH = INTRO_CAMERA_Z * fovTanHalf * 2;
+    const newW = newH * aspect;
+    pagePeel.mesh.scale.set(newW / introPlaneWidth, newH / introPlaneHeight, 1);
+  }
 }
 window.addEventListener("resize", onResize);
 onResize();
@@ -191,15 +256,23 @@ function frame(now: number): void {
   diorama.step(elapsed, dtSec);
   cursorTracker.update(dtSec);
   mascot.faceCamera(cameraRig.camera);
+  pagePeel.update(dtSec);
 
   // Periodic blink for personality.
   const blinkPhase = (elapsed % 4.2) / 4.2;
   mascot.setBlink(blinkPhase > 0.95 ? 0 : 1);
 
+  // Detect first mouse move while in intro.
+  if (state.phase.kind === "intro" && firstMoveAt === null && cursorTracker.hasUserMoved()) {
+    firstMoveAt = now;
+  }
+
   // ---- Phase-driven update ----
   switch (state.phase.kind) {
     case "intro":
-      // Day 4 stub: nothing to do; we transition out at boot.
+      // While the page is up, mascot tracks mouse on the page plane.
+      // After the beat, transition out (Day 5 stub: snap-cut; Day 6: peel).
+      maybeBeginIntroExit(now);
       break;
     case "investigating": {
       if (!timer) break;

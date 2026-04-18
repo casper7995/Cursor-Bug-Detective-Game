@@ -50,7 +50,21 @@ const root = container;
 // and hover-to-investigate. On phones / coarse-pointer narrow viewports we
 // show a friendly "open on desktop" gate instead of a broken touch path.
 // URL ?mobile=1 forces the gate (handy for QA on desktop browsers).
-const forceMobile = new URLSearchParams(window.location.search).get("mobile") === "1";
+// URL ?reset=1 clears every bd:* localStorage key so QA + new visitors
+// can re-experience the full intro choreography after testing the
+// Skip-intro toggle.
+const queryParams = new URLSearchParams(window.location.search);
+if (queryParams.get("reset") === "1") {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("bd:")) localStorage.removeItem(key);
+    }
+  } catch {
+    /* private browsing — nothing to reset */
+  }
+}
+const forceMobile = queryParams.get("mobile") === "1";
 if (forceMobile || isMobile()) {
   // Mobile users get a dismissable card explaining the desktop trade-off
   // and a "Play simplified" button. If they pick simplified, boot the
@@ -439,6 +453,15 @@ function restartRound(): void {
   scene.add(fresh.root);
   // Re-bind cursor tracker to the new desk mesh.
   cursorTracker.setTarget(fresh.desk);
+  // Recenter the mascot on the new desk. Without this, the mascot would
+  // stay wherever the cursor was when "play again" fired (often off-desk
+  // or under the results panel), which made it look like the mascot
+  // disappeared after restart.
+  mascot.group.position.set(
+    0.4,
+    fresh.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE,
+    0.4,
+  );
   // Re-pick anomaly + apply (same seed → same anomaly, by design).
   picked = pickAnomaly(seed);
   picked.def.apply(diorama);

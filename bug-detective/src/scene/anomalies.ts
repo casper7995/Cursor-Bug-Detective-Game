@@ -266,18 +266,11 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Plant is the wrong color",
     ],
     apply: (o) => {
-      // Mark for per-frame anomaly animation in the diorama step. We register
-      // a one-shot patch by stashing a flag; the diorama's plant is kept
-      // simple and we apply jitter via the registered callbacks below.
+      // Set the flag; the diorama's step() applies jitter on the main
+      // render loop. (Previously this kicked off a parallel
+      // requestAnimationFrame loop that leaked across restartRound's
+      // diorama swaps.)
       o.plant.userData.glitching = true;
-      const startEuler = o.plant.rotation.clone();
-      const tick = (): void => {
-        if (!o.plant.userData.glitching) return;
-        o.plant.rotation.x = startEuler.x + (Math.random() - 0.5) * 0.05;
-        o.plant.rotation.z = startEuler.z + (Math.random() - 0.5) * 0.05;
-        requestAnimationFrame(tick);
-      };
-      tick();
     },
   },
 ];

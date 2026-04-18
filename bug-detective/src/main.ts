@@ -275,6 +275,7 @@ const hoverStreak = new Map<string, number>();
 let lastHoverTag: string | null = null;
 let lastIdleAt = performance.now();
 const lastMascotPos = new THREE.Vector3();
+let lastBlink: 0 | 1 = 1;
 
 answerPanel.onSubmit((choiceIndex) => {
   sfxUiClick();
@@ -649,18 +650,21 @@ function frame(now: number): void {
   mascot.faceCamera(cameraRig.camera);
   pagePeel.update(dtSec);
 
-  // Periodic blink for personality.
+  // Periodic blink for personality. setBlink swaps a CanvasTexture and
+  // sets material.needsUpdate, so only call it when the value flips.
   const blinkPhase = (elapsed % 4.2) / 4.2;
-  mascot.setBlink(blinkPhase > 0.95 ? 0 : 1);
+  const wantBlink: 0 | 1 = blinkPhase > 0.95 ? 0 : 1;
+  if (wantBlink !== lastBlink) {
+    mascot.setBlink(wantBlink);
+    lastBlink = wantBlink;
+  }
 
   // Idle bob: track mascot position deltas as a "did the cursor move?"
   // heuristic. When stationary >0.6s, gently float up/down.
   if (state.phase.kind === "investigating") {
-    const movedDelta = mascot.group.position
-      .clone()
-      .sub(lastMascotPos)
-      .lengthSq();
-    if (movedDelta > 1e-6) {
+    // distanceToSquared avoids the per-frame Vector3.clone() that this
+    // path used to trigger 60×/s for 90s rounds.
+    if (mascot.group.position.distanceToSquared(lastMascotPos) > 1e-6) {
       lastIdleAt = now;
     }
     lastMascotPos.copy(mascot.group.position);
@@ -738,12 +742,13 @@ function frame(now: number): void {
       break;
     }
     case "answering":
-      // Answer panel handles input; nothing per-frame.
-      hud.update(cameraRig.camera);
+      // Answer panel covers the canvas — no need to raycast hover or
+      // update the loupe; the panel owns input.
       break;
     case "results":
-      // Results panel up; let mascot still bob and tooltip still raycast.
-      hud.update(cameraRig.camera);
+      // Results card covers the canvas. Skip hud.update for the same
+      // reason as answering. R hotkey for restart still works through
+      // the main InputManager.
       if (input.consumePress(Action.Restart)) {
         restartRound();
       }

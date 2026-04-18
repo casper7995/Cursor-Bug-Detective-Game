@@ -67,22 +67,48 @@ export function createHud(
 
   const raycaster = new THREE.Raycaster();
   const mouseNdc = new THREE.Vector2();
-  let mouseClient = { x: -10, y: -10, has: false };
+  // Mutated in place per mousemove (was reallocated as a fresh literal —
+  // up to 1 kHz worth of garbage on high-poll-rate mice).
+  const mouseClient = { x: -10, y: -10, has: false };
   const intersects: THREE.Intersection[] = [];
 
-  const onMouseMove = (e: MouseEvent): void => {
+  // Cache the canvas rect — getBoundingClientRect forces a layout flush
+  // and we don't want one per mousemove.
+  let rectLeft = 0;
+  let rectTop = 0;
+  let rectWidth = 1;
+  let rectHeight = 1;
+  const refreshRect = (): void => {
     const rect = container.getBoundingClientRect();
-    mouseNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    mouseNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    mouseClient = { x: e.clientX - rect.left, y: e.clientY - rect.top, has: true };
+    rectLeft = rect.left;
+    rectTop = rect.top;
+    rectWidth = Math.max(1, rect.width);
+    rectHeight = Math.max(1, rect.height);
+  };
+  refreshRect();
+  window.addEventListener("resize", refreshRect);
+
+  const onMouseMove = (e: MouseEvent): void => {
+    mouseNdc.x = ((e.clientX - rectLeft) / rectWidth) * 2 - 1;
+    mouseNdc.y = -((e.clientY - rectTop) / rectHeight) * 2 + 1;
+    mouseClient.x = e.clientX - rectLeft;
+    mouseClient.y = e.clientY - rectTop;
+    mouseClient.has = true;
   };
   container.addEventListener("mousemove", onMouseMove);
 
+  // Cache last text written so we don't churn the DOM every frame
+  // (timer ticks tenths-of-seconds; status/clues change rarely).
+  let lastTimerText = "";
   function setTimer(remainingMs: number): void {
     const sec = Math.max(0, remainingMs / 1000);
     const m = Math.floor(sec / 60);
     const s = (sec - m * 60).toFixed(1).padStart(4, "0");
-    timerEl.textContent = `${m}:${s}`;
+    const next = `${m}:${s}`;
+    if (next !== lastTimerText) {
+      lastTimerText = next;
+      timerEl.textContent = next;
+    }
   }
   function setCluesUsed(n: number): void {
     cluesEl.textContent = `clues used: ${n}`;
@@ -131,6 +157,7 @@ export function createHud(
 
   function destroy(): void {
     container.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("resize", refreshRect);
     wrapper.remove();
   }
 

@@ -535,8 +535,13 @@ export function createDesktopDiorama(): DioramaObjects {
   // ---- Animation step -----------------------------------------------
   const steamBaseY = coffeeSteam.position.y;
   const penBaseY = pen.position.y;
+  const plantBaseRotation = plant.rotation.clone();
 
   function step(elapsed: number, _dt: number): void {
+    // The diorama is hidden during the page-peel intro — skip every
+    // per-frame transform/material write while it can't be seen.
+    if (!root.visible) return;
+
     // Clock hands: real wall-clock time, scaled so it feels alive.
     // Reverse direction if the anomaly is on.
     const dir = flags.clockReverse ? -1 : 1;
@@ -557,6 +562,15 @@ export function createDesktopDiorama(): DioramaObjects {
       pen.position.y = penBaseY;
     } else {
       pen.position.y = penBaseY + 0.025 + Math.sin(elapsed * 1.6) * 0.005;
+    }
+
+    // Plant glitch jitter when the plant-glitching anomaly is on. This
+    // used to live in a parallel requestAnimationFrame loop in
+    // anomalies.ts which leaked across restarts; it now rides the main
+    // render loop and is automatically torn down with the diorama.
+    if (plant.userData.glitching) {
+      plant.rotation.x = plantBaseRotation.x + (Math.random() - 0.5) * 0.05;
+      plant.rotation.z = plantBaseRotation.z + (Math.random() - 0.5) * 0.05;
     }
   }
 

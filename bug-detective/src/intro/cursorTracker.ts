@@ -14,6 +14,13 @@ export class CursorTracker {
   private domTarget: HTMLElement | null = null;
   private yOffset = 0.05;
   private smoothingHz = 12;
+  // Cached rect — recomputed on attach + window resize. mousemove fires
+  // up to 1 kHz on high-poll-rate mice, and getBoundingClientRect()
+  // forces a synchronous layout flush. Caching saves a flush per move.
+  private rectLeft = 0;
+  private rectTop = 0;
+  private rectWidth = 1;
+  private rectHeight = 1;
 
   constructor(
     private readonly camera: THREE.Camera,
@@ -24,16 +31,29 @@ export class CursorTracker {
   attach(domTarget: HTMLElement): void {
     this.detach();
     this.domTarget = domTarget;
+    this.refreshRect();
     domTarget.addEventListener("mousemove", this.onMouseMove);
     domTarget.addEventListener("touchmove", this.onTouchMove, { passive: true });
+    window.addEventListener("resize", this.refreshRect);
   }
 
   detach(): void {
     if (!this.domTarget) return;
     this.domTarget.removeEventListener("mousemove", this.onMouseMove);
     this.domTarget.removeEventListener("touchmove", this.onTouchMove);
+    window.removeEventListener("resize", this.refreshRect);
     this.domTarget = null;
   }
+
+  /** Re-measure the canvas rect. Wired to attach + window resize. */
+  private readonly refreshRect = (): void => {
+    if (!this.domTarget) return;
+    const rect = this.domTarget.getBoundingClientRect();
+    this.rectLeft = rect.left;
+    this.rectTop = rect.top;
+    this.rectWidth = Math.max(1, rect.width);
+    this.rectHeight = Math.max(1, rect.height);
+  };
 
   setTarget(target: THREE.Object3D): void {
     this.target = target;
@@ -60,17 +80,15 @@ export class CursorTracker {
    * cursor "off-screen" so the next raycast misses everything.
    */
   setMouse(canvasX: number, canvasY: number): void {
-    const target = this.domTarget;
-    if (!target) {
+    if (!this.domTarget) {
       // No DOM target attached → fake one off the renderer canvas size.
       this.ndc.x = canvasX;
       this.ndc.y = canvasY;
       this.hasMoved = true;
       return;
     }
-    const rect = target.getBoundingClientRect();
-    this.ndc.x = (canvasX / rect.width) * 2 - 1;
-    this.ndc.y = -(canvasY / rect.height) * 2 + 1;
+    this.ndc.x = (canvasX / this.rectWidth) * 2 - 1;
+    this.ndc.y = -(canvasY / this.rectHeight) * 2 + 1;
     this.hasMoved = true;
   }
 
@@ -100,11 +118,9 @@ export class CursorTracker {
   };
 
   private updateNdcFromClient(clientX: number, clientY: number): void {
-    const target = this.domTarget;
-    if (!target) return;
-    const rect = target.getBoundingClientRect();
-    this.ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-    this.ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    if (!this.domTarget) return;
+    this.ndc.x = ((clientX - this.rectLeft) / this.rectWidth) * 2 - 1;
+    this.ndc.y = -((clientY - this.rectTop) / this.rectHeight) * 2 + 1;
     this.hasMoved = true;
   }
 }

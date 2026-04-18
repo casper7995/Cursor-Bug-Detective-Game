@@ -3,20 +3,20 @@
  *
  * Bug Detective is built for desktop mouse — the page-peel intro tracks
  * the cursor and the investigation phase is hover-driven. On phones we
- * show a dismissable card that explains the trade-off and offers two
- * options:
- *   - "Open on desktop" → copy/share the link.
+ * show a dismissable card that explains the trade-off and offers:
+ *   - "Open on desktop" → copy/share the link (does NOT dismiss the gate;
+ *     the user is expected to switch devices).
  *   - "Play simplified"  → boot the simplified touch flow (no peel,
- *                          tap-to-investigate, no idle-bob).
+ *                          tap-to-investigate, no idle-bob). Resolves
+ *                          the returned promise so main.ts boots.
  *
- * Returns a Promise that resolves with the user's choice. Caller
- * (main.ts) branches on that.
+ * The promise resolves when (and only when) the user picks "Play
+ * simplified". Copy/Share are share actions; the user keeping the gate
+ * up after sharing is the intended path.
  *
  * This module never throws; if `document` isn't available or matchMedia
  * isn't supported, isMobile() just returns false and we proceed normally.
  */
-
-export type MobileChoice = "simplified" | "desktop-only";
 
 /**
  * Detect "this device probably can't run the desktop flow as designed".
@@ -24,7 +24,6 @@ export type MobileChoice = "simplified" | "desktop-only";
  * viewport is narrow (< 720px). Either alone is unreliable.
  */
 export function isMobile(): boolean {
-  if (typeof window === "undefined") return false;
   if (typeof window.matchMedia !== "function") return false;
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   const narrow = window.matchMedia("(max-width: 720px)").matches;
@@ -32,20 +31,12 @@ export function isMobile(): boolean {
 }
 
 /**
- * Mount the mobile gate card. Resolves once the user clicks one of the
- * two buttons; the card is removed before resolving.
- *
- * `desktop-only` is the "I'll come back on desktop" path — main.ts will
- * not boot the game in that case.
- *
- * `simplified` is the "play it anyway, touch-mode" path — main.ts will
- * boot the simplified touch flow.
+ * Mount the mobile gate card. Resolves once the user clicks "Play
+ * simplified"; the card is removed before resolving.
  */
-export function mountMobileGate(
-  container: HTMLElement,
-): Promise<MobileChoice> {
+export function mountMobileGate(container: HTMLElement): Promise<void> {
   ensureStyle();
-  return new Promise<MobileChoice>((resolve) => {
+  return new Promise<void>((resolve) => {
     const panel = document.createElement("div");
     panel.className = "bd-mobile-gate";
     panel.innerHTML = `
@@ -96,7 +87,7 @@ export function mountMobileGate(
         panel.classList.add("bd-mobile-gate--out");
         window.setTimeout(() => {
           panel.remove();
-          resolve("simplified");
+          resolve();
         }, 240);
       });
     }

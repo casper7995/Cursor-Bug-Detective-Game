@@ -17,7 +17,6 @@ import { renderLeaderboardPanel } from "./ui/leaderboard";
 import { createCountdown } from "./ui/countdown";
 import { createPostFx } from "./three/postFx";
 import {
-  isMuted,
   sfxClueFound,
   sfxCorrect,
   sfxHover,
@@ -28,9 +27,8 @@ import {
   sfxWrong,
   toggleMute,
 } from "./audio/audio";
-void isMuted; // exported for the Day 11 settings panel
 import { GameState, assertNever } from "./game/gameState";
-import { createTimer, ROUND_DURATION_MS, type Timer } from "./game/timer";
+import { createTimer, type Timer } from "./game/timer";
 import { InputManager } from "./input/inputManager";
 import { Action } from "./input/actions";
 import { isMobile, mountMobileGate } from "./ui/mobileGate";
@@ -64,14 +62,12 @@ if (queryParams.get("reset") === "1") {
     /* private browsing — nothing to reset */
   }
 }
-const forceMobile = queryParams.get("mobile") === "1";
-if (forceMobile || isMobile()) {
+if (queryParams.get("mobile") === "1" || isMobile()) {
   // Mobile users get a dismissable card explaining the desktop trade-off
-  // and a "Play simplified" button. If they pick simplified, boot the
-  // touch-friendly flow (skip-intro path + tap-to-investigate).
-  void mountMobileGate(root).then((choice) => {
-    if (choice === "simplified") bootGame({ simplified: true });
-  });
+  // and a "Play simplified" button. The gate's promise resolves only
+  // when they pick "Play simplified"; copy/share keep the gate up by
+  // design.
+  void mountMobileGate(root).then(() => bootGame({ simplified: true }));
 } else if (isSkipIntro()) {
   // Returning visitor opted in to "Skip intro" in Settings. Boot the game
   // immediately. WebAudio will resume on the first hover/click during
@@ -496,7 +492,6 @@ let introStep: IntroStep = "waiting";
 let introStepStartedAt = 0;
 let dollyStarted = false;
 let dioramaRevealed = false;
-let dollyPromise: Promise<void> | null = null;
 
 function setIntroStep(step: IntroStep, now: number): void {
   introStep = step;
@@ -524,12 +519,13 @@ function tickIntroChoreography(now: number, dtSec: number): void {
       if (now - introStepStartedAt > PEEL_BEGIN_MS) {
         pagePeel.start();
         sfxPeelTear();
-        dollyPromise = cameraRig.scriptedTo(
+        // Fire and forget; we poll `cameraRig.isDollying()` from the
+        // peeling case to know when to hand off to landing.
+        void cameraRig.scriptedTo(
           GAME_CAMERA_POS,
           GAME_CAMERA_LOOKAT,
           DOLLY_DURATION_MS,
         );
-        void dollyPromise; // fire and forget; tracked by isDollying()
         dollyStarted = true;
         setIntroStep("peeling", now);
       }
@@ -851,9 +847,5 @@ function friendlyTagName(tag: string): string {
       return tag;
   }
 }
-
-// Hush the unused-warning on ROUND_DURATION_MS while keeping the import
-// available for tests that probe the constant.
-void ROUND_DURATION_MS;
 
 } // end bootGameInner

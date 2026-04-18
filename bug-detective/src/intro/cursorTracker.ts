@@ -47,11 +47,6 @@ export class CursorTracker {
     this.smoothingHz = Math.max(0.1, hz);
   }
 
-  /** Where the mascot is currently aiming. Useful for choreographed handoff. */
-  getDesired(out?: THREE.Vector3): THREE.Vector3 {
-    return (out ?? new THREE.Vector3()).copy(this.desired);
-  }
-
   hasUserMoved(): boolean {
     return this.hasMoved;
   }

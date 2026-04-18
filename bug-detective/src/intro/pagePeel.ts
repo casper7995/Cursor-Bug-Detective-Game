@@ -99,7 +99,6 @@ export function makeFakePageTexture(width: number, height: number): THREE.Canvas
 
 export interface PagePeel {
   readonly mesh: THREE.Mesh;
-  readonly texture: THREE.CanvasTexture;
   /** Begin the peel animation. */
   start(): void;
   /** Per-frame animation tick. dt in seconds. */
@@ -107,7 +106,6 @@ export interface PagePeel {
   /** 0 = page fully covers; 1 = page fully gone. */
   readonly progress01: number;
   readonly done: boolean;
-  onComplete(handler: () => void): void;
 }
 
 const PEEL_DURATION_SEC = 1.4;
@@ -117,27 +115,27 @@ export interface PagePeelOptions {
   height: number;
   /** World-space center of the plane. */
   center: THREE.Vector3;
-  /** Plane segments (higher = smoother peel curl). */
-  segments?: number;
+  /**
+   * Plane segments. The peel curls along Y, so we want more vertical
+   * density than horizontal. Defaults are tuned for a smooth curve.
+   */
+  segmentsX?: number;
+  segmentsY?: number;
 }
 
 /**
- * The page is a high-resolution PlaneGeometry with a vertex shader that rolls
- * the bottom edge upward over time. Peel direction is from bottom to top.
- *
- * If `USE_PEEL_SHADER = false` the peel becomes a simple opacity/scale fade.
- * Day 6 decision gate flips this if the shader doesn't sell.
+ * The page is a PlaneGeometry with a vertex shader that rolls the bottom
+ * edge upward over time. Peel direction is from bottom to top. The shader
+ * is the only renderer — the previous fallback opacity-fade was retired
+ * after the Day 6 decision gate (it never shipped).
  */
-export const USE_PEEL_SHADER = true;
-
 export function createPagePeel(opts: PagePeelOptions): PagePeel {
-  const segments = opts.segments ?? 96;
-  const geo = new THREE.PlaneGeometry(
-    opts.width,
-    opts.height,
-    segments,
-    segments,
-  );
+  // Peel curl is cylindrical along Y, so density only matters vertically.
+  // 16×64 (=1k verts) replaces the original 96×96 (=9k verts) without any
+  // visible difference at game zoom.
+  const segX = opts.segmentsX ?? 16;
+  const segY = opts.segmentsY ?? 64;
+  const geo = new THREE.PlaneGeometry(opts.width, opts.height, segX, segY);
   const tex = makeFakePageTexture(1024, Math.floor(1024 * (opts.height / opts.width)));
 
   const uniforms = {
@@ -147,19 +145,13 @@ export function createPagePeel(opts: PagePeelOptions): PagePeel {
     uOpacity: { value: 1.0 },
   };
 
-  const material: THREE.ShaderMaterial | THREE.MeshBasicMaterial = USE_PEEL_SHADER
-    ? new THREE.ShaderMaterial({
-        uniforms,
-        side: THREE.DoubleSide,
-        transparent: true,
-        vertexShader: PEEL_VERT,
-        fragmentShader: PEEL_FRAG,
-      })
-    : new THREE.MeshBasicMaterial({
-        map: tex,
-        side: THREE.DoubleSide,
-        transparent: true,
-      });
+  const material = new THREE.ShaderMaterial({
+    uniforms,
+    side: THREE.DoubleSide,
+    transparent: true,
+    vertexShader: PEEL_VERT,
+    fragmentShader: PEEL_FRAG,
+  });
 
   const mesh = new THREE.Mesh(geo, material);
   mesh.position.copy(opts.center);
@@ -169,7 +161,6 @@ export function createPagePeel(opts: PagePeelOptions): PagePeel {
   let started = false;
   let elapsed = 0;
   let done = false;
-  let onCompleteHandler: (() => void) | null = null;
 
   function start(): void {
     started = true;
@@ -183,25 +174,15 @@ export function createPagePeel(opts: PagePeelOptions): PagePeel {
     const t = Math.min(1, elapsed / PEEL_DURATION_SEC);
     // Ease-out cubic so the peel snaps off at the end.
     const eased = 1 - Math.pow(1 - t, 3);
-    const peelValue = -0.05 + eased * 1.2; // overshoot to fully clear
-    if (USE_PEEL_SHADER) {
-      uniforms.uPeel.value = peelValue;
-    } else {
-      // Fallback fade.
-      const m = mesh.material as THREE.MeshBasicMaterial;
-      m.opacity = Math.max(0, 1 - t * 1.4);
-      mesh.scale.setScalar(1 + t * 0.05);
-    }
+    uniforms.uPeel.value = -0.05 + eased * 1.2; // overshoot to fully clear
     if (t >= 1) {
       done = true;
       mesh.visible = false;
-      onCompleteHandler?.();
     }
   }
 
   return {
     mesh,
-    texture: tex,
     start,
     update,
     get progress01() {
@@ -209,9 +190,6 @@ export function createPagePeel(opts: PagePeelOptions): PagePeel {
     },
     get done() {
       return done;
-    },
-    onComplete(handler) {
-      onCompleteHandler = handler;
     },
   };
 }

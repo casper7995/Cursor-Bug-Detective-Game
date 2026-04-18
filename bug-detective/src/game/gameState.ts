@@ -32,13 +32,6 @@ export class GameState {
     }
   }
 
-  /** Set the absolute clue count (used when main.ts owns the hover counter). */
-  setCluesUsed(n: number): void {
-    if (this.phase.kind === "investigating") {
-      this.phase = { ...this.phase, cluesUsed: n };
-    }
-  }
-
   /** Force-end investigation. The HUD calls this when timer expires or user submits. */
   enterAnswering(now: number): void {
     if (this.phase.kind !== "investigating") return;

@@ -93,10 +93,6 @@ export function renderShareCard(input: ShareCardInput): HTMLCanvasElement {
   return c;
 }
 
-export function shareCardDataUrl(canvas: HTMLCanvasElement): string {
-  return canvas.toDataURL("image/png");
-}
-
 export function shareCardBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
   return new Promise((resolve) => canvas.toBlob((b) => resolve(b)));
 }

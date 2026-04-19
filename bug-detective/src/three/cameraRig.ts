@@ -95,6 +95,11 @@ export class CameraRig {
   isDollying(): boolean {
     return this.dolly !== null;
   }
+
+  /** Copy the camera's current look-at target (static or mid-dolly). */
+  copyLookAtInto(out: THREE.Vector3): void {
+    out.copy(this.currentLookAt);
+  }
 }
 
 function easeInOutCubic(t: number): number {

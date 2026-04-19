@@ -35,9 +35,10 @@ export function showTitleSplash(container: HTMLElement): TitleSplash {
 
   const ready = new Promise<void>((resolve) => {
     let dismissed = false;
-    const dismiss = (): void => {
+    const dismiss = (label: string): void => {
       if (dismissed) return;
       dismissed = true;
+      console.info(`[bug-detective] title splash dismissed via ${label}`);
       overlay.classList.add("bd-title--out");
       window.setTimeout(() => {
         overlay.remove();
@@ -45,14 +46,33 @@ export function showTitleSplash(container: HTMLElement): TitleSplash {
       }, 350);
       teardown();
     };
+    // Use document-level capture-phase listeners. Some embedded views
+    // (Simple Browser, sandboxed iframes) only deliver one of
+    // pointerdown/mousedown/click and may not bubble to window or to the
+    // overlay element. Capture-phase on document is the most reliable
+    // path: events are dispatched here BEFORE any element handler can
+    // stopPropagation. We listen for several event types so whichever
+    // the host browser emits will fire dismiss.
+    const onPointerDown = (): void => dismiss("pointerdown");
+    const onMouseDown = (): void => dismiss("mousedown");
+    const onClick = (): void => dismiss("click");
+    const onTouchStart = (): void => dismiss("touchstart");
+    const onKeyDown = (): void => dismiss("keydown");
     const teardown = (): void => {
-      window.removeEventListener("pointerdown", dismiss);
-      window.removeEventListener("keydown", dismiss);
-      window.removeEventListener("touchstart", dismiss);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("mousedown", onMouseDown, true);
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("touchstart", onTouchStart, true);
+      window.removeEventListener("keydown", onKeyDown, true);
     };
-    window.addEventListener("pointerdown", dismiss, { once: true });
-    window.addEventListener("keydown", dismiss, { once: true });
-    window.addEventListener("touchstart", dismiss, { once: true });
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("mousedown", onMouseDown, true);
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("touchstart", onTouchStart, {
+      capture: true,
+      passive: true,
+    });
+    window.addEventListener("keydown", onKeyDown, true);
   });
 
   return { ready };
@@ -72,10 +92,11 @@ function ensureStyle(): void {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 900;
+      z-index: 100000;
       font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
       transition: opacity 320ms ease-out;
       cursor: pointer;
+      touch-action: manipulation;
     }
     .bd-title--out { opacity: 0; pointer-events: none; }
     .bd-title__inner { text-align: center; max-width: 520px; padding: 24px; }

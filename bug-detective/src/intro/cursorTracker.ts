@@ -1,22 +1,18 @@
 import * as THREE from "three";
 
 /**
- * Lerps a `mascot` Object3D to follow the mouse pointer projected onto a
- * `target` mesh via raycasting. Used both during the intro (target = page
- * plane) and during gameplay (target = desk surface).
+ * Raycasts pointer into a `target` mesh and exposes the hit as a feet
+ * world position. Does not move the mascot — use `MascotController` for that.
  */
 export class CursorTracker {
   private readonly raycaster = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
-  private readonly desired = new THREE.Vector3();
+  private readonly feetWorld = new THREE.Vector3();
   private readonly intersects: THREE.Intersection[] = [];
   private hasMoved = false;
+  private hasHit = false;
   private domTarget: HTMLElement | null = null;
   private yOffset = 0.05;
-  private smoothingHz = 12;
-  // Cached rect — recomputed on attach + window resize. mousemove fires
-  // up to 1 kHz on high-poll-rate mice, and getBoundingClientRect()
-  // forces a synchronous layout flush. Caching saves a flush per move.
   private rectLeft = 0;
   private rectTop = 0;
   private rectWidth = 1;
@@ -24,7 +20,6 @@ export class CursorTracker {
 
   constructor(
     private readonly camera: THREE.Camera,
-    private readonly mascot: THREE.Object3D,
     private target: THREE.Object3D,
   ) {}
 
@@ -33,19 +28,28 @@ export class CursorTracker {
     this.domTarget = domTarget;
     this.refreshRect();
     domTarget.addEventListener("mousemove", this.onMouseMove);
-    domTarget.addEventListener("touchmove", this.onTouchMove, { passive: true });
+    domTarget.addEventListener("pointermove", this.onPointerMove, {
+      passive: true,
+    });
+    domTarget.addEventListener("pointerdown", this.onPointerDown, {
+      passive: true,
+    });
+    domTarget.addEventListener("touchmove", this.onTouchMove, {
+      passive: true,
+    });
     window.addEventListener("resize", this.refreshRect);
   }
 
   detach(): void {
     if (!this.domTarget) return;
     this.domTarget.removeEventListener("mousemove", this.onMouseMove);
+    this.domTarget.removeEventListener("pointermove", this.onPointerMove);
+    this.domTarget.removeEventListener("pointerdown", this.onPointerDown);
     this.domTarget.removeEventListener("touchmove", this.onTouchMove);
     window.removeEventListener("resize", this.refreshRect);
     this.domTarget = null;
   }
 
-  /** Re-measure the canvas rect. Wired to attach + window resize. */
   private readonly refreshRect = (): void => {
     if (!this.domTarget) return;
     const rect = this.domTarget.getBoundingClientRect();
@@ -63,25 +67,12 @@ export class CursorTracker {
     this.yOffset = y;
   }
 
-  setSmoothing(hz: number): void {
-    this.smoothingHz = Math.max(0.1, hz);
-  }
-
   hasUserMoved(): boolean {
     return this.hasMoved;
   }
 
-  /**
-   * Programmatically inject a "mouse" position in canvas-local pixels.
-   * Used by the simplified touch flow (mobile) to translate a tap into
-   * the same NDC update path mousemove takes.
-   *
-   * Pass coordinates outside the canvas (e.g. -9999, -9999) to put the
-   * cursor "off-screen" so the next raycast misses everything.
-   */
   setMouse(canvasX: number, canvasY: number): void {
     if (!this.domTarget) {
-      // No DOM target attached → fake one off the renderer canvas size.
       this.ndc.x = canvasX;
       this.ndc.y = canvasY;
       this.hasMoved = true;
@@ -92,22 +83,44 @@ export class CursorTracker {
     this.hasMoved = true;
   }
 
-  /** Advance mascot toward latest raycast hit. */
-  update(dt: number): void {
-    if (!this.hasMoved) return;
-    this.raycaster.setFromCamera(this.ndc, this.camera as THREE.PerspectiveCamera);
+  /**
+   * Raycast and write feet world position. Returns whether the ray hit the target.
+   */
+  updateFeetTarget(): boolean {
+    this.hasHit = false;
+    if (!this.hasMoved) return false;
+    this.raycaster.setFromCamera(
+      this.ndc,
+      this.camera as THREE.PerspectiveCamera,
+    );
     this.intersects.length = 0;
     this.raycaster.intersectObject(this.target, false, this.intersects);
-    if (this.intersects.length === 0) return;
+    if (this.intersects.length === 0) return false;
     const first = this.intersects[0];
-    if (!first) return;
-    this.desired.copy(first.point);
-    this.desired.y += this.yOffset;
-    const alpha = 1 - Math.exp(-this.smoothingHz * dt);
-    this.mascot.position.lerp(this.desired, alpha);
+    if (!first) return false;
+    this.feetWorld.copy(first.point);
+    this.feetWorld.y += this.yOffset;
+    this.hasHit = true;
+    return true;
+  }
+
+  copyFeetWorldTo(out: THREE.Vector3): void {
+    out.copy(this.feetWorld);
+  }
+
+  get hasFeetHit(): boolean {
+    return this.hasHit;
   }
 
   private readonly onMouseMove = (e: MouseEvent): void => {
+    this.updateNdcFromClient(e.clientX, e.clientY);
+  };
+
+  private readonly onPointerMove = (e: PointerEvent): void => {
+    this.updateNdcFromClient(e.clientX, e.clientY);
+  };
+
+  private readonly onPointerDown = (e: PointerEvent): void => {
     this.updateNdcFromClient(e.clientX, e.clientY);
   };
 

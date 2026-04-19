@@ -4,6 +4,8 @@ import type { DioramaObjects } from "../scene/desktopDiorama";
 export interface HudHoverInfo {
   /** The userData.tag of the currently hovered prop, if any. */
   tag: string | null;
+  /** First raycast hit (for inspect zoom / bounds). */
+  object: THREE.Object3D | null;
   /** Screen-space mouse position used for tooltip anchoring. */
   clientX: number;
   clientY: number;
@@ -71,6 +73,12 @@ export function createHud(
   // up to 1 kHz worth of garbage on high-poll-rate mice).
   const mouseClient = { x: -10, y: -10, has: false };
   const intersects: THREE.Intersection[] = [];
+  const hoverScratch: HudHoverInfo = {
+    tag: null,
+    object: null,
+    clientX: 0,
+    clientY: 0,
+  };
 
   // Cache the canvas rect — getBoundingClientRect forces a layout flush
   // and we don't want one per mousemove.
@@ -88,14 +96,26 @@ export function createHud(
   refreshRect();
   window.addEventListener("resize", refreshRect);
 
-  const onMouseMove = (e: MouseEvent): void => {
-    mouseNdc.x = ((e.clientX - rectLeft) / rectWidth) * 2 - 1;
-    mouseNdc.y = -((e.clientY - rectTop) / rectHeight) * 2 + 1;
-    mouseClient.x = e.clientX - rectLeft;
-    mouseClient.y = e.clientY - rectTop;
+  const updatePointerFromClient = (clientX: number, clientY: number): void => {
+    mouseNdc.x = ((clientX - rectLeft) / rectWidth) * 2 - 1;
+    mouseNdc.y = -((clientY - rectTop) / rectHeight) * 2 + 1;
+    mouseClient.x = clientX - rectLeft;
+    mouseClient.y = clientY - rectTop;
     mouseClient.has = true;
   };
+
+  const onMouseMove = (e: MouseEvent): void => {
+    updatePointerFromClient(e.clientX, e.clientY);
+  };
+  const onPointerMove = (e: PointerEvent): void => {
+    updatePointerFromClient(e.clientX, e.clientY);
+  };
+  const onPointerDown = (e: PointerEvent): void => {
+    updatePointerFromClient(e.clientX, e.clientY);
+  };
   container.addEventListener("mousemove", onMouseMove);
+  container.addEventListener("pointermove", onPointerMove);
+  container.addEventListener("pointerdown", onPointerDown, { passive: true });
 
   // Cache last text written so we don't churn the DOM every frame
   // (timer ticks tenths-of-seconds; status/clues change rarely).
@@ -138,7 +158,11 @@ export function createHud(
 
   function update(camera: THREE.Camera): HudHoverInfo {
     if (!mouseClient.has) {
-      return { tag: null, clientX: 0, clientY: 0 };
+      hoverScratch.tag = null;
+      hoverScratch.object = null;
+      hoverScratch.clientX = 0;
+      hoverScratch.clientY = 0;
+      return hoverScratch;
     }
     raycaster.setFromCamera(mouseNdc, camera as THREE.PerspectiveCamera);
     intersects.length = 0;
@@ -148,15 +172,20 @@ export function createHud(
       intersects,
     );
     const first = intersects[0];
-    const tag =
+    hoverScratch.tag =
       first && typeof first.object.userData.tag === "string"
         ? (first.object.userData.tag as string)
         : null;
-    return { tag, clientX: mouseClient.x, clientY: mouseClient.y };
+    hoverScratch.object = first ? first.object : null;
+    hoverScratch.clientX = mouseClient.x;
+    hoverScratch.clientY = mouseClient.y;
+    return hoverScratch;
   }
 
   function destroy(): void {
     container.removeEventListener("mousemove", onMouseMove);
+    container.removeEventListener("pointermove", onPointerMove);
+    container.removeEventListener("pointerdown", onPointerDown);
     window.removeEventListener("resize", refreshRect);
     wrapper.remove();
   }

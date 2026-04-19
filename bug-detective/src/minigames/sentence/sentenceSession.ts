@@ -18,7 +18,6 @@ import {
 import type { AnomalyId } from "../../scene/anomalies";
 import { pickTemplate } from "./templates";
 import {
-  classifyEnding,
   injectName,
   scoreSentenceRun,
   shouldEmitOutcome,
@@ -487,7 +486,3 @@ function inRect(
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
 
-// Small helper to avoid TS unused warnings on coords used during draw.
-export function _unused(): void {
-  void [classifyEnding];
-}

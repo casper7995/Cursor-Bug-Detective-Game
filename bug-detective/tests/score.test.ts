@@ -11,9 +11,9 @@ function nb(partial: NotebookState): NotebookState {
   });
   return {
     runner: partial.runner ?? page(1000),
-    sticky: partial.sticky ?? page(1000),
-    clock: partial.clock ?? page(1000),
-    photo: partial.photo ?? page(1000),
+    sentence: partial.sentence ?? page(1000),
+    errand: partial.errand ?? page(1000),
+    tamper: partial.tamper ?? page(1000),
   };
 }
 
@@ -48,16 +48,17 @@ describe("computeScore", () => {
   it("weighted game scores: exact mix", () => {
     const notebook: NotebookState = {
       runner: { clueToken: "a", gameScore: 300, solvedAtMs: 1 },
-      sticky: { clueToken: "b", gameScore: 400, solvedAtMs: 1 },
-      clock: { clueToken: "c", gameScore: 500, solvedAtMs: 1 },
-      photo: { clueToken: "d", gameScore: 600, solvedAtMs: 1 },
+      sentence: { clueToken: "b", gameScore: 400, solvedAtMs: 1 },
+      errand: { clueToken: "c", gameScore: 500, solvedAtMs: 1 },
+      tamper: { clueToken: "d", gameScore: 600, solvedAtMs: 1 },
     };
     const { score, breakdown } = computeScore({
       correct: true,
       elapsedMs: 0,
       notebook,
     });
-    expect(breakdown.weightedSum).toBeCloseTo(440, 5);
-    expect(score).toBe(1440);
+    // Equal 0.25 weights → (300+400+500+600)/4 = 450; final = 450 + 1000.
+    expect(breakdown.weightedSum).toBeCloseTo(450, 5);
+    expect(score).toBe(1450);
   });
 });

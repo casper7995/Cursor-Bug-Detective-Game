@@ -37,9 +37,9 @@ const STYLE_LOUPE =
 
 const SLOT_LABEL: Record<string, string> = {
   runner: "MONITOR",
-  sticky: "ENVELOPE",
-  clock: "REAGENT",
-  photo: "LAMP",
+  sentence: "ENVELOPE",
+  errand: "REAGENT",
+  tamper: "LAMP",
 };
 
 export function createHud(
@@ -67,7 +67,7 @@ export function createHud(
   cardRow.style.cssText =
     "display:flex;flex-direction:row;gap:8px;flex-wrap:wrap;max-width:min(96vw,520px);";
   const cardEls: Record<string, HTMLDivElement> = {};
-  for (const slot of ["runner", "sticky", "clock", "photo"] as const) {
+  for (const slot of ["runner", "sentence", "errand", "tamper"] as const) {
     const c = document.createElement("div");
     c.style.cssText = `width:112px;min-height:52px;box-sizing:border-box;border:1px dashed rgba(192,133,50,0.55);border-radius:6px;padding:6px 8px;background:rgba(20,18,11,0.35);`;
     c.dataset.slot = slot;
@@ -186,8 +186,9 @@ export function createHud(
   }
 
   function setNotebook(nb: NotebookState): void {
-    const full = nb.runner && nb.sticky && nb.clock && nb.photo ? true : false;
-    for (const slot of ["runner", "sticky", "clock", "photo"] as const) {
+    const full =
+      nb.runner && nb.sentence && nb.errand && nb.tamper ? true : false;
+    for (const slot of ["runner", "sentence", "errand", "tamper"] as const) {
       const card = cardEls[slot]!;
       const page = nb[slot];
       const tok = card.querySelector(".tok") as HTMLDivElement;

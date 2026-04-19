@@ -465,7 +465,7 @@ function bootGameInner(simplified: boolean): void {
       const session = new EnvelopeSession({
         overlayCtx: runnerOverlay.ctx,
         getOverlayViewport: getVp,
-        targetWord: words.sticky,
+        targetWord: words.sentence,
         onExit,
       });
       session.attachPointer(runnerOverlay.canvas);
@@ -474,7 +474,7 @@ function bootGameInner(simplified: boolean): void {
       const session = new ReagentSession({
         overlayCtx: runnerOverlay.ctx,
         getOverlayViewport: getVp,
-        clueToken: words.clock,
+        clueToken: words.errand,
         onExit,
       });
       session.attachPointer(runnerOverlay.canvas);
@@ -483,7 +483,7 @@ function bootGameInner(simplified: boolean): void {
       const session = new LampSession({
         overlayCtx: runnerOverlay.ctx,
         getOverlayViewport: getVp,
-        clueWord: words.photo,
+        clueWord: words.tamper,
         onExit,
       });
       session.attachPointer(runnerOverlay.canvas);
@@ -904,7 +904,7 @@ function bootGameInner(simplified: boolean): void {
     hud.setStatusText("which one is the bug?");
     if (state.phase.kind !== "answering") return;
     const nb = state.phase.notebook;
-    const ev = [nb.runner, nb.sticky, nb.clock, nb.photo]
+    const ev = [nb.runner, nb.sentence, nb.errand, nb.tamper]
       .map((p) => p?.clueToken.toUpperCase())
       .filter(Boolean)
       .join(" · ");
@@ -1274,10 +1274,10 @@ function bootGameInner(simplified: boolean): void {
         const kind = deskMinigame.kind;
         const slot =
           kind === "envelope"
-            ? "sticky"
+            ? "sentence"
             : kind === "reagent"
-              ? "clock"
-              : "photo";
+              ? "errand"
+              : "tamper";
         state.pinNotebookPage(slot, {
           clueToken: out.clueToken,
           gameScore: out.score,

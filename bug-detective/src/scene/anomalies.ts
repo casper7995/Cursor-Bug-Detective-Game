@@ -30,9 +30,9 @@ export interface AnomalyDef {
   /** Four single-word clues (mini-games) — combined they disambiguate the daily case. */
   readonly gameClueWords: {
     readonly runner: string;
-    readonly sticky: string;
-    readonly clock: string;
-    readonly photo: string;
+    readonly sentence: string;
+    readonly errand: string;
+    readonly tamper: string;
   };
   /** Short tooltip shown when the player hovers the anomalous prop. */
   readonly tooltipHint: string;
@@ -64,9 +64,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "calendar",
     gameClueWords: {
       runner: "calendar",
-      sticky: "TOMORROW",
-      clock: "AHEAD",
-      photo: "DATE",
+      sentence: "TOMORROW",
+      errand: "AHEAD",
+      tamper: "DATE",
     },
     tooltipHint: "calendar — date looks off",
     revealText: "The calendar shows tomorrow's date — one day too far ahead.",
@@ -106,9 +106,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "mug",
     gameClueWords: {
       runner: "mug",
-      sticky: "NAME",
-      clock: "YOURS",
-      photo: "LABEL",
+      sentence: "NAME",
+      errand: "YOURS",
+      tamper: "LABEL",
     },
     tooltipHint: "mug — label feels familiar",
     revealText: "The mug has YOUR name printed on it. Someone left it for you.",
@@ -129,9 +129,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "reagent-tray",
     gameClueWords: {
       runner: "clock",
-      sticky: "BACKWARDS",
-      clock: "REVERSE",
-      photo: "TIME",
+      sentence: "BACKWARDS",
+      errand: "REVERSE",
+      tamper: "TIME",
     },
     tooltipHint: "reagent tray — swirl runs wrong",
     revealText:
@@ -152,9 +152,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "monitor-screen",
     gameClueWords: {
       runner: "screen",
-      sticky: "GLASS",
-      clock: "ROOM",
-      photo: "GHOST",
+      sentence: "GLASS",
+      errand: "ROOM",
+      tamper: "GHOST",
     },
     tooltipHint: "monitor — reflection looks off",
     revealText:
@@ -175,9 +175,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "case-file",
     gameClueWords: {
       runner: "photo",
-      sticky: "FAMILIAR",
-      clock: "BEFORE",
-      photo: "SELF",
+      sentence: "FAMILIAR",
+      errand: "BEFORE",
+      tamper: "SELF",
     },
     tooltipHint: "case file — that face is familiar",
     revealText: "The case file shows your own face — looking back at you.",
@@ -198,9 +198,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "evidence-envelope",
     gameClueWords: {
       runner: "note",
-      sticky: "WARNING",
-      clock: "BEHIND",
-      photo: "TEXT",
+      sentence: "WARNING",
+      errand: "BEHIND",
+      tamper: "TEXT",
     },
     tooltipHint: "evidence envelope — new message",
     revealText:
@@ -222,9 +222,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "case-file",
     gameClueWords: {
       runner: "case",
-      sticky: "FLOAT",
-      clock: "DESK",
-      photo: "FILE",
+      sentence: "FLOAT",
+      errand: "DESK",
+      tamper: "FILE",
     },
     tooltipHint: "case file — what's holding it up?",
     revealText:
@@ -245,9 +245,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "lamp-shadow",
     gameClueWords: {
       runner: "shadow",
-      sticky: "LAMP",
-      clock: "WRONG",
-      photo: "LIGHT",
+      sentence: "LAMP",
+      errand: "WRONG",
+      tamper: "LIGHT",
     },
     tooltipHint: "shadow — wrong direction",
     revealText: "The shadow points TOWARD the light, not away from it.",
@@ -274,9 +274,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "coffee-steam",
     gameClueWords: {
       runner: "steam",
-      sticky: "DOWN",
-      clock: "CUP",
-      photo: "HEAT",
+      sentence: "DOWN",
+      errand: "CUP",
+      tamper: "HEAT",
     },
     tooltipHint: "steam — drifting the wrong way",
     revealText: "The coffee steam is drifting downward instead of rising.",
@@ -296,9 +296,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "case-file",
     gameClueWords: {
       runner: "case",
-      sticky: "BLANK",
-      clock: "PAGE",
-      photo: "FILE",
+      sentence: "BLANK",
+      errand: "PAGE",
+      tamper: "FILE",
     },
     tooltipHint: "case file — strangely silent",
     revealText:
@@ -320,9 +320,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "keyboard",
     gameClueWords: {
       runner: "keyboard",
-      sticky: "EXTRA",
-      clock: "KEY",
-      photo: "RED",
+      sentence: "EXTRA",
+      errand: "KEY",
+      tamper: "RED",
     },
     tooltipHint: "keyboard — one key too many",
     revealText: "There's a giant red key on the keyboard that doesn't belong.",
@@ -349,9 +349,9 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     targetTag: "plant",
     gameClueWords: {
       runner: "plant",
-      sticky: "GLITCH",
-      clock: "LEAF",
-      photo: "POT",
+      sentence: "GLITCH",
+      errand: "LEAF",
+      tamper: "POT",
     },
     tooltipHint: "plant — leaves twitching",
     revealText: "The plant's leaves twitch and snap as if rendered wrong.",
@@ -384,9 +384,9 @@ export function pickAnomaly(seed: number): PickedAnomaly {
 
   const clueTokens = [
     def.gameClueWords.runner,
-    def.gameClueWords.sticky,
-    def.gameClueWords.clock,
-    def.gameClueWords.photo,
+    def.gameClueWords.sentence,
+    def.gameClueWords.errand,
+    def.gameClueWords.tamper,
   ].map((t) => t.toLowerCase());
 
   function overlapsClues(choice: string): boolean {

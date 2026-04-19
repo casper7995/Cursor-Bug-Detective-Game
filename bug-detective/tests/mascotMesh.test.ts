@@ -13,6 +13,8 @@ function makeMockCanvasContext(): CanvasRenderingContext2D {
     moveTo: noop,
     stroke: noop,
     arc: noop,
+    quadraticCurveTo: noop,
+    bezierCurveTo: noop,
     fillRect: noop,
     strokeRect: noop,
     createRadialGradient: () => gradient,
@@ -156,7 +158,7 @@ describe("createMascotMesh", () => {
       (child) =>
         child instanceof THREE.Mesh &&
         (child.material as THREE.MeshStandardMaterial).transparent === true &&
-        child.renderOrder === 4,
+        child.renderOrder === 6,
     ) as THREE.Mesh | undefined;
     expect(facePlane).toBeDefined();
 
@@ -208,7 +210,8 @@ describe("createMascotMesh", () => {
 
     const leftMat = leftArm!.material as THREE.MeshStandardMaterial;
     const rightMat = rightArm!.material as THREE.MeshStandardMaterial;
-    expect(leftMat.transparent).toBe(true);
+    expect(leftMat.transparent).toBe(false);
     expect(rightMat.transparent).toBe(false);
+    expect(leftMat.color.getHex()).toBe(0xe8e8e8);
   });
 });

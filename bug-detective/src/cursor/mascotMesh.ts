@@ -40,20 +40,10 @@ export function createMascotMesh(): MascotMesh {
     roughness: 0.42,
     metalness: 0.08,
   });
-  // Translucent shell for the upper body (torso + arm cylinders) so the
-  // mascot reads as "half charcoal, half glass" like the reference. Keep it
-  // subtle; if this shell gets too opaque the body just turns into white fog.
-  const bodyShellMat = new THREE.MeshPhysicalMaterial({
-    color: 0xf9fcff,
-    roughness: 0.12,
-    metalness: 0,
-    transparent: true,
-    opacity: 0.24,
-    clearcoat: 0.9,
-    clearcoatRoughness: 0.1,
-    envMapIntensity: 0.75,
-    side: THREE.DoubleSide,
-    depthWrite: false,
+  const bodyLightMat = new THREE.MeshStandardMaterial({
+    color: 0xe8e8e8,
+    roughness: 0.42,
+    metalness: 0.08,
   });
 
   const torsoGroup = new THREE.Group();
@@ -71,10 +61,10 @@ export function createMascotMesh(): MascotMesh {
       Math.PI / 2,
       Math.PI,
     ),
-    bodyShellMat,
+    bodyLightMat,
   );
   leftTorsoShell.position.x = 0;
-  leftTorsoShell.renderOrder = 2;
+  leftTorsoShell.castShadow = true;
   torsoGroup.add(leftTorsoShell);
 
   const rightTorsoShell = new THREE.Mesh(
@@ -104,10 +94,10 @@ export function createMascotMesh(): MascotMesh {
       0,
       Math.PI / 2,
     ),
-    bodyShellMat,
+    bodyLightMat,
   );
   leftTorsoCap.position.set(0, 0.15, 0);
-  leftTorsoCap.renderOrder = 2;
+  leftTorsoCap.castShadow = true;
   torsoGroup.add(leftTorsoCap);
 
   const rightTorsoCap = new THREE.Mesh(
@@ -172,11 +162,11 @@ export function createMascotMesh(): MascotMesh {
     // shoulder/elbow balls read as "internals visible through glass").
     const upperArm = new THREE.Mesh(
       new THREE.CylinderGeometry(0.09, 0.085, 0.19, 16),
-      side === "L" ? bodyShellMat : bodyDarkMat,
+      side === "L" ? bodyLightMat : bodyDarkMat,
     );
     upperArm.position.set(sx * 0.03, -0.11, 0.03);
     upperArm.rotation.z = sx * -0.14;
-    upperArm.renderOrder = 2;
+    upperArm.castShadow = true;
     swing.add(upperArm);
 
     const elbow = new THREE.Mesh(
@@ -189,11 +179,11 @@ export function createMascotMesh(): MascotMesh {
 
     const forearm = new THREE.Mesh(
       new THREE.CylinderGeometry(0.085, 0.08, 0.17, 16),
-      side === "L" ? bodyShellMat : bodyDarkMat,
+      side === "L" ? bodyLightMat : bodyDarkMat,
     );
     forearm.position.set(sx * 0.095, -0.305, 0.11);
     forearm.rotation.x = -0.42;
-    forearm.renderOrder = 2;
+    forearm.castShadow = true;
     swing.add(forearm);
 
     const hand = new THREE.Group();
@@ -225,7 +215,7 @@ export function createMascotMesh(): MascotMesh {
 
     const thigh = new THREE.Mesh(
       new THREE.CylinderGeometry(0.105, 0.1, 0.19, 16),
-      side === "L" ? bodyShellMat : bodyDarkMat,
+      side === "L" ? bodyLightMat : bodyDarkMat,
     );
     thigh.position.y = -0.1;
     thigh.castShadow = true;
@@ -241,7 +231,7 @@ export function createMascotMesh(): MascotMesh {
 
     const shin = new THREE.Mesh(
       new THREE.CylinderGeometry(0.095, 0.085, 0.17, 16),
-      side === "L" ? bodyShellMat : bodyDarkMat,
+      side === "L" ? bodyLightMat : bodyDarkMat,
     );
     shin.position.y = -0.3;
     shin.castShadow = true;
@@ -249,7 +239,7 @@ export function createMascotMesh(): MascotMesh {
 
     const foot = new THREE.Mesh(
       new THREE.BoxGeometry(0.17, 0.085, 0.22),
-      side === "L" ? bodyShellMat : bodyDarkMat,
+      side === "L" ? bodyLightMat : bodyDarkMat,
     );
     foot.position.set(0, -0.42, 0.06);
     foot.castShadow = true;
@@ -281,76 +271,86 @@ export function createMascotMesh(): MascotMesh {
   // Inner solid dark shape representing the Cursor logo wedge
   const cursorWedge = new THREE.Group();
   cursorWedge.name = "cursorWedge";
-  cursorWedge.renderOrder = 1;
+  cursorWedge.renderOrder = 5;
   headGroup.add(cursorWedge);
 
-  const logoMat = new THREE.MeshStandardMaterial({
-    color: 0x151822, // Dark charcoal
-    roughness: 0.3,
-    metalness: 0.2,
+  // Logo: two black mesh pieces on the inner glass surface (not cut-through solids).
+  const logoMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    side: THREE.DoubleSide,
+    depthWrite: false,
   });
 
   const d = 0.01; // inset from glass
   const ih = h - d; // inner half-size
 
-  // The Cursor logo is formed by two wedge pieces inside the cube.
-  // The plane they sit on is the diagonal from Top-Left to Top-Right to Bottom-Front.
-  const vLT = new THREE.Vector3(-ih, ih, -ih);
-  const vRT = new THREE.Vector3(ih, ih, ih);
-  const vBT = new THREE.Vector3(ih, ih, -ih);
-  const vFB = new THREE.Vector3(-ih, -ih, ih);
+  const p_ih = ih - 0.01; // Just inside the glass shell
 
-  // M1 and M2 define the gap width on the top front edge.
-  const vM1 = new THREE.Vector3(0.1 * ih, ih, 0.1 * ih);
-  const vM2 = new THREE.Vector3(0.3 * ih, ih, 0.3 * ih);
+  // Left piece (Top of the head, occupying 50% of the top face)
+  // This is an "inverted V" on the TOP of the cube (the +Y face)
+  const P_Left_TopFront = new THREE.Vector3(-p_ih, p_ih, p_ih); // Corner facing camera
+  const P_Left_TopBack = new THREE.Vector3(-p_ih, p_ih, -p_ih); // Back-left corner
+  const P_Left_TopRight = new THREE.Vector3(p_ih, p_ih, p_ih); // Front-right corner
 
-  // B2 defines the bottom tip of the smaller right triangle.
-  const vB2 = new THREE.Vector3(0.2 * ih, 0.2 * ih, ih);
+  // To fix the edge looking non-black, we fold the geometry down the -X face slightly
+  // and down the +Z face slightly along the top-front edges.
+  const edgeWidth = 0.04;
 
-  // --- Left Piece (Main Pointer) ---
-  const leftWedgeGeo = new THREE.BufferGeometry();
+  // Left side fold (-X face)
+  const P_Left_EdgeBack = new THREE.Vector3(-p_ih, p_ih - edgeWidth, -p_ih);
+  const P_Left_EdgeFront = new THREE.Vector3(-p_ih, p_ih - edgeWidth, p_ih);
+
+  // Right side fold (+Z face)
+  const P_Right_EdgeLeft = new THREE.Vector3(-p_ih, p_ih - edgeWidth, p_ih);
+  const P_Right_EdgeRight = new THREE.Vector3(p_ih, p_ih - edgeWidth, p_ih);
+
+  const leftGeo = new THREE.BufferGeometry();
   const leftPos = new Float32Array([
-    ...vLT.toArray(),
-    ...vM1.toArray(),
-    ...vBT.toArray(), // Top Face
-    ...vLT.toArray(),
-    ...vFB.toArray(),
-    ...vM1.toArray(), // Front Diagonal Face
-    ...vLT.toArray(),
-    ...vBT.toArray(),
-    ...vFB.toArray(), // Left Inner Face
-    ...vM1.toArray(),
-    ...vFB.toArray(),
-    ...vBT.toArray(), // Right Inner Face
-  ]);
-  leftWedgeGeo.setAttribute("position", new THREE.BufferAttribute(leftPos, 3));
-  leftWedgeGeo.computeVertexNormals();
-  const leftWedgeMesh = new THREE.Mesh(leftWedgeGeo, logoMat);
-  cursorWedge.add(leftWedgeMesh);
+    // Top face triangle
+    ...P_Left_TopBack.toArray(),
+    ...P_Left_TopFront.toArray(),
+    ...P_Left_TopRight.toArray(),
 
-  // --- Right Piece (Small Wedge) ---
-  const rightWedgeGeo = new THREE.BufferGeometry();
-  const rightPos = new Float32Array([
-    ...vM2.toArray(),
-    ...vBT.toArray(),
-    ...vRT.toArray(), // Top Face
-    ...vM2.toArray(),
-    ...vB2.toArray(),
-    ...vRT.toArray(), // Front Diagonal Face
-    ...vM2.toArray(),
-    ...vBT.toArray(),
-    ...vB2.toArray(), // Left Inner Face
-    ...vRT.toArray(),
-    ...vB2.toArray(),
-    ...vBT.toArray(), // Right Inner Face
+    // Left face edge strip (Quad on -X face)
+    ...P_Left_TopBack.toArray(),
+    ...P_Left_EdgeBack.toArray(),
+    ...P_Left_EdgeFront.toArray(),
+
+    ...P_Left_TopBack.toArray(),
+    ...P_Left_EdgeFront.toArray(),
+    ...P_Left_TopFront.toArray(),
+
+    // Right face edge strip (Quad on +Z face)
+    ...P_Left_TopFront.toArray(),
+    ...P_Right_EdgeLeft.toArray(),
+    ...P_Right_EdgeRight.toArray(),
+
+    ...P_Left_TopFront.toArray(),
+    ...P_Right_EdgeRight.toArray(),
+    ...P_Left_TopRight.toArray(),
   ]);
-  rightWedgeGeo.setAttribute(
-    "position",
-    new THREE.BufferAttribute(rightPos, 3),
-  );
-  rightWedgeGeo.computeVertexNormals();
-  const rightWedgeMesh = new THREE.Mesh(rightWedgeGeo, logoMat);
-  cursorWedge.add(rightWedgeMesh);
+  leftGeo.setAttribute("position", new THREE.BufferAttribute(leftPos, 3));
+  leftGeo.computeVertexNormals();
+  const leftMesh = new THREE.Mesh(leftGeo, logoMat);
+  cursorWedge.add(leftMesh);
+
+  // Right piece (On the +Z face, matching the older design but on the surface)
+  // The older design was a triangle with a gap.
+  const gap = 0.15 * p_ih;
+  const P_Right_TopLeft = new THREE.Vector3(-p_ih + gap, p_ih - gap, p_ih);
+  const P_Right_Bottom = new THREE.Vector3(-p_ih + gap, -p_ih + gap * 2, p_ih);
+  const P_Right_TopRight = new THREE.Vector3(p_ih, p_ih - gap, p_ih);
+
+  const rightGeo = new THREE.BufferGeometry();
+  const rightPos = new Float32Array([
+    ...P_Right_TopLeft.toArray(),
+    ...P_Right_Bottom.toArray(),
+    ...P_Right_TopRight.toArray(),
+  ]);
+  rightGeo.setAttribute("position", new THREE.BufferAttribute(rightPos, 3));
+  rightGeo.computeVertexNormals();
+  const rightMesh = new THREE.Mesh(rightGeo, logoMat);
+  cursorWedge.add(rightMesh);
 
   // Clear glass shell
   const shellMat = new THREE.MeshPhysicalMaterial({
@@ -468,7 +468,7 @@ export function createMascotMesh(): MascotMesh {
   faceGeo.computeVertexNormals();
 
   const facePlane = new THREE.Mesh(faceGeo, faceMat);
-  facePlane.renderOrder = 4;
+  facePlane.renderOrder = 6;
   headGroup.add(facePlane);
 
   const faceAnchor = new THREE.Object3D();
@@ -601,32 +601,53 @@ function drawBillboardFace(eyes: EyeMode): THREE.CanvasTexture {
   ctx.clearRect(0, 0, size, size);
 
   const cx = size * 0.5;
-  const eyeY = size * 0.58;
-  const eyeSpread = size * 0.36;
-  ctx.fillStyle = "#0a0d12";
+  // Each panel is U 0..0.5 (left) and U 0.5..1 (right); eyes centered in
+  // their panel at U ≈ 0.18 / 0.82 keeps the radius clear of the canvas
+  // edge so the circles don't smear over the cube corner.
+  const eyeSpread = size * 0.32;
+  // Eyes sit above middle; smile sits below middle. The face panel itself
+  // is anchored low on the head cube, so canvas-V 0.45 maps just above
+  // the cube's geometric center, matching the reference layout.
+  const eyeY = size * 0.45;
+  ctx.fillStyle = "#000000"; // Pure black
   if (eyes === "open") {
-    const r = size * 0.09;
+    // Strong vertical ovals (rx ≪ ry), rotation 0 — tall pill shape, not wide ellipses.
+    const rx = size * 0.054;
+    const ry = size * 0.142;
     ctx.beginPath();
-    ctx.ellipse(cx - eyeSpread, eyeY, r, r, 0, 0, Math.PI * 2);
-    ctx.ellipse(cx + eyeSpread, eyeY, r, r, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx - eyeSpread, eyeY, rx, ry, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx + eyeSpread, eyeY, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
   } else {
-    ctx.lineWidth = size * 0.03;
+    // Happy-closed eyes: gentle upward arcs, not flat dashes.
+    ctx.lineWidth = size * 0.04;
     ctx.lineCap = "round";
-    ctx.strokeStyle = "#0a0d12";
+    ctx.strokeStyle = "#000000"; // Pure black
+    const halfW = size * 0.085;
     ctx.beginPath();
-    ctx.moveTo(cx - eyeSpread - size * 0.05, eyeY);
-    ctx.lineTo(cx - eyeSpread + size * 0.05, eyeY);
-    ctx.moveTo(cx + eyeSpread - size * 0.05, eyeY);
-    ctx.lineTo(cx + eyeSpread + size * 0.05, eyeY);
+    ctx.arc(cx - eyeSpread, eyeY + halfW * 0.4, halfW, Math.PI, 2 * Math.PI);
+    ctx.arc(cx + eyeSpread, eyeY + halfW * 0.4, halfW, Math.PI, 2 * Math.PI);
     ctx.stroke();
   }
 
-  ctx.lineWidth = size * 0.042;
+  // Smile: shallow happy curve with slight upturn at the corners.
+  // Drawn as a quadratic curve so the ends sit higher than the dip, which
+  // gives the cute "smiling" feel from the reference (not a deep U).
+  ctx.lineWidth = size * 0.045;
   ctx.lineCap = "round";
-  ctx.strokeStyle = "#0a0d12";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#000000"; // Pure black
+  const smileHalfW = size * 0.16; // corners at U ≈ 0.34 / 0.66 (under inner eyes)
+  const smileTopY = size * 0.65; // y of the upturned corners
+  const smileDip = size * 0.085; // how deep the middle dips below the corners
   ctx.beginPath();
-  ctx.arc(cx, size * 0.72, size * 0.09, 0.1 * Math.PI, 0.9 * Math.PI);
+  ctx.moveTo(cx - smileHalfW, smileTopY);
+  ctx.quadraticCurveTo(
+    cx,
+    smileTopY + smileDip * 2,
+    cx + smileHalfW,
+    smileTopY,
+  );
   ctx.stroke();
 
   const tex = new THREE.CanvasTexture(c);

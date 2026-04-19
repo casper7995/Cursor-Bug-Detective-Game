@@ -1,21 +1,21 @@
 export interface AnswerPanel {
   readonly element: HTMLElement;
-  show(prompt: string, choices: readonly string[]): void;
+  show(prompt: string, choices: readonly string[], evidenceLine?: string): void;
   hide(): void;
   onSubmit(handler: (choiceIndex: number) => void): void;
   destroy(): void;
 }
 
 const STYLE_OVERLAY =
-  "position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(20,20,28,0.78);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);pointer-events:auto;z-index:10;";
+  "position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(26,24,18,0.88);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);pointer-events:auto;z-index:10;";
 const STYLE_PANEL =
-  "background:#1a1d24;color:#e8efff;padding:24px 28px;border-radius:18px;border:1px solid rgba(232,239,255,0.18);box-shadow:0 18px 48px rgba(0,0,0,0.55);min-width:360px;max-width:520px;width:90%;font-family:ui-sans-serif,system-ui,sans-serif;";
+  "background:#14120b;color:#efe7d7;padding:24px 28px;border-radius:18px;border:1px solid rgba(245,78,0,0.35);box-shadow:0 18px 48px rgba(0,0,0,0.55);min-width:360px;max-width:520px;width:90%;font-family:'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;";
 const STYLE_PROMPT =
-  "font:600 18px ui-sans-serif,system-ui,sans-serif;margin:0 0 18px;color:#fff48a;letter-spacing:0.02em;";
+  "font:600 18px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;margin:0 0 18px;color:#f54e00;letter-spacing:0.02em;";
 const STYLE_BTN =
-  "display:block;width:100%;margin:8px 0;padding:14px 16px;border-radius:12px;background:#252a36;color:#e8efff;border:1px solid rgba(232,239,255,0.12);font:500 15px ui-sans-serif,system-ui,sans-serif;cursor:pointer;text-align:left;transition:background 80ms,border-color 80ms,transform 80ms;";
+  "display:block;width:100%;margin:8px 0;padding:14px 16px;border-radius:12px;background:#1a1812;color:#efe7d7;border:1px solid rgba(245,78,0,0.45);font:500 15px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;cursor:pointer;text-align:left;transition:background 80ms,border-color 80ms,transform 80ms;";
 const STYLE_BTN_HOVER =
-  "background:#2f3543;border-color:rgba(232,239,255,0.32);transform:translateY(-1px);";
+  "background:#252018;border-color:rgba(245,78,0,0.75);transform:translateY(-1px);";
 
 export function createAnswerPanel(container: HTMLElement): AnswerPanel {
   const overlay = document.createElement("div");
@@ -30,6 +30,11 @@ export function createAnswerPanel(container: HTMLElement): AnswerPanel {
   const promptEl = document.createElement("h2");
   promptEl.style.cssText = STYLE_PROMPT;
   panel.appendChild(promptEl);
+
+  const evidenceEl = document.createElement("p");
+  evidenceEl.style.cssText =
+    "font:500 12px 'Berkeley Mono',ui-monospace,monospace;margin:0 0 14px;color:#c08532;letter-spacing:0.02em;line-height:1.4;";
+  panel.appendChild(evidenceEl);
 
   const buttons: HTMLButtonElement[] = [];
   let handler: ((choiceIndex: number) => void) | null = null;
@@ -48,8 +53,19 @@ export function createAnswerPanel(container: HTMLElement): AnswerPanel {
     }
   }
 
-  function show(prompt: string, choices: readonly string[]): void {
+  function show(
+    prompt: string,
+    choices: readonly string[],
+    evidenceLine?: string,
+  ): void {
     promptEl.textContent = prompt;
+    if (evidenceLine && evidenceLine.length > 0) {
+      evidenceEl.style.display = "";
+      evidenceEl.textContent = `evidence: ${evidenceLine}`;
+    } else {
+      evidenceEl.style.display = "none";
+      evidenceEl.textContent = "";
+    }
     clearButtons();
     focusedIndex = 0;
     for (let i = 0; i < choices.length; i++) {

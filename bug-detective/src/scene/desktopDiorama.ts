@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { DeskFootCircle } from "../cursor/deskFootResolve";
 
 /**
  * One hand-crafted desktop diorama. All interactive props carry a string
@@ -9,7 +10,7 @@ export interface DioramaObjects {
   readonly root: THREE.Group;
   readonly desk: THREE.Mesh;
   readonly hoverables: readonly THREE.Object3D[]; // raycaster targets
-  readonly deskTopY: number;                       // Y of the desk surface
+  readonly deskTopY: number; // Y of the desk surface
   readonly monitor: THREE.Group;
   readonly monitorScreen: THREE.Mesh;
   readonly monitorReflection: THREE.Mesh;
@@ -17,13 +18,22 @@ export interface DioramaObjects {
   readonly mugLabel: THREE.Mesh;
   readonly pen: THREE.Mesh;
   readonly calendar: THREE.Mesh;
-  readonly clock: THREE.Group;
-  readonly clockHourHand: THREE.Mesh;
-  readonly clockMinuteHand: THREE.Mesh;
+  /** Case envelope face mesh (anomaly `replaceMap` target). Parented under envelopeRoot. */
+  readonly evidenceEnvelope: THREE.Mesh;
+  /** Envelope assembly (flap + body) for desk zoom / animation. */
+  readonly evidenceEnvelopeRoot: THREE.Group;
+  /** Desk reagent tray (mix mini-game anchor). */
+  readonly reagentTray: THREE.Group;
+  /** Spinner in center well; `flags.clockReverse` reverses swirl. */
+  readonly reagentSpinner: THREE.Mesh;
   readonly photoFrame: THREE.Mesh;
   readonly photoImage: THREE.Mesh;
-  readonly stickyNote: THREE.Mesh;
   readonly lamp: THREE.Group;
+  /** Card in lamp cone — visible when `flags.lampActive`. */
+  readonly lampCard: THREE.Mesh;
+  /** Upright “case file” card near the lamp (visual anchor for shadows). */
+  readonly lampShadowStandee: THREE.Mesh;
+  /** Large faux shadow on the desk — primary hover target for `lamp-shadow`. */
   readonly lampShadowProp: THREE.Mesh;
   readonly book: THREE.Mesh;
   readonly bookPages: THREE.Mesh;
@@ -33,19 +43,97 @@ export interface DioramaObjects {
   readonly backWall: THREE.Mesh;
   /** Step every prop's per-frame animation (clock hands, steam, etc). */
   step(elapsed: number, dt: number): void;
-  /** Mutable flags toggled by anomalies. */
+  /** Mutable flags toggled by anomalies + desk mini-games. */
   readonly flags: DioramaFlags;
+  /** Gold rim pulse on the prop matching `tag` (e.g. evidence-envelope). */
+  setDeskHighlight(tag: string | null): void;
+  /**
+   * World-space circles on the desk plane: mascot feet are pushed out so the
+   * figurine does not walk through tall props (cursor ray hits the desk first).
+   */
+  readonly mascotFootObstacles: readonly DeskFootCircle[];
 }
 
 export interface DioramaFlags {
+  /** When true, reagent tray swirl runs backward (legacy name: clock CCW). */
   clockReverse: boolean;
   steamDownward: boolean;
+  /** Envelope cipher mini: flap opens toward 1. */
+  envelopeOpen: boolean;
+  /** Reagent mix mini: wells + bottle read as “active”. */
+  reagentActive: boolean;
+  /** Lamp spectrum mini: head tilts, card visible. */
+  lampActive: boolean;
 }
 
 const WOOD = 0x6b4a2b;
 const WOOD_DARK = 0x4a3320;
 const PLASTIC = 0x1a1d24;
 const STICKY = 0xfff48a;
+
+/** Dark evidence-flag silhouette for the lamp-shadow standee (reads in bright cone). */
+function makeFlagSilhouetteTexture(): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("2d");
+  ctx.clearRect(0, 0, 256, 256);
+  const poleW = 14;
+  const poleX = 72;
+  const poleTop = 48;
+  const poleBot = 208;
+  ctx.fillStyle = "#1d2330";
+  ctx.strokeStyle = "#b88a3e";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(poleX, poleTop, poleW, poleBot - poleTop, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(poleX + poleW, poleTop + 28);
+  ctx.lineTo(200, poleTop + 52);
+  ctx.lineTo(200, poleTop + 128);
+  ctx.lineTo(poleX + poleW, poleTop + 152);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Elongated cast-shadow on desk — same flag motif, stretched and feathered. */
+function makeFlagShadowTexture(): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 128;
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("2d");
+  ctx.clearRect(0, 0, 256, 128);
+  const g = ctx.createLinearGradient(0, 64, 256, 64);
+  g.addColorStop(0, "rgba(8,8,12,0.92)");
+  g.addColorStop(0.35, "rgba(10,10,16,0.72)");
+  g.addColorStop(0.75, "rgba(12,12,18,0.35)");
+  g.addColorStop(1, "rgba(12,12,18,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(48, 64, 28, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(8,8,12,0.78)";
+  ctx.beginPath();
+  ctx.moveTo(70, 58);
+  ctx.lineTo(230, 42);
+  ctx.lineTo(238, 86);
+  ctx.lineTo(78, 82);
+  ctx.closePath();
+  ctx.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
 
 export function createDesktopDiorama(): DioramaObjects {
   const root = new THREE.Group();
@@ -54,9 +142,17 @@ export function createDesktopDiorama(): DioramaObjects {
   const flags: DioramaFlags = {
     clockReverse: false,
     steamDownward: false,
+    envelopeOpen: false,
+    reagentActive: false,
+    lampActive: false,
   };
 
   const hoverables: THREE.Object3D[] = [];
+  let deskHighlightTag: string | null = null;
+  let envelopeOpenLerp = 0;
+  let reagentActiveLerp = 0;
+  let lampActiveLerp = 0;
+  const GOLD_HEX = 0xc08532;
 
   // ---- Floor (subtle, just to ground the room) ----------------------
   const floor = new THREE.Mesh(
@@ -152,10 +248,7 @@ export function createDesktopDiorama(): DioramaObjects {
   monitor.add(standArm);
 
   // Monitor body
-  const bezel = new THREE.Mesh(
-    new THREE.BoxGeometry(2.2, 1.4, 0.12),
-    standMat,
-  );
+  const bezel = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 0.12), standMat);
   bezel.position.set(0, 1.0, 0);
   bezel.castShadow = true;
   bezel.receiveShadow = true;
@@ -321,8 +414,8 @@ export function createDesktopDiorama(): DioramaObjects {
     new THREE.PlaneGeometry(0.7, 0.5),
     new THREE.MeshBasicMaterial({ map: calendarTex, side: THREE.DoubleSide }),
   );
-  calendar.position.set(2.0, deskTopY + 0.27, -1.4);
-  calendar.rotation.y = -0.25;
+  calendar.position.set(-0.95, deskTopY + 0.27, -1.7);
+  calendar.rotation.y = 0.18;
   calendar.userData.tag = "calendar";
   root.add(calendar);
   hoverables.push(calendar);
@@ -335,46 +428,85 @@ export function createDesktopDiorama(): DioramaObjects {
   calStand.position.copy(calendar.position);
   calStand.position.x += 0.05;
   calStand.position.z -= 0.1;
-  calStand.rotation.y = -0.25;
+  calStand.rotation.y = 0.18;
   calStand.castShadow = true;
   root.add(calStand);
 
-  // ---- Clock --------------------------------------------------------
-  const clock = new THREE.Group();
-  clock.position.set(0, 4.2, -5.95);
-  root.add(clock);
+  // ---- Reagent tray (3 wells + center mix + label) -------------------
+  const reagentTray = new THREE.Group();
+  reagentTray.position.set(2.15, deskTopY + 0.01, -1.32);
+  reagentTray.rotation.y = -0.35;
+  root.add(reagentTray);
 
-  const clockFaceTex = makeClockFaceTexture();
-  const clockFace = new THREE.Mesh(
-    new THREE.CircleGeometry(0.7, 48),
-    new THREE.MeshBasicMaterial({ map: clockFaceTex }),
+  const trayBase = new THREE.Mesh(
+    new THREE.BoxGeometry(1.05, 0.1, 0.62),
+    new THREE.MeshStandardMaterial({ color: 0x252b34, roughness: 0.42 }),
   );
-  clockFace.userData.tag = "clock";
-  clock.add(clockFace);
-  hoverables.push(clockFace);
+  trayBase.position.y = 0.05;
+  trayBase.castShadow = true;
+  trayBase.receiveShadow = true;
+  reagentTray.add(trayBase);
 
-  const clockRing = new THREE.Mesh(
-    new THREE.TorusGeometry(0.7, 0.04, 12, 48),
-    new THREE.MeshStandardMaterial({ color: 0x222730, roughness: 0.4 }),
+  const labelStrip = new THREE.Mesh(
+    new THREE.BoxGeometry(0.85, 0.02, 0.08),
+    new THREE.MeshStandardMaterial({ color: 0x3a4450, roughness: 0.5 }),
   );
-  clock.add(clockRing);
+  labelStrip.position.set(0, 0.11, -0.28);
+  reagentTray.add(labelStrip);
 
-  const handMat = new THREE.MeshBasicMaterial({ color: 0x111418 });
-  const clockHourHand = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.04, 0.36),
-    handMat,
-  );
-  clockHourHand.geometry.translate(0, 0.18, 0);
-  clockHourHand.position.z = 0.01;
-  clock.add(clockHourHand);
+  function addWell(x: number, z: number, radius: number): void {
+    const wellHole = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.92, radius * 0.92, 0.06, 24),
+      new THREE.MeshStandardMaterial({ color: 0x1a1e26, roughness: 0.55 }),
+    );
+    wellHole.rotation.x = Math.PI / 2;
+    wellHole.position.set(x, 0.11, z);
+    reagentTray.add(wellHole);
+    const rim = new THREE.Mesh(
+      new THREE.TorusGeometry(radius, 0.018, 8, 32),
+      new THREE.MeshStandardMaterial({ color: 0x6a7484, roughness: 0.35 }),
+    );
+    rim.rotation.x = Math.PI / 2;
+    rim.position.set(x, 0.135, z);
+    reagentTray.add(rim);
+  }
+  addWell(-0.28, 0.05, 0.12);
+  addWell(0, 0.05, 0.14);
+  addWell(0.28, 0.05, 0.12);
 
-  const clockMinuteHand = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.03, 0.5),
-    handMat,
+  const reagentSpinner = new THREE.Mesh(
+    new THREE.CircleGeometry(0.13, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0x4a8cff,
+      transparent: true,
+      opacity: 0.88,
+      depthWrite: false,
+    }),
   );
-  clockMinuteHand.geometry.translate(0, 0.25, 0);
-  clockMinuteHand.position.z = 0.011;
-  clock.add(clockMinuteHand);
+  reagentSpinner.rotation.x = -Math.PI / 2;
+  reagentSpinner.position.set(0, 0.142, 0.05);
+  reagentTray.add(reagentSpinner);
+
+  const reagentHit = new THREE.Mesh(
+    new THREE.BoxGeometry(0.95, 0.2, 0.55),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  );
+  reagentHit.position.set(0, 0.12, 0);
+  reagentHit.userData.tag = "reagent-tray";
+  reagentTray.add(reagentHit);
+  hoverables.push(reagentHit);
+
+  const reagentOutline = new THREE.Mesh(
+    new THREE.BoxGeometry(1.08, 0.14, 0.68),
+    new THREE.MeshBasicMaterial({
+      color: GOLD_HEX,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    }),
+  );
+  reagentOutline.position.set(0, 0.12, 0);
+  reagentTray.add(reagentOutline);
 
   // ---- Photo frame --------------------------------------------------
   const photoFrame = new THREE.Mesh(
@@ -400,20 +532,69 @@ export function createDesktopDiorama(): DioramaObjects {
   photoImage.userData.tag = "photo";
   root.add(photoImage);
 
-  // ---- Sticky note --------------------------------------------------
-  const stickyTex = makeStickyTexture("ideas");
-  const stickyNote = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.55, 0.55),
-    new THREE.MeshBasicMaterial({ map: stickyTex, side: THREE.DoubleSide }),
-  );
-  stickyNote.position.set(-0.3, deskTopY + 0.005, 1.4);
-  stickyNote.rotation.x = -Math.PI / 2;
-  stickyNote.rotation.z = 0.1;
-  stickyNote.userData.tag = "sticky";
-  root.add(stickyNote);
-  hoverables.push(stickyNote);
+  // ---- Evidence envelope (body + flap + seal; face mesh for anomalies) ---
+  const evidenceEnvelopeRoot = new THREE.Group();
+  evidenceEnvelopeRoot.position.set(-0.28, deskTopY + 0.01, 1.38);
+  evidenceEnvelopeRoot.rotation.y = 0.14;
+  root.add(evidenceEnvelopeRoot);
 
-  // ---- Lamp ---------------------------------------------------------
+  const envBody = new THREE.Mesh(
+    new THREE.BoxGeometry(0.68, 0.03, 0.48),
+    new THREE.MeshStandardMaterial({ color: 0xc9b596, roughness: 0.55 }),
+  );
+  envBody.position.y = 0.015;
+  envBody.receiveShadow = true;
+  envBody.castShadow = true;
+  evidenceEnvelopeRoot.add(envBody);
+
+  const envelopeTex = makeEvidenceEnvelopeTexture("CASE");
+  const evidenceEnvelope = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.64, 0.44),
+    new THREE.MeshBasicMaterial({ map: envelopeTex, side: THREE.DoubleSide }),
+  );
+  evidenceEnvelope.rotation.x = -Math.PI / 2;
+  evidenceEnvelope.position.set(0, 0.028, 0);
+  evidenceEnvelope.userData.tag = "evidence-envelope";
+  evidenceEnvelopeRoot.add(evidenceEnvelope);
+  hoverables.push(evidenceEnvelope);
+
+  const flapPivot = new THREE.Group();
+  flapPivot.position.set(0, 0.026, -0.24);
+  evidenceEnvelopeRoot.add(flapPivot);
+  const envelopeFlap = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.64, 0.2),
+    new THREE.MeshStandardMaterial({
+      color: 0xb5a080,
+      roughness: 0.5,
+      side: THREE.DoubleSide,
+    }),
+  );
+  envelopeFlap.position.set(0, 0.1, 0.1);
+  envelopeFlap.rotation.x = Math.PI * 0.5;
+  flapPivot.add(envelopeFlap);
+
+  const seal = new THREE.Mesh(
+    new THREE.CircleGeometry(0.055, 20),
+    new THREE.MeshStandardMaterial({ color: 0x8b2c2c, roughness: 0.4 }),
+  );
+  seal.rotation.x = -Math.PI / 2;
+  seal.position.set(0.18, 0.032, 0.12);
+  evidenceEnvelopeRoot.add(seal);
+
+  const envelopeOutline = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.72, 0.5),
+    new THREE.MeshBasicMaterial({
+      color: GOLD_HEX,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    }),
+  );
+  envelopeOutline.rotation.x = -Math.PI / 2;
+  envelopeOutline.position.set(0, 0.04, 0);
+  evidenceEnvelopeRoot.add(envelopeOutline);
+
+  // ---- Lamp + spectrum card ----------------------------------------
   const lamp = new THREE.Group();
   lamp.position.set(-3.4, deskTopY, -0.6);
   root.add(lamp);
@@ -430,7 +611,9 @@ export function createDesktopDiorama(): DioramaObjects {
   lampBase.position.y = 0.03;
   lampBase.castShadow = true;
   lampBase.receiveShadow = true;
+  lampBase.userData.tag = "lamp";
   lamp.add(lampBase);
+  hoverables.push(lampBase);
 
   const lampNeck = new THREE.Mesh(
     new THREE.CylinderGeometry(0.04, 0.04, 0.9, 12),
@@ -444,7 +627,8 @@ export function createDesktopDiorama(): DioramaObjects {
     lampBaseMat,
   );
   lampHead.position.y = 1.0;
-  lampHead.rotation.x = -0.3;
+  const lampHeadRestRx = -0.3;
+  lampHead.rotation.x = lampHeadRestRx;
   lampHead.castShadow = true;
   lamp.add(lampHead);
 
@@ -460,22 +644,73 @@ export function createDesktopDiorama(): DioramaObjects {
   lampLight.castShadow = true;
   lampLight.shadow.mapSize.setScalar(512);
   lampLight.shadow.bias = -0.001;
-  // Point-light shadows render 6 cube faces per frame. The lamp + its
-  // casters are static, so we bake once and skip the per-frame
-  // re-render. This is one of the bigger fillrate wins for integrated
-  // GPUs.
   lampLight.shadow.autoUpdate = false;
   lampLight.shadow.needsUpdate = true;
   lamp.add(lampLight);
 
-  // Shadow-casting prop (small block) used by lamp-shadow-wrong anomaly.
-  const lampShadowProp = new THREE.Mesh(
-    new THREE.BoxGeometry(0.18, 0.32, 0.18),
-    new THREE.MeshStandardMaterial({ color: 0xb89060, roughness: 0.5 }),
+  const lampCardTex = makeLampCardTexture("???");
+  const lampCard = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.22, 0.14),
+    new THREE.MeshBasicMaterial({
+      map: lampCardTex,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+    }),
   );
-  lampShadowProp.position.set(-2.5, deskTopY + 0.16, -0.4);
-  lampShadowProp.castShadow = true;
-  lampShadowProp.receiveShadow = true;
+  lampCard.position.set(0.55, deskTopY + 0.11, -0.35);
+  lampCard.rotation.x = -Math.PI / 2;
+  lampCard.rotation.z = 0.15;
+  root.add(lampCard);
+
+  const lampOutline = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.26, 0.32, 0.1, 24),
+    new THREE.MeshBasicMaterial({
+      color: GOLD_HEX,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    }),
+  );
+  lampOutline.position.y = 0.03;
+  lamp.add(lampOutline);
+
+  // Evidence-flag standee + elongated faux shadow (lamp-shadow-wrong flips / moves these).
+  const standeeTex = makeFlagSilhouetteTexture();
+  const standeeMat = new THREE.MeshStandardMaterial({
+    map: standeeTex,
+    transparent: true,
+    alphaTest: 0.5,
+    roughness: 0.85,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  });
+  const lampShadowStandee = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.44, 0.58),
+    standeeMat,
+  );
+  lampShadowStandee.position.set(-1.55, deskTopY + 0.32, 0.05);
+  lampShadowStandee.rotation.y = 0.42;
+  lampShadowStandee.castShadow = true;
+  lampShadowStandee.receiveShadow = true;
+  lampShadowStandee.userData.tag = "lamp-shadow";
+  root.add(lampShadowStandee);
+  hoverables.push(lampShadowStandee);
+
+  const fauxShadowTex = makeFlagShadowTexture();
+  const lampShadowProp = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.4, 0.7),
+    new THREE.MeshBasicMaterial({
+      map: fauxShadowTex,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    }),
+  );
+  lampShadowProp.rotation.x = -Math.PI / 2;
+  lampShadowProp.rotation.z = -0.35;
+  lampShadowProp.position.set(-1.0, deskTopY + 0.004, 0.32);
+  lampShadowProp.renderOrder = 1;
   lampShadowProp.userData.tag = "lamp-shadow";
   root.add(lampShadowProp);
   hoverables.push(lampShadowProp);
@@ -528,10 +763,7 @@ export function createDesktopDiorama(): DioramaObjects {
     roughness: 0.55,
   });
   for (let i = 0; i < 5; i++) {
-    const leaf = new THREE.Mesh(
-      new THREE.ConeGeometry(0.08, 0.5, 6),
-      leafMat,
-    );
+    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 6), leafMat);
     const angle = (i / 5) * Math.PI * 2;
     leaf.position.set(Math.cos(angle) * 0.12, 0.55, Math.sin(angle) * 0.12);
     leaf.rotation.z = Math.cos(angle) * 0.5;
@@ -543,27 +775,89 @@ export function createDesktopDiorama(): DioramaObjects {
   // ---- Animation step -----------------------------------------------
   const steamBaseY = coffeeSteam.position.y;
   const penBaseY = pen.position.y;
+  const penBaseRotZ = pen.rotation.z;
   const plantBaseRotation = plant.rotation.clone();
+  const keyboardBaseY = keyboard.position.y;
+  const mugBaseRot = {
+    x: mug.rotation.x,
+    y: mug.rotation.y,
+    z: mug.rotation.z,
+  };
+  const bookBase = {
+    x: book.rotation.x,
+    y: book.rotation.y,
+    z: book.rotation.z,
+  };
+  const bookPagesBase = {
+    x: bookPages.rotation.x,
+    y: bookPages.rotation.y,
+    z: bookPages.rotation.z,
+  };
+  const photoBase = {
+    x: photoFrame.rotation.x,
+    y: photoFrame.rotation.y,
+    z: photoFrame.rotation.z,
+  };
+  const deskBaseScale = desk.scale.x;
 
-  function step(elapsed: number, _dt: number): void {
+  function step(elapsed: number, dt: number): void {
     // The diorama is hidden during the page-peel intro — skip every
     // per-frame transform/material write while it can't be seen.
     if (!root.visible) return;
 
-    // Clock hands: real wall-clock time, scaled so it feels alive.
-    // Reverse direction if the anomaly is on.
+    const k = Math.min(1, dt * 5);
+    const targetEnv = flags.envelopeOpen ? 1 : 0;
+    envelopeOpenLerp += (targetEnv - envelopeOpenLerp) * k;
+    flapPivot.rotation.x = -envelopeOpenLerp * 1.15;
+
+    const targetReag = flags.reagentActive ? 1 : 0;
+    reagentActiveLerp += (targetReag - reagentActiveLerp) * k;
+    trayBase.position.y = 0.05 + reagentActiveLerp * 0.02;
+
+    const targetLamp = flags.lampActive ? 1 : 0;
+    lampActiveLerp += (targetLamp - lampActiveLerp) * k;
+    const nowMs = performance.now();
+    let lampHeadX = lampHeadRestRx - lampActiveLerp * 0.35;
+    const lampFlavorEnd = lamp.userData.flavorEndMs as number | undefined;
+    if (lampFlavorEnd && nowMs < lampFlavorEnd) {
+      const u = 1 - (lampFlavorEnd - nowMs) / 620;
+      lampHeadX += Math.sin(u * Math.PI) * 0.14;
+    }
+    lampHead.rotation.x = lampHeadX;
+    (lampCard.material as THREE.MeshBasicMaterial).opacity =
+      lampActiveLerp * 0.96;
+
+    const pulse = 0.35 + Math.sin(elapsed * 2.8) * 0.25;
+    const setOutline = (
+      mesh: THREE.Mesh,
+      tag: "evidence-envelope" | "reagent-tray" | "lamp",
+    ): void => {
+      const m = mesh.material as THREE.MeshBasicMaterial;
+      m.opacity = deskHighlightTag === tag ? pulse : 0;
+    };
+    setOutline(envelopeOutline, "evidence-envelope");
+    setOutline(reagentOutline, "reagent-tray");
+    setOutline(lampOutline, "lamp");
+
+    // Reagent tray liquid swirl (replaces wall-clock hands).
     const dir = flags.clockReverse ? -1 : 1;
-    const t = elapsed * 0.5 * dir;
-    const minute = (t * 0.5) % (Math.PI * 2);
-    const hour = (t * 0.04) % (Math.PI * 2);
-    clockMinuteHand.rotation.z = -minute;
-    clockHourHand.rotation.z = -hour;
+    reagentSpinner.rotation.z = elapsed * 0.85 * dir;
 
     // Steam drift
     const drift = (elapsed * 0.4) % 1;
     const steamDir = flags.steamDownward ? -1 : 1;
-    coffeeSteam.position.y = steamBaseY + drift * 0.6 * steamDir;
-    (coffeeSteam.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - drift);
+    let steamY = steamBaseY + drift * 0.6 * steamDir;
+    let steamOp = 0.55 * (1 - drift);
+    const steamFlavorEnd = coffeeSteam.userData.flavorEndMs as
+      | number
+      | undefined;
+    if (steamFlavorEnd && nowMs < steamFlavorEnd) {
+      const u = 1 - (steamFlavorEnd - nowMs) / 620;
+      steamY += 0.06 * Math.sin(u * Math.PI * 2);
+      steamOp = Math.min(0.92, steamOp + 0.35 * Math.sin(u * Math.PI));
+    }
+    coffeeSteam.position.y = steamY;
+    (coffeeSteam.material as THREE.MeshBasicMaterial).opacity = steamOp;
 
     // Pen idle: tiny breathing if floating-pen anomaly is on (handled by anomaly)
     if (!pen.userData.floatActive) {
@@ -579,8 +873,117 @@ export function createDesktopDiorama(): DioramaObjects {
     if (plant.userData.glitching) {
       plant.rotation.x = plantBaseRotation.x + (Math.random() - 0.5) * 0.05;
       plant.rotation.z = plantBaseRotation.z + (Math.random() - 0.5) * 0.05;
+    } else {
+      plant.rotation.x = plantBaseRotation.x;
+      const pf = plant.userData.flavorEndMs as number | undefined;
+      if (pf && nowMs < pf) {
+        const u = 1 - (pf - nowMs) / 620;
+        plant.rotation.z = plantBaseRotation.z + Math.sin(u * Math.PI) * 0.08;
+      } else {
+        plant.rotation.z = plantBaseRotation.z;
+      }
+    }
+
+    // Click flavor reactions (propInteractions.applyPropFlavor)
+    const calEnd = calendar.userData.flavorEndMs as number | undefined;
+    if (calEnd && nowMs < calEnd) {
+      const u = 1 - (calEnd - nowMs) / 620;
+      calendar.rotation.x = Math.sin(u * Math.PI) * 0.22;
+    } else {
+      calendar.rotation.x = 0;
+    }
+
+    const mugEnd = mug.userData.flavorEndMs as number | undefined;
+    if (mugEnd && nowMs < mugEnd) {
+      const u = 1 - (mugEnd - nowMs) / 620;
+      mug.rotation.z = mugBaseRot.z + Math.sin(u * Math.PI) * 0.38;
+      mug.rotation.x = mugBaseRot.x + Math.sin(u * Math.PI * 2) * 0.06;
+    } else {
+      mug.rotation.set(mugBaseRot.x, mugBaseRot.y, mugBaseRot.z);
+    }
+
+    const penEnd = pen.userData.flavorEndMs as number | undefined;
+    if (penEnd && nowMs < penEnd) {
+      const u = 1 - (penEnd - nowMs) / 620;
+      pen.rotation.z = penBaseRotZ + u * Math.PI * 2;
+    } else {
+      pen.rotation.z = penBaseRotZ;
+    }
+
+    const bookEnd = book.userData.flavorEndMs as number | undefined;
+    if (bookEnd && nowMs < bookEnd) {
+      const u = 1 - (bookEnd - nowMs) / 620;
+      book.rotation.x = bookBase.x + Math.sin(u * Math.PI) * 0.12;
+      bookPages.rotation.x = bookPagesBase.x + Math.sin(u * Math.PI * 2) * 0.08;
+    } else {
+      book.rotation.x = bookBase.x;
+      bookPages.rotation.x = bookPagesBase.x;
+    }
+
+    const kbEnd = keyboard.userData.flavorEndMs as number | undefined;
+    if (kbEnd && nowMs < kbEnd) {
+      const u = 1 - (kbEnd - nowMs) / 620;
+      keyboard.position.y = keyboardBaseY + Math.sin(u * Math.PI) * 0.035;
+    } else {
+      keyboard.position.y = keyboardBaseY;
+    }
+
+    const photoEnd = photoFrame.userData.flavorEndMs as number | undefined;
+    if (photoEnd && nowMs < photoEnd) {
+      const u = 1 - (photoEnd - nowMs) / 620;
+      photoFrame.rotation.z = photoBase.z + Math.sin(u * Math.PI) * 0.1;
+    } else {
+      photoFrame.rotation.z = photoBase.z;
+    }
+
+    const deskEnd = desk.userData.flavorEndMs as number | undefined;
+    if (deskEnd && nowMs < deskEnd) {
+      const u = 1 - (deskEnd - nowMs) / 620;
+      const s = deskBaseScale + Math.sin(u * Math.PI) * 0.004;
+      desk.scale.set(s, s, s);
+    } else {
+      desk.scale.set(deskBaseScale, deskBaseScale, deskBaseScale);
+    }
+
+    const shEnd = lampShadowStandee.userData.flavorEndMs as number | undefined;
+    if (shEnd && nowMs < shEnd) {
+      const u = 1 - (shEnd - nowMs) / 620;
+      lampShadowStandee.rotation.z = Math.sin(u * Math.PI * 2) * 0.07;
+      (lampShadowProp.material as THREE.MeshBasicMaterial).opacity =
+        0.85 + 0.12 * Math.sin(u * Math.PI);
+    } else {
+      lampShadowStandee.rotation.z = 0;
+      (lampShadowProp.material as THREE.MeshBasicMaterial).opacity = 0.85;
     }
   }
+
+  function setDeskHighlight(tag: string | null): void {
+    deskHighlightTag = tag;
+  }
+
+  const mascotFootObstacles: DeskFootCircle[] = [
+    { x: mug.position.x, z: mug.position.z, r: 0.38 },
+    { x: pen.position.x, z: pen.position.z, r: 0.44 },
+    { x: keyboard.position.x, z: keyboard.position.z, r: 1.16 },
+    { x: monitor.position.x, z: monitor.position.z, r: 1.12 },
+    { x: reagentTray.position.x, z: reagentTray.position.z, r: 0.7 },
+    { x: photoFrame.position.x, z: photoFrame.position.z, r: 0.36 },
+    {
+      x: evidenceEnvelopeRoot.position.x,
+      z: evidenceEnvelopeRoot.position.z,
+      r: 0.42,
+    },
+    { x: lamp.position.x, z: lamp.position.z, r: 0.34 },
+    {
+      x: lampShadowStandee.position.x,
+      z: lampShadowStandee.position.z,
+      r: 0.32,
+    },
+    { x: lampShadowProp.position.x, z: lampShadowProp.position.z, r: 0.82 },
+    { x: book.position.x, z: book.position.z, r: 0.52 },
+    { x: plant.position.x, z: plant.position.z, r: 0.36 },
+    { x: calendar.position.x, z: calendar.position.z, r: 0.34 },
+  ];
 
   return {
     root,
@@ -594,13 +997,15 @@ export function createDesktopDiorama(): DioramaObjects {
     mugLabel,
     pen,
     calendar,
-    clock,
-    clockHourHand,
-    clockMinuteHand,
+    evidenceEnvelope,
+    evidenceEnvelopeRoot,
+    reagentTray,
+    reagentSpinner,
     photoFrame,
     photoImage,
-    stickyNote,
     lamp,
+    lampCard,
+    lampShadowStandee,
     lampShadowProp,
     book,
     bookPages,
@@ -610,6 +1015,8 @@ export function createDesktopDiorama(): DioramaObjects {
     backWall,
     flags,
     step,
+    setDeskHighlight,
+    mascotFootObstacles,
   };
 }
 
@@ -618,13 +1025,26 @@ export function createDesktopDiorama(): DioramaObjects {
 function formatToday(): { day: number; month: string } {
   const d = new Date();
   const months = [
-    "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-    "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
   ];
   return { day: d.getDate(), month: months[d.getMonth()] ?? "—" };
 }
 
-export function makeCalendarTexture(d: { day: number; month: string }): THREE.CanvasTexture {
+export function makeCalendarTexture(d: {
+  day: number;
+  month: string;
+}): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 256;
   c.height = 192;
@@ -715,9 +1135,7 @@ export function makeReflectionTexture(): THREE.CanvasTexture {
   const ctx = c.getContext("2d");
   if (!ctx) throw new Error("2d context unavailable");
   // Faint silhouette of a different room
-  const g = ctx.createRadialGradient(
-    256, 200, 30, 256, 200, 250,
-  );
+  const g = ctx.createRadialGradient(256, 200, 30, 256, 200, 250);
   g.addColorStop(0, "rgba(255,210,170,0.7)");
   g.addColorStop(0.6, "rgba(120,80,60,0.25)");
   g.addColorStop(1, "rgba(0,0,0,0)");
@@ -775,7 +1193,64 @@ export function makeStickyTexture(text: string): THREE.CanvasTexture {
   return tex;
 }
 
-export function makePhotoTexture(kind: "default" | "self"): THREE.CanvasTexture {
+/** Manila envelope look for the evidence slot (replaces sticky note art). */
+/** Small card under lamp cone — spectrum mini uses texture swap at runtime. */
+export function makeLampCardTexture(word: string): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 160;
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("2d context unavailable");
+  ctx.fillStyle = "#f4f0e6";
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.strokeStyle = "#8a7355";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(4, 4, c.width - 8, c.height - 8);
+  ctx.fillStyle = "#1a1d24";
+  ctx.font = "bold 28px ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(word.slice(0, 8).toUpperCase(), c.width / 2, c.height / 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+export function makeEvidenceEnvelopeTexture(
+  label: string,
+): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 320;
+  c.height = 220;
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("2d context unavailable");
+  ctx.fillStyle = "#d8c4a6";
+  ctx.strokeStyle = "#8a7355";
+  ctx.lineWidth = 2;
+  ctx.fillRect(12, 28, c.width - 24, c.height - 40);
+  ctx.strokeRect(12, 28, c.width - 24, c.height - 40);
+  ctx.fillStyle = "rgba(0,0,0,0.06)";
+  ctx.beginPath();
+  ctx.moveTo(12, 28);
+  ctx.lineTo(c.width / 2, 78);
+  ctx.lineTo(c.width - 12, 28);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#1a1d24";
+  ctx.font = "bold 22px ui-sans-serif, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("EVIDENCE", c.width / 2, 118);
+  ctx.font = "600 18px ui-sans-serif, sans-serif";
+  ctx.fillStyle = "#3a3228";
+  ctx.fillText(label.slice(0, 12), c.width / 2, 152);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+export function makePhotoTexture(
+  kind: "default" | "self",
+): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 256;
   c.height = 320;

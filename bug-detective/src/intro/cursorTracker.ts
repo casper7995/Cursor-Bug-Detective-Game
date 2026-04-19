@@ -1,4 +1,9 @@
 import * as THREE from "three";
+import {
+  clampFeetToDeskBounds,
+  resolveFeetAgainstDeskObstacles,
+  type DeskFootCircle,
+} from "../cursor/deskFootResolve";
 
 /**
  * Raycasts pointer into a `target` mesh and exposes the hit as a feet
@@ -13,6 +18,10 @@ export class CursorTracker {
   private hasHit = false;
   private domTarget: HTMLElement | null = null;
   private yOffset = 0.05;
+  private footObstacles: readonly DeskFootCircle[] = [];
+  private deskHalfWidth = 4;
+  private deskHalfDepth = 2;
+  private deskBoundsMargin = 0.22;
   private rectLeft = 0;
   private rectTop = 0;
   private rectWidth = 1;
@@ -34,6 +43,9 @@ export class CursorTracker {
     domTarget.addEventListener("pointerdown", this.onPointerDown, {
       passive: true,
     });
+    domTarget.addEventListener("touchstart", this.onTouchStart, {
+      passive: true,
+    });
     domTarget.addEventListener("touchmove", this.onTouchMove, {
       passive: true,
     });
@@ -45,6 +57,7 @@ export class CursorTracker {
     this.domTarget.removeEventListener("mousemove", this.onMouseMove);
     this.domTarget.removeEventListener("pointermove", this.onPointerMove);
     this.domTarget.removeEventListener("pointerdown", this.onPointerDown);
+    this.domTarget.removeEventListener("touchstart", this.onTouchStart);
     this.domTarget.removeEventListener("touchmove", this.onTouchMove);
     window.removeEventListener("resize", this.refreshRect);
     this.domTarget = null;
@@ -67,6 +80,30 @@ export class CursorTracker {
     this.yOffset = y;
   }
 
+  /** Tall props on the desk — feet are nudged horizontally so the mascot stays outside silhouettes. */
+  setFootObstacles(circles: readonly DeskFootCircle[]): void {
+    this.footObstacles = circles;
+  }
+
+  /** Match `BoxGeometry(deskWidth, …, deskDepth)` / 2 from desktopDiorama. */
+  setDeskBounds(
+    halfWidth: number,
+    halfDepth: number,
+    insetMargin?: number,
+  ): void {
+    this.deskHalfWidth = halfWidth;
+    this.deskHalfDepth = halfDepth;
+    if (insetMargin !== undefined) this.deskBoundsMargin = insetMargin;
+  }
+
+  /**
+   * Re-read the canvas bounding rect (e.g. after a fullscreen overlay is removed)
+   * so pointer math matches the visible WebGL surface.
+   */
+  refreshLayout(): void {
+    this.refreshRect();
+  }
+
   hasUserMoved(): boolean {
     return this.hasMoved;
   }
@@ -78,6 +115,7 @@ export class CursorTracker {
       this.hasMoved = true;
       return;
     }
+    this.refreshRect();
     this.ndc.x = (canvasX / this.rectWidth) * 2 - 1;
     this.ndc.y = -(canvasY / this.rectHeight) * 2 + 1;
     this.hasMoved = true;
@@ -100,6 +138,15 @@ export class CursorTracker {
     if (!first) return false;
     this.feetWorld.copy(first.point);
     this.feetWorld.y += this.yOffset;
+    if (this.footObstacles.length > 0) {
+      resolveFeetAgainstDeskObstacles(this.feetWorld, this.footObstacles);
+    }
+    clampFeetToDeskBounds(
+      this.feetWorld,
+      this.deskHalfWidth,
+      this.deskHalfDepth,
+      this.deskBoundsMargin,
+    );
     this.hasHit = true;
     return true;
   }
@@ -124,6 +171,12 @@ export class CursorTracker {
     this.updateNdcFromClient(e.clientX, e.clientY);
   };
 
+  private readonly onTouchStart = (e: TouchEvent): void => {
+    const t = e.changedTouches[0] ?? e.touches[0];
+    if (!t) return;
+    this.updateNdcFromClient(t.clientX, t.clientY);
+  };
+
   private readonly onTouchMove = (e: TouchEvent): void => {
     const t = e.touches[0];
     if (!t) return;
@@ -132,6 +185,7 @@ export class CursorTracker {
 
   private updateNdcFromClient(clientX: number, clientY: number): void {
     if (!this.domTarget) return;
+    this.refreshRect();
     this.ndc.x = ((clientX - this.rectLeft) / this.rectWidth) * 2 - 1;
     this.ndc.y = -((clientY - this.rectTop) / this.rectHeight) * 2 + 1;
     this.hasMoved = true;

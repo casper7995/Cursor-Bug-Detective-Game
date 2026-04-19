@@ -4,8 +4,8 @@ import {
   makeBookPagesTexture,
   makeCalendarTexture,
   makeMugLabelTexture,
+  makeEvidenceEnvelopeTexture,
   makePhotoTexture,
-  makeStickyTexture,
 } from "./desktopDiorama";
 import { makeSeededRng } from "../api/seedClient";
 
@@ -27,6 +27,13 @@ export interface AnomalyDef {
   readonly id: AnomalyId;
   /** userData.tag of the prop the bug lives on. Used for hover-detect scoring. */
   readonly targetTag: string;
+  /** Four single-word clues (mini-games) — combined they disambiguate the daily case. */
+  readonly gameClueWords: {
+    readonly runner: string;
+    readonly sticky: string;
+    readonly clock: string;
+    readonly photo: string;
+  };
   /** Short tooltip shown when the player hovers the anomalous prop. */
   readonly tooltipHint: string;
   /** Long-form reveal text shown after the player answers. */
@@ -55,6 +62,12 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "calendar-tomorrow",
     targetTag: "calendar",
+    gameClueWords: {
+      runner: "calendar",
+      sticky: "TOMORROW",
+      clock: "AHEAD",
+      photo: "DATE",
+    },
     tooltipHint: "calendar — date looks off",
     revealText: "The calendar shows tomorrow's date — one day too far ahead.",
     correctChoice: "Calendar shows tomorrow",
@@ -68,8 +81,18 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const months = [
-        "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+        "JAN",
+        "FEB",
+        "MAR",
+        "APR",
+        "MAY",
+        "JUN",
+        "JUL",
+        "AUG",
+        "SEP",
+        "OCT",
+        "NOV",
+        "DEC",
       ];
       const tex = makeCalendarTexture({
         day: tomorrow.getDate(),
@@ -81,6 +104,12 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "mug-name",
     targetTag: "mug",
+    gameClueWords: {
+      runner: "mug",
+      sticky: "NAME",
+      clock: "YOURS",
+      photo: "LABEL",
+    },
     tooltipHint: "mug — label feels familiar",
     revealText: "The mug has YOUR name printed on it. Someone left it for you.",
     correctChoice: "Mug has your name on it",
@@ -97,15 +126,22 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   },
   {
     id: "clock-ccw",
-    targetTag: "clock",
-    tooltipHint: "clock — hands moving wrong",
-    revealText: "The clock hands are turning counter-clockwise. Time is reversing here.",
-    correctChoice: "Clock runs backwards",
+    targetTag: "reagent-tray",
+    gameClueWords: {
+      runner: "clock",
+      sticky: "BACKWARDS",
+      clock: "REVERSE",
+      photo: "TIME",
+    },
+    tooltipHint: "reagent tray — swirl runs wrong",
+    revealText:
+      "The liquid in the reagent tray swirls the wrong way — time sense is inverted.",
+    correctChoice: "Reagent tray — swirl runs backwards",
     distractorPool: [
-      "Clock has 13 numbers",
-      "Clock is missing the hour hand",
-      "Clock numbers are in Roman",
-      "Clock face is mirrored",
+      "Tray has the wrong number of wells",
+      "Tray is empty",
+      "Tray is made of glass",
+      "Tray is mirrored on the desk",
     ],
     apply: (o) => {
       o.flags.clockReverse = true;
@@ -114,8 +150,15 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "monitor-reflection",
     targetTag: "monitor-screen",
+    gameClueWords: {
+      runner: "screen",
+      sticky: "GLASS",
+      clock: "ROOM",
+      photo: "GHOST",
+    },
     tooltipHint: "monitor — reflection looks off",
-    revealText: "The monitor reflects a different room — not the one you're in.",
+    revealText:
+      "The monitor reflects a different room — not the one you're in.",
     correctChoice: "Monitor reflection is wrong",
     distractorPool: [
       "Monitor is showing static",
@@ -130,8 +173,15 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "photo-self",
     targetTag: "photo",
+    gameClueWords: {
+      runner: "photo",
+      sticky: "FAMILIAR",
+      clock: "BEFORE",
+      photo: "SELF",
+    },
     tooltipHint: "photo — that face is familiar",
-    revealText: "The photo on the desk shows your own face — looking back at you.",
+    revealText:
+      "The photo on the desk shows your own face — looking back at you.",
     correctChoice: "Photo shows your own face",
     distractorPool: [
       "Photo is faded",
@@ -146,24 +196,37 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   },
   {
     id: "sticky-warning",
-    targetTag: "sticky",
-    tooltipHint: "sticky — that wasn't there yesterday",
-    revealText: "The sticky note reads \u201Cthey're behind you\u201D. It wasn't there yesterday.",
-    correctChoice: "Sticky note has a warning",
+    targetTag: "evidence-envelope",
+    gameClueWords: {
+      runner: "note",
+      sticky: "WARNING",
+      clock: "BEHIND",
+      photo: "TEXT",
+    },
+    tooltipHint: "evidence envelope — new message",
+    revealText:
+      "The envelope contains a note: \u201Cthey're behind you\u201D. It wasn't in the case file yesterday.",
+    correctChoice: "Evidence envelope — warning note inside",
     distractorPool: [
-      "Sticky note is empty",
-      "Sticky note is the wrong color",
-      "Sticky note is misspelled",
-      "Sticky note is in a different language",
+      "Envelope is empty",
+      "Envelope is the wrong color",
+      "Envelope is sealed shut",
+      "Envelope is in a different language",
     ],
     apply: (o) => {
-      const tex = makeStickyTexture("they're behind you");
-      replaceMap(o.stickyNote, tex);
+      const tex = makeEvidenceEnvelopeTexture("they're behind you");
+      replaceMap(o.evidenceEnvelope, tex);
     },
   },
   {
     id: "pen-floating",
     targetTag: "pen",
+    gameClueWords: {
+      runner: "pen",
+      sticky: "FLOAT",
+      clock: "HOLD",
+      photo: "INK",
+    },
     tooltipHint: "pen — what's holding it up?",
     revealText: "The pen is floating just above the desk. No support.",
     correctChoice: "Pen floats above the desk",
@@ -180,6 +243,12 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "lamp-shadow-wrong",
     targetTag: "lamp-shadow",
+    gameClueWords: {
+      runner: "shadow",
+      sticky: "LAMP",
+      clock: "WRONG",
+      photo: "LIGHT",
+    },
     tooltipHint: "shadow — wrong direction",
     revealText: "The shadow points TOWARD the light, not away from it.",
     correctChoice: "Shadow points the wrong way",
@@ -190,16 +259,25 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Shadow has a different shape",
     ],
     apply: (o) => {
-      // Move the shadow-casting prop to the OTHER side of the lamp so its
-      // visible shadow appears to point toward the bulb. We swap X across the
-      // lamp position to create the "impossible shadow" effect.
-      const dx = o.lampShadowProp.position.x - o.lamp.position.x;
-      o.lampShadowProp.position.x = o.lamp.position.x - dx + 0.4;
+      const lx = o.lamp.position.x;
+      const dxS = o.lampShadowStandee.position.x - lx;
+      o.lampShadowStandee.position.x = lx - dxS + 1.45;
+      o.lampShadowProp.scale.x = -Math.abs(
+        o.lampShadowProp.scale.x === 0 ? 1 : o.lampShadowProp.scale.x,
+      );
+      const dxP = o.lampShadowProp.position.x - lx;
+      o.lampShadowProp.position.x = lx - dxP + 1.15;
     },
   },
   {
     id: "steam-down",
     targetTag: "coffee-steam",
+    gameClueWords: {
+      runner: "steam",
+      sticky: "DOWN",
+      clock: "CUP",
+      photo: "HEAT",
+    },
     tooltipHint: "steam — drifting the wrong way",
     revealText: "The coffee steam is drifting downward instead of rising.",
     correctChoice: "Steam falls instead of rising",
@@ -216,6 +294,12 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "blank-book",
     targetTag: "book",
+    gameClueWords: {
+      runner: "book",
+      sticky: "BLANK",
+      clock: "PAGE",
+      photo: "SPINE",
+    },
     tooltipHint: "book — strangely silent",
     revealText: "Every page in the open book is completely blank.",
     correctChoice: "Open book has blank pages",
@@ -233,6 +317,12 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "keyboard-extra-key",
     targetTag: "keyboard",
+    gameClueWords: {
+      runner: "keyboard",
+      sticky: "EXTRA",
+      clock: "KEY",
+      photo: "RED",
+    },
     tooltipHint: "keyboard — one key too many",
     revealText: "There's a giant red key on the keyboard that doesn't belong.",
     correctChoice: "Keyboard has an extra red key",
@@ -256,6 +346,12 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   {
     id: "plant-glitching",
     targetTag: "plant",
+    gameClueWords: {
+      runner: "plant",
+      sticky: "GLITCH",
+      clock: "LEAF",
+      photo: "POT",
+    },
     tooltipHint: "plant — leaves twitching",
     revealText: "The plant's leaves twitch and snap as if rendered wrong.",
     correctChoice: "Plant is glitching",
@@ -285,7 +381,18 @@ export function pickAnomaly(seed: number): PickedAnomaly {
   const def = ANOMALIES[defIndex] ?? ANOMALIES[0];
   if (!def) throw new Error("ANOMALIES is empty");
 
-  // Fisher–Yates over a copy of the distractor pool, then take 2.
+  const clueTokens = [
+    def.gameClueWords.runner,
+    def.gameClueWords.sticky,
+    def.gameClueWords.clock,
+    def.gameClueWords.photo,
+  ].map((t) => t.toLowerCase());
+
+  function overlapsClues(choice: string): boolean {
+    const low = choice.toLowerCase();
+    return clueTokens.some((tok) => tok.length >= 3 && low.includes(tok));
+  }
+
   const pool = [...def.distractorPool];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
@@ -296,7 +403,23 @@ export function pickAnomaly(seed: number): PickedAnomaly {
       pool[j] = a;
     }
   }
-  const distractors = pool.slice(0, 2);
+  const ranked = [...pool].sort((a, b) => {
+    const ao = overlapsClues(a) ? 1 : 0;
+    const bo = overlapsClues(b) ? 1 : 0;
+    return bo - ao;
+  });
+  const overlapPick = ranked.filter((d) => overlapsClues(d));
+  const restPick = ranked.filter((d) => !overlapPick.includes(d));
+  const distractors: string[] = [];
+  if (overlapPick.length >= 2) {
+    distractors.push(overlapPick[0]!, overlapPick[1]!);
+  } else {
+    distractors.push(...overlapPick);
+    for (const r of restPick) {
+      if (distractors.length >= 2) break;
+      if (!distractors.includes(r)) distractors.push(r);
+    }
+  }
 
   // Build [correct, d1, d2] then shuffle deterministically; track correctIndex.
   const labeled: Array<{ text: string; isCorrect: boolean }> = [
@@ -334,7 +457,10 @@ function replaceMap(mesh: THREE.Mesh, tex: THREE.Texture): void {
 function replaceMatMap(mat: THREE.Material, tex: THREE.Texture): void {
   // MeshBasicMaterial / MeshStandardMaterial both have `map` at runtime; treat
   // as a structural assign without leaning on a union of both types.
-  const m = mat as unknown as { map?: THREE.Texture | null; needsUpdate?: boolean };
+  const m = mat as unknown as {
+    map?: THREE.Texture | null;
+    needsUpdate?: boolean;
+  };
   if ("map" in m) {
     m.map = tex;
     m.needsUpdate = true;

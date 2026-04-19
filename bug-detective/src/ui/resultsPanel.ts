@@ -65,7 +65,7 @@ export function createResultsPanel(container: HTMLElement): ResultsPanel {
   stats.style.cssText = STYLE_STATS;
   panel.appendChild(stats);
   const statScore = makeStat("score");
-  const statClues = makeStat("clues");
+  const statClues = makeStat("evidence");
   const statTime = makeStat("time");
   stats.appendChild(statScore.box);
   stats.appendChild(statClues.box);
@@ -89,7 +89,8 @@ export function createResultsPanel(container: HTMLElement): ResultsPanel {
 
   const restartBtn = document.createElement("button");
   restartBtn.type = "button";
-  restartBtn.textContent = "play again (R)";
+  restartBtn.textContent = "play again";
+  restartBtn.title = "Keyboard: R, Enter, or Esc";
   restartBtn.style.cssText = STYLE_BTN_PRIMARY;
   btnRow.appendChild(restartBtn);
 
@@ -97,15 +98,6 @@ export function createResultsPanel(container: HTMLElement): ResultsPanel {
   let shareHandler: (() => void) | null = null;
   restartBtn.addEventListener("click", () => restartHandler?.());
   shareBtn.addEventListener("click", () => shareHandler?.());
-
-  const onKey = (e: KeyboardEvent): void => {
-    if (overlay.style.display === "none") return;
-    if (e.key === "r" || e.key === "R" || e.key === "Enter") {
-      restartHandler?.();
-      e.preventDefault();
-    }
-  };
-  window.addEventListener("keydown", onKey);
 
   function show(view: ResultsView): void {
     headline.textContent = view.correct ? "you found it" : "wrong call";
@@ -132,7 +124,6 @@ export function createResultsPanel(container: HTMLElement): ResultsPanel {
   }
 
   function destroy(): void {
-    window.removeEventListener("keydown", onKey);
     overlay.remove();
   }
 
@@ -165,4 +156,3 @@ function makeStat(label: string): { box: HTMLElement; value: HTMLElement } {
   box.appendChild(valueEl);
   return { box, value: valueEl };
 }
-

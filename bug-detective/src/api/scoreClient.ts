@@ -20,6 +20,8 @@ export interface ScoreSubmission {
   cluesUsed: number;
   elapsedMs: number;
   name: string;
+  /** Optional mono line e.g. `RUN 220 · INK 880 · DIAL 940 · ZOOM 760`. */
+  gameScoresDetail?: string;
 }
 
 export async function fetchLeaderboard(
@@ -55,6 +57,7 @@ export async function postScore(
         cluesUsed: s.cluesUsed,
         elapsedMs: s.elapsedMs,
         name: s.name,
+        ...(s.gameScoresDetail ? { gameScoresDetail: s.gameScoresDetail } : {}),
       }),
     });
     if (!r.ok) return null;

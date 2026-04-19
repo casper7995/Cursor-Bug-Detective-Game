@@ -18,6 +18,16 @@ function invertBindings(bindings: Record<ActionName, string[]>): CodeToActions {
 }
 
 export class InputManager {
+  /** Only keys we preventDefault when bound — unbound Tab/Space still behave normally. */
+  private static readonly NAV_CODES = new Set<string>([
+    "Tab",
+    "Space",
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+  ]);
+
   private readonly codesDown = new Set<string>();
   private readonly codeToActions: CodeToActions;
   /** Actions that fired on this frame from a keydown edge (not repeat). */
@@ -70,6 +80,7 @@ export class InputManager {
     this.codesDown.add(e.code);
     const acts = this.codeToActions.get(e.code);
     if (acts) {
+      if (InputManager.NAV_CODES.has(e.code)) e.preventDefault();
       for (const a of acts) this.justPressed.add(a);
     }
   };

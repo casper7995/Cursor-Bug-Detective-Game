@@ -1,0 +1,380 @@
+/**
+ * First-open tutorial card for desk minigames — drawn in internal canvas space,
+ * localStorage-gated per game type (`bd:miniTutorial:*`).
+ */
+
+import { CURSOR } from "../../ui/cursorTheme";
+
+export interface TutorialContent {
+  readonly title: string;
+  readonly tagline: string;
+  readonly howToLines: readonly string[];
+  readonly drawDiagram?: (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ) => void;
+  readonly storageKey: string;
+}
+
+function inRect(
+  x: number,
+  y: number,
+  r: { x: number; y: number; w: number; h: number },
+): boolean {
+  return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+
+/** Small [?] next to the desk close control — same row, left of ✕. */
+export function getDeskHelpButtonRect(W: number): {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+} {
+  return { x: W - 82, y: 10, w: 30, h: 26 };
+}
+
+export function hitDeskHelpButton(
+  gameX: number,
+  gameY: number,
+  W: number,
+): boolean {
+  const r = getDeskHelpButtonRect(W);
+  return inRect(gameX, gameY, r);
+}
+
+export class TutorialGate {
+  /** When true, puzzle input is blocked and the tutorial card is shown. */
+  visible: boolean;
+  private readonly content: TutorialContent;
+  private cardRect = { x: 0, y: 0, w: 0, h: 0 };
+  private startRect = { x: 0, y: 0, w: 0, h: 0 };
+  private innerCloseRect = { x: 0, y: 0, w: 0, h: 0 };
+  private panelRect = { x: 0, y: 0, w: 0, h: 0 };
+
+  constructor(content: TutorialContent) {
+    this.content = content;
+    try {
+      this.visible = localStorage.getItem(content.storageKey) !== "1";
+    } catch {
+      this.visible = true;
+    }
+  }
+
+  isBlocking(): boolean {
+    return this.visible;
+  }
+
+  reopen(): void {
+    this.visible = true;
+  }
+
+  private dismissWithoutSave(): void {
+    this.visible = false;
+  }
+
+  private markSeen(): void {
+    try {
+      localStorage.setItem(this.content.storageKey, "1");
+    } catch {
+      /* ignore */
+    }
+    this.visible = false;
+  }
+
+  /** Esc / MenuBack: close tutorial without marking seen (minigame stays open). */
+  dismissFromKey(): void {
+    if (this.visible) this.dismissWithoutSave();
+  }
+
+  private layout(W: number, H: number): void {
+    this.panelRect = { x: 0, y: 0, w: W, h: H };
+    const cw = Math.min(420, W - 56);
+    const lineCount = this.content.howToLines.length;
+    const padTop = 22;
+    const titleBlock = 28;
+    const taglineBlock = 22;
+    const bulletsBlock = lineCount * 18 + 6;
+    const diagramBlock = this.content.drawDiagram ? 56 : 0;
+    const buttonBlock = 36;
+    const footerBlock = 26;
+    const padBottom = 14;
+    const ch = Math.min(
+      H - 24,
+      padTop +
+        titleBlock +
+        taglineBlock +
+        bulletsBlock +
+        diagramBlock +
+        buttonBlock +
+        footerBlock +
+        padBottom,
+    );
+    this.cardRect = {
+      x: (W - cw) / 2,
+      y: (H - ch) / 2,
+      w: cw,
+      h: ch,
+    };
+    const btnW = 160;
+    const btnH = 36;
+    this.startRect = {
+      x: this.cardRect.x + (this.cardRect.w - btnW) / 2,
+      y: this.cardRect.y + this.cardRect.h - footerBlock - btnH - 4,
+      w: btnW,
+      h: btnH,
+    };
+    this.innerCloseRect = {
+      x: this.cardRect.x + this.cardRect.w - 36,
+      y: this.cardRect.y + 10,
+      w: 28,
+      h: 24,
+    };
+  }
+
+  /**
+   * Pointer in internal game coords. Returns action if consumed.
+   * "start" = marked seen and closed; "close" = dismissed without persisting.
+   */
+  handlePointer(
+    gameX: number,
+    gameY: number,
+    W: number,
+    H: number,
+  ): "start" | "close" | null {
+    if (!this.visible) return null;
+    this.layout(W, H);
+    if (inRect(gameX, gameY, this.startRect)) {
+      this.markSeen();
+      return "start";
+    }
+    if (inRect(gameX, gameY, this.innerCloseRect)) {
+      this.dismissWithoutSave();
+      return "close";
+    }
+    const { cardRect, panelRect } = this;
+    const inCard =
+      gameX >= cardRect.x &&
+      gameX <= cardRect.x + cardRect.w &&
+      gameY >= cardRect.y &&
+      gameY <= cardRect.y + cardRect.h;
+    if (!inCard) {
+      const inPanel =
+        gameX >= panelRect.x &&
+        gameX <= panelRect.x + panelRect.w &&
+        gameY >= panelRect.y &&
+        gameY <= panelRect.y + panelRect.h;
+      if (inPanel) {
+        this.dismissWithoutSave();
+        return "close";
+      }
+    }
+    return null;
+  }
+
+  draw(ctx: CanvasRenderingContext2D, W: number, H: number): void {
+    if (!this.visible) return;
+    this.layout(W, H);
+    const { cardRect, startRect, innerCloseRect } = this;
+    const c = this.content;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(8,7,5,0.78)";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = "#1a1812";
+    ctx.strokeStyle = "rgba(245,78,0,0.5)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(cardRect.x, cardRect.y, cardRect.w, cardRect.h, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    let ly = cardRect.y + 24;
+    ctx.fillStyle = CURSOR.gold;
+    ctx.font = "600 13px 'Cursor Gothic', ui-sans-serif, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(c.title.toUpperCase(), cardRect.x + 18, ly);
+    ly += 22;
+
+    ctx.fillStyle = CURSOR.textHi;
+    ctx.font = "12px 'Cursor Gothic', sans-serif";
+    ctx.fillText(c.tagline, cardRect.x + 18, ly);
+    ly += 22;
+
+    ctx.font = "11px 'Cursor Gothic', sans-serif";
+    ctx.fillStyle = "rgba(247,247,244,0.92)";
+    for (const line of c.howToLines) {
+      ctx.fillText(`\u2022 ${line}`, cardRect.x + 18, ly);
+      ly += 18;
+    }
+
+    if (c.drawDiagram) {
+      ly += 8;
+      c.drawDiagram(ctx, cardRect.x + 18, ly, cardRect.w - 36, 40);
+    }
+
+    ctx.fillStyle = "rgba(245,78,0,0.95)";
+    ctx.beginPath();
+    ctx.roundRect(startRect.x, startRect.y, startRect.w, startRect.h, 8);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = "600 14px 'Cursor Gothic', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Start", startRect.x + startRect.w / 2, startRect.y + 23);
+    ctx.textAlign = "left";
+
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.strokeRect(
+      innerCloseRect.x,
+      innerCloseRect.y,
+      innerCloseRect.w,
+      innerCloseRect.h,
+    );
+    ctx.fillStyle = CURSOR.textHi;
+    ctx.font = "700 12px sans-serif";
+    ctx.fillText("\u2715", innerCloseRect.x + 9, innerCloseRect.y + 17);
+
+    ctx.fillStyle = "rgba(237,236,236,0.7)";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      "Esc closes this card  \u00b7  Start hides it next time",
+      cardRect.x + cardRect.w / 2,
+      cardRect.y + cardRect.h - 12,
+    );
+    ctx.textAlign = "left";
+    ctx.restore();
+  }
+}
+
+/** Envelope mini diagram: symbol slot equals letter chip. */
+export function drawEnvelopeTutorialDiagram(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  _w: number,
+  h: number,
+): void {
+  ctx.save();
+  ctx.textAlign = "left";
+  const cy = y + h / 2;
+  ctx.fillStyle = CURSOR.textHi;
+  ctx.font = "700 18px sans-serif";
+  ctx.fillText("\u2605", x + 4, cy + 6);
+  ctx.fillStyle = CURSOR.text;
+  ctx.font = "14px sans-serif";
+  ctx.fillText("=", x + 32, cy + 5);
+  ctx.strokeStyle = "rgba(245,78,0,0.55)";
+  ctx.strokeRect(x + 50, cy - 13, 30, 24);
+  ctx.fillStyle = "rgba(245,78,0,0.95)";
+  ctx.font = "700 14px monospace";
+  ctx.fillText("A", x + 60, cy + 5);
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.beginPath();
+  ctx.moveTo(x + 96, cy);
+  ctx.lineTo(x + 138, cy);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + 138, cy);
+  ctx.lineTo(x + 132, cy - 4);
+  ctx.moveTo(x + 138, cy);
+  ctx.lineTo(x + 132, cy + 4);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(26,24,18,0.95)";
+  ctx.beginPath();
+  ctx.arc(x + 156, cy, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = CURSOR.gold;
+  ctx.stroke();
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 12px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("A", x + 156, cy + 4);
+  ctx.textAlign = "left";
+  ctx.restore();
+}
+
+/** Reagent mini: target swatch arrow into mix well. */
+export function drawReagentTutorialDiagram(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  _w: number,
+  h: number,
+): void {
+  ctx.save();
+  ctx.textAlign = "left";
+  const cy = y + h / 2;
+  ctx.fillStyle = "#6a8a5e";
+  ctx.fillRect(x, cy - 12, 36, 22);
+  ctx.strokeStyle = "rgba(255,255,255,0.5)";
+  ctx.strokeRect(x, cy - 12, 36, 22);
+  ctx.fillStyle = "rgba(237,236,236,0.85)";
+  ctx.font = "9px sans-serif";
+  ctx.fillText("target", x + 2, cy + 22);
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.beginPath();
+  ctx.moveTo(x + 46, cy);
+  ctx.lineTo(x + 86, cy);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + 86, cy);
+  ctx.lineTo(x + 80, cy - 4);
+  ctx.moveTo(x + 86, cy);
+  ctx.lineTo(x + 80, cy + 4);
+  ctx.stroke();
+  ctx.fillStyle = "#5d7a55";
+  ctx.beginPath();
+  ctx.arc(x + 110, cy, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = CURSOR.gold;
+  ctx.stroke();
+  ctx.fillStyle = "rgba(237,236,236,0.85)";
+  ctx.font = "9px sans-serif";
+  ctx.fillText("well", x + 100, cy + 22);
+  ctx.restore();
+}
+
+/** Lamp mini: filter chip resolves jittery letters into a clean word. */
+export function drawLampTutorialDiagram(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  _w: number,
+  h: number,
+): void {
+  ctx.save();
+  ctx.textAlign = "left";
+  const cy = y + h / 2;
+  ctx.fillStyle = "rgba(245,78,0,0.32)";
+  ctx.fillRect(x, cy - 12, 38, 22);
+  ctx.strokeStyle = CURSOR.gold;
+  ctx.strokeRect(x, cy - 12, 38, 22);
+  ctx.fillStyle = "#fff";
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("UV", x + 19, cy + 4);
+  ctx.textAlign = "left";
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.font = "700 13px monospace";
+  ctx.fillText("W~R~D", x + 50, cy + 5);
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.beginPath();
+  ctx.moveTo(x + 110, cy);
+  ctx.lineTo(x + 142, cy);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x + 142, cy);
+  ctx.lineTo(x + 136, cy - 4);
+  ctx.moveTo(x + 142, cy);
+  ctx.lineTo(x + 136, cy + 4);
+  ctx.stroke();
+  ctx.fillStyle = "#fff";
+  ctx.font = "700 13px monospace";
+  ctx.fillText("WORD", x + 152, cy + 5);
+  ctx.restore();
+}

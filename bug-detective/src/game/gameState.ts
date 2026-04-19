@@ -1,14 +1,25 @@
-import { computeScore } from "./score";
-import { ROUND_DURATION_MS } from "./timer";
+import { computeScore, type GameScoreBreakdown } from "./score";
+import type { NotebookPage, NotebookSlot, NotebookState } from "./notebook";
+
+export type { NotebookPage, NotebookSlot, NotebookState } from "./notebook";
 
 export type RunnerMode = "daily" | "endless";
+
+function notebookComplete(nb: NotebookState): boolean {
+  return (
+    nb.runner !== undefined &&
+    nb.sticky !== undefined &&
+    nb.clock !== undefined &&
+    nb.photo !== undefined
+  );
+}
 
 export type Phase =
   | { kind: "intro" }
   | {
       kind: "investigating";
       startedAt: number;
-      cluesUsed: number;
+      notebook: NotebookState;
       /**
        * After the player clears the daily monitor run once, endless mode
        * unlocks and this flag stays true for the rest of the round.
@@ -19,22 +30,23 @@ export type Phase =
       kind: "runner";
       mode: RunnerMode;
       startedAt: number;
-      cluesUsed: number;
+      notebook: NotebookState;
       investigatingStartedAt: number;
       monitorDailyClear: boolean;
     }
   | {
       kind: "answering";
       startedAt: number;
-      cluesUsed: number;
+      notebook: NotebookState;
       elapsedMs: number;
     }
   | {
       kind: "results";
       correct: boolean;
       score: number;
-      cluesUsed: number;
+      notebook: NotebookState;
       elapsedMs: number;
+      breakdown: GameScoreBreakdown;
     };
 
 export class GameState {
@@ -44,15 +56,23 @@ export class GameState {
     this.phase = {
       kind: "investigating",
       startedAt: now,
-      cluesUsed: 0,
+      notebook: {},
       monitorDailyClear: false,
     };
   }
 
-  /** Bump clue counter while investigating. No-op in other phases. */
-  bumpClue(): void {
+  /** Pin or replace a notebook page while investigating or in runner pre-return. */
+  pinNotebookPage(slot: NotebookSlot, page: NotebookPage): void {
     if (this.phase.kind === "investigating") {
-      this.phase = { ...this.phase, cluesUsed: this.phase.cluesUsed + 1 };
+      this.phase = {
+        ...this.phase,
+        notebook: { ...this.phase.notebook, [slot]: page },
+      };
+    } else if (this.phase.kind === "runner") {
+      this.phase = {
+        ...this.phase,
+        notebook: { ...this.phase.notebook, [slot]: page },
+      };
     }
   }
 
@@ -65,7 +85,7 @@ export class GameState {
       kind: "runner",
       mode,
       startedAt: now,
-      cluesUsed: p.cluesUsed,
+      notebook: p.notebook,
       investigatingStartedAt: p.startedAt,
       monitorDailyClear: p.monitorDailyClear,
     };
@@ -74,7 +94,6 @@ export class GameState {
 
   returnToInvestigatingFromRunner(updates: {
     monitorDailyClear?: boolean;
-    cluesIncrement?: boolean;
   }): Extract<Phase, { kind: "investigating" }> | null {
     if (this.phase.kind !== "runner") return null;
     const p = this.phase;
@@ -82,40 +101,43 @@ export class GameState {
     const nextPhase: Extract<Phase, { kind: "investigating" }> = {
       kind: "investigating",
       startedAt: p.investigatingStartedAt,
-      cluesUsed: p.cluesUsed + (updates.cluesIncrement ? 1 : 0),
+      notebook: p.notebook,
       monitorDailyClear,
     };
     this.phase = nextPhase;
     return nextPhase;
   }
 
-  /** Force-end investigation. The HUD calls this when timer expires or user submits. */
-  enterAnswering(now: number): void {
-    if (this.phase.kind !== "investigating") return;
-    const elapsedMs = Math.min(ROUND_DURATION_MS, now - this.phase.startedAt);
+  /** Opens the answer panel — only when all four evidence pages are pinned. */
+  enterAnswering(now: number): boolean {
+    if (this.phase.kind !== "investigating") return false;
+    if (!notebookComplete(this.phase.notebook)) return false;
+    const elapsedMs = Math.max(0, now - this.phase.startedAt);
     this.phase = {
       kind: "answering",
       startedAt: this.phase.startedAt,
-      cluesUsed: this.phase.cluesUsed,
+      notebook: this.phase.notebook,
       elapsedMs,
     };
+    return true;
   }
 
   /** Player picked a choice. Compute score and transition to results. */
   submit(choiceIndex: number, correctIndex: number): void {
     if (this.phase.kind !== "answering") return;
     const correct = choiceIndex === correctIndex;
-    const score = computeScore({
+    const { score, breakdown } = computeScore({
       correct,
       elapsedMs: this.phase.elapsedMs,
-      cluesUsed: this.phase.cluesUsed,
+      notebook: this.phase.notebook,
     });
     this.phase = {
       kind: "results",
       correct,
       score,
-      cluesUsed: this.phase.cluesUsed,
+      notebook: this.phase.notebook,
       elapsedMs: this.phase.elapsedMs,
+      breakdown,
     };
   }
 

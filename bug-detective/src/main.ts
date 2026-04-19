@@ -36,7 +36,7 @@ import {
 } from "./audio/audio";
 import { formatGameScoresDetail } from "./game/score";
 import { GameState, assertNever, type RunnerMode } from "./game/gameState";
-import { EnvelopeSession } from "./minigames/envelope/envelopeSession";
+import { SentenceSession } from "./minigames/sentence/sentenceSession";
 import { ErrandSession } from "./minigames/errand/errandSession";
 import { TamperSession } from "./minigames/tamper/tamperSession";
 import { deriveRunnerClueSet } from "./minigames/runner/clueTokens";
@@ -310,7 +310,7 @@ function bootGameInner(simplified: boolean): void {
   let runnerEndlessDeathTimer = 0;
 
   type DeskMini =
-    | { kind: "envelope"; session: EnvelopeSession }
+    | { kind: "sentence"; session: SentenceSession }
     | { kind: "errand"; session: ErrandSession }
     | { kind: "tamper"; session: TamperSession };
 
@@ -341,7 +341,7 @@ function bootGameInner(simplified: boolean): void {
     deskMinigame = null;
   }
 
-  function getDeskZoomTarget(kind: "envelope" | "errand" | "tamper"): {
+  function getDeskZoomTarget(kind: "sentence" | "errand" | "tamper"): {
     camPos: THREE.Vector3;
     lookAt: THREE.Vector3;
   } {
@@ -427,7 +427,7 @@ function bootGameInner(simplified: boolean): void {
   }
 
   async function startDeskMini(
-    kind: "envelope" | "errand" | "tamper",
+    kind: "sentence" | "errand" | "tamper",
     _now: number,
   ): Promise<void> {
     if (deskMinigame) return;
@@ -441,7 +441,7 @@ function bootGameInner(simplified: boolean): void {
     };
     cameraRig.copyLookAtInto(deskMiniCamReturn.look);
 
-    if (kind === "envelope") diorama.flags.envelopeOpen = true;
+    if (kind === "sentence") diorama.flags.envelopeOpen = true;
     if (kind === "errand") diorama.flags.reagentActive = true;
     if (kind === "tamper") diorama.flags.lampActive = true;
 
@@ -461,15 +461,16 @@ function bootGameInner(simplified: boolean): void {
     };
     const words = picked.def.gameClueWords;
 
-    if (kind === "envelope") {
-      const session = new EnvelopeSession({
+    if (kind === "sentence") {
+      const session = new SentenceSession({
         overlayCtx: runnerOverlay.ctx,
         getOverlayViewport: getVp,
-        targetWord: words.sentence,
+        clueWord: words.sentence,
+        anomalyId: picked.def.id,
         onExit,
       });
       session.attachPointer(runnerOverlay.canvas);
-      deskMinigame = { kind: "envelope", session };
+      deskMinigame = { kind: "sentence", session };
     } else if (kind === "errand") {
       const session = new ErrandSession({
         overlayCtx: runnerOverlay.ctx,
@@ -616,7 +617,7 @@ function bootGameInner(simplified: boolean): void {
         return;
       const now = performance.now();
       if (state.phase.kind !== "investigating") return;
-      if (tag === "evidence-envelope") void startDeskMini("envelope", now);
+      if (tag === "evidence-envelope") void startDeskMini("sentence", now);
       else if (tag === "reagent-tray") void startDeskMini("errand", now);
       else void startDeskMini("tamper", now);
     },
@@ -1273,7 +1274,7 @@ function bootGameInner(simplified: boolean): void {
       if (out) {
         const kind = deskMinigame.kind;
         const slot: "sentence" | "errand" | "tamper" =
-          kind === "envelope"
+          kind === "sentence"
             ? "sentence"
             : kind === "errand"
               ? "errand"

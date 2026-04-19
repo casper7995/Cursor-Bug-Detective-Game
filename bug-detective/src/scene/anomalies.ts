@@ -1,7 +1,7 @@
 import * as THREE from "three";
+import { makeCaseFileBlankDeskTexture } from "../intro/pagePeel";
 import {
   type DioramaObjects,
-  makeBookPagesTexture,
   makeCalendarTexture,
   makeMugLabelTexture,
   makeEvidenceEnvelopeTexture,
@@ -172,26 +172,25 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   },
   {
     id: "photo-self",
-    targetTag: "photo",
+    targetTag: "case-file",
     gameClueWords: {
       runner: "photo",
       sticky: "FAMILIAR",
       clock: "BEFORE",
       photo: "SELF",
     },
-    tooltipHint: "photo — that face is familiar",
-    revealText:
-      "The photo on the desk shows your own face — looking back at you.",
-    correctChoice: "Photo shows your own face",
+    tooltipHint: "case file — that face is familiar",
+    revealText: "The case file shows your own face — looking back at you.",
+    correctChoice: "Case file shows your own face",
     distractorPool: [
-      "Photo is faded",
-      "Photo frame is cracked",
-      "Photo is black and white",
-      "Photo is hung crooked",
+      "Case file is blank",
+      "Case file is the wrong case",
+      "Case file is sealed shut",
+      "Case file is written in another language",
     ],
     apply: (o) => {
       const tex = makePhotoTexture("self");
-      replaceMap(o.photoImage, tex);
+      replaceMap(o.caseFileSheet, tex);
     },
   },
   {
@@ -220,24 +219,25 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   },
   {
     id: "pen-floating",
-    targetTag: "pen",
+    targetTag: "case-file",
     gameClueWords: {
-      runner: "pen",
+      runner: "case",
       sticky: "FLOAT",
-      clock: "HOLD",
-      photo: "INK",
+      clock: "DESK",
+      photo: "FILE",
     },
-    tooltipHint: "pen — what's holding it up?",
-    revealText: "The pen is floating just above the desk. No support.",
-    correctChoice: "Pen floats above the desk",
+    tooltipHint: "case file — what's holding it up?",
+    revealText:
+      "The case file sheet is floating just above the desk. No support.",
+    correctChoice: "Case file floats above the desk",
     distractorPool: [
-      "Pen is missing its cap",
-      "Pen is broken in half",
-      "Pen is the wrong color",
-      "Pen is leaking ink",
+      "Case file is missing a staple",
+      "Case file is torn in half",
+      "Case file is the wrong color",
+      "Case file is soaked through",
     ],
     apply: (o) => {
-      o.pen.userData.floatActive = true;
+      o.caseFileSheet.userData.floatActive = true;
     },
   },
   {
@@ -293,25 +293,26 @@ export const ANOMALIES: readonly AnomalyDef[] = [
   },
   {
     id: "blank-book",
-    targetTag: "book",
+    targetTag: "case-file",
     gameClueWords: {
-      runner: "book",
+      runner: "case",
       sticky: "BLANK",
       clock: "PAGE",
-      photo: "SPINE",
+      photo: "FILE",
     },
-    tooltipHint: "book — strangely silent",
-    revealText: "Every page in the open book is completely blank.",
-    correctChoice: "Open book has blank pages",
+    tooltipHint: "case file — strangely silent",
+    revealText:
+      "The case file printout has no body copy — every line is empty.",
+    correctChoice: "Case file is blank",
     distractorPool: [
-      "Book is the wrong color",
-      "Book is closed shut",
-      "Book is upside down",
-      "Book has torn pages",
+      "Case file is the wrong color",
+      "Case file is folded shut",
+      "Case file is upside down",
+      "Case file has torn corners",
     ],
     apply: (o) => {
-      const tex = makeBookPagesTexture(false);
-      replaceMap(o.bookPages, tex);
+      const tex = makeCaseFileBlankDeskTexture(1024, 662);
+      replaceMap(o.caseFileSheet, tex);
     },
   },
   {

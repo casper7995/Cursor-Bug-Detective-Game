@@ -8,6 +8,7 @@ import { createDesktopDiorama } from "./scene/desktopDiorama";
 import { applyPropFlavor, isFlavorTag } from "./scene/propInteractions";
 import { CursorTracker } from "./intro/cursorTracker";
 import { createPagePeel, type PagePeel } from "./intro/pagePeel";
+import { showCaseFileModal } from "./ui/caseFileModal";
 import { createHud } from "./ui/hud";
 import { createAnswerPanel } from "./ui/answerPanel";
 import { createResultsPanel } from "./ui/resultsPanel";
@@ -716,6 +717,10 @@ function bootGameInner(simplified: boolean): void {
         tag === "lamp"
       )
         return;
+      if (tag === "case-file") {
+        void showCaseFileModal(root);
+        return;
+      }
       if (tag === picked.def.targetTag) return;
       if (!isFlavorTag(tag)) return;
       startFlavorInspect(first.object);
@@ -880,6 +885,7 @@ function bootGameInner(simplified: boolean): void {
   }
 
   function startInvestigating(now: number): void {
+    diorama.caseFileSheet.visible = true;
     state.enterInvestigating(now);
     hud.hideTimer();
     hud.setNotebook({});
@@ -956,8 +962,9 @@ function bootGameInner(simplified: boolean): void {
   //   6. State transitions to investigating (untimed round).
   const MIN_CASE_READ_MS = 3200; // minimum time on case file before peel can start
   const PEEL_BEGIN_MS = 200; // delay between mascot reaction and peel start
+  const DOLLY_START_DELAY_MS = 420; // let the peel read before camera moves
   const DOLLY_DURATION_MS = 2200; // total camera dolly time (ease-in-out cubic)
-  const REVEAL_AT_PROGRESS = 0.4; // make diorama visible mid-dolly
+  const REVEAL_AT_PROGRESS = 0.32; // show desk a bit earlier vs peel
 
   type IntroStep =
     | "waiting" // case file visible; wait for read time + confirm
@@ -969,6 +976,7 @@ function bootGameInner(simplified: boolean): void {
   let introStep: IntroStep = "waiting";
   let introStepStartedAt = 0;
   let dollyStarted = false;
+  let dollyStartAtMs = 0;
   let dioramaRevealed = false;
   let introAckPointer = false;
   let caseFileCtaShown = false;
@@ -1006,25 +1014,26 @@ function bootGameInner(simplified: boolean): void {
         if (now - introStepStartedAt > PEEL_BEGIN_MS) {
           pagePeel.start();
           sfxPeelTear();
-          // Fire and forget; we poll `cameraRig.isDollying()` from the
-          // peeling case to know when to hand off to landing.
-          void cameraRig.scriptedTo(
-            GAME_CAMERA_POS,
-            GAME_CAMERA_LOOKAT,
-            DOLLY_DURATION_MS,
-          );
-          dollyStarted = true;
           setIntroStep("peeling", now);
         }
         break;
       }
       case "peeling": {
+        if (!dollyStarted && now - introStepStartedAt >= DOLLY_START_DELAY_MS) {
+          void cameraRig.scriptedTo(
+            GAME_CAMERA_POS,
+            GAME_CAMERA_LOOKAT,
+            DOLLY_DURATION_MS,
+          );
+          dollyStartAtMs = now;
+          dollyStarted = true;
+        }
         // Reveal the diorama mid-dolly so the room appears as the page lifts.
         if (!dioramaRevealed && dollyStarted) {
-          const dollyProgress =
-            dollyStarted && cameraRig.isDollying()
-              ? Math.min(1, (now - introStepStartedAt) / DOLLY_DURATION_MS)
-              : 1;
+          const dollyProgress = Math.min(
+            1,
+            (now - dollyStartAtMs) / DOLLY_DURATION_MS,
+          );
           if (dollyProgress >= REVEAL_AT_PROGRESS) {
             diorama.root.visible = true;
             dioramaRevealed = true;
@@ -1048,7 +1057,7 @@ function bootGameInner(simplified: boolean): void {
           syncCursorDeskNav(diorama);
         }
         // Once both peel and dolly are done, move to landing (walk-in).
-        if (pagePeel.done && !cameraRig.isDollying()) {
+        if (pagePeel.done && dollyStarted && !cameraRig.isDollying()) {
           if (!mascotIntroSpawnedOnDesk) {
             diorama.root.visible = true;
             dioramaRevealed = true;
@@ -1432,6 +1441,7 @@ function bootGameInner(simplified: boolean): void {
   if (isSkipIntro() || simplified) {
     caseFileCta.remove();
     pagePeel.mesh.visible = false;
+    diorama.caseFileSheet.visible = true;
     diorama.root.visible = true;
     cameraRig.setStatic(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT);
     cursorTracker.setTarget(diorama.desk);
@@ -1503,16 +1513,12 @@ function bootGameInner(simplified: boolean): void {
         return "shadow";
       case "coffee-steam":
         return "steam";
-      case "photo":
-        return "photo";
       case "calendar":
         return "calendar";
       case "mug":
         return "mug";
-      case "pen":
-        return "pen";
-      case "book":
-        return "book";
+      case "case-file":
+        return "case file";
       case "keyboard":
         return "keyboard";
       case "plant":

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { DeskFootCircle } from "../cursor/deskFootResolve";
+import { makeFakePageTexture } from "../intro/pagePeel";
 
 /**
  * One hand-crafted desktop diorama. All interactive props carry a string
@@ -16,7 +17,6 @@ export interface DioramaObjects {
   readonly monitorReflection: THREE.Mesh;
   readonly mug: THREE.Group;
   readonly mugLabel: THREE.Mesh;
-  readonly pen: THREE.Mesh;
   readonly calendar: THREE.Mesh;
   /** Case envelope face mesh (anomaly `replaceMap` target). Parented under envelopeRoot. */
   readonly evidenceEnvelope: THREE.Mesh;
@@ -26,8 +26,6 @@ export interface DioramaObjects {
   readonly reagentTray: THREE.Group;
   /** Spinner in center well; `flags.clockReverse` reverses swirl. */
   readonly reagentSpinner: THREE.Mesh;
-  readonly photoFrame: THREE.Mesh;
-  readonly photoImage: THREE.Mesh;
   readonly lamp: THREE.Group;
   /** Card in lamp cone — visible when `flags.lampActive`. */
   readonly lampCard: THREE.Mesh;
@@ -35,8 +33,8 @@ export interface DioramaObjects {
   readonly lampShadowStandee: THREE.Mesh;
   /** Large faux shadow on the desk — primary hover target for `lamp-shadow`. */
   readonly lampShadowProp: THREE.Mesh;
-  readonly book: THREE.Mesh;
-  readonly bookPages: THREE.Mesh;
+  /** Lying case jacket — same art as intro peel; re-readable via click. */
+  readonly caseFileSheet: THREE.Mesh;
   readonly coffeeSteam: THREE.Mesh;
   readonly keyboard: THREE.Group;
   readonly plant: THREE.Group;
@@ -392,22 +390,6 @@ export function createDesktopDiorama(): DioramaObjects {
   mug.add(coffeeSteam);
   hoverables.push(coffeeSteam);
 
-  // ---- Pen ----------------------------------------------------------
-  const penGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.8, 12);
-  const penMat = new THREE.MeshStandardMaterial({
-    color: 0x9b1c2e,
-    roughness: 0.4,
-  });
-  const pen = new THREE.Mesh(penGeo, penMat);
-  pen.position.set(1.4, deskTopY + 0.025, 1.0);
-  pen.rotation.z = Math.PI / 2;
-  pen.rotation.y = 0.4;
-  pen.castShadow = true;
-  pen.userData.tag = "pen";
-  pen.userData.baseY = pen.position.y;
-  root.add(pen);
-  hoverables.push(pen);
-
   // ---- Calendar (small standing card) ------------------------------
   const calendarTex = makeCalendarTexture(formatToday());
   const calendar = new THREE.Mesh(
@@ -507,30 +489,6 @@ export function createDesktopDiorama(): DioramaObjects {
   );
   reagentOutline.position.set(0, 0.12, 0);
   reagentTray.add(reagentOutline);
-
-  // ---- Photo frame --------------------------------------------------
-  const photoFrame = new THREE.Mesh(
-    new THREE.BoxGeometry(0.5, 0.6, 0.05),
-    new THREE.MeshStandardMaterial({ color: 0x3b2a1a, roughness: 0.5 }),
-  );
-  photoFrame.position.set(-3.0, deskTopY + 0.32, -1.4);
-  photoFrame.rotation.y = 0.25;
-  photoFrame.castShadow = true;
-  photoFrame.userData.tag = "photo";
-  root.add(photoFrame);
-  hoverables.push(photoFrame);
-
-  const photoTex = makePhotoTexture("default");
-  const photoImage = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.42, 0.5),
-    new THREE.MeshBasicMaterial({ map: photoTex }),
-  );
-  photoImage.position.copy(photoFrame.position);
-  photoImage.position.x += Math.sin(0.25) * 0.026;
-  photoImage.position.z += Math.cos(0.25) * 0.026;
-  photoImage.rotation.y = 0.25;
-  photoImage.userData.tag = "photo";
-  root.add(photoImage);
 
   // ---- Evidence envelope (body + flap + seal; face mesh for anomalies) ---
   const evidenceEnvelopeRoot = new THREE.Group();
@@ -715,32 +673,31 @@ export function createDesktopDiorama(): DioramaObjects {
   root.add(lampShadowProp);
   hoverables.push(lampShadowProp);
 
-  // ---- Book ---------------------------------------------------------
-  const book = new THREE.Mesh(
-    new THREE.BoxGeometry(0.9, 0.08, 0.6),
-    new THREE.MeshStandardMaterial({ color: 0x2a4a6e, roughness: 0.6 }),
+  // ---- Case file sheet (matches intro peel art; hidden until investigation) ---
+  const sheetW = 0.95;
+  const sheetD = 0.6;
+  const caseFileTex = makeFakePageTexture(
+    1024,
+    Math.floor(1024 * (sheetD / sheetW)),
   );
-  book.position.set(0.4, deskTopY + 0.04, -1.5);
-  book.rotation.y = 0.15;
-  book.castShadow = true;
-  book.receiveShadow = true;
-  book.userData.tag = "book";
-  root.add(book);
-  hoverables.push(book);
-
-  // Open page on top of book (visible "pages" plane). The blank-book anomaly
-  // hides the text on this plane.
-  const bookPagesTex = makeBookPagesTexture(true);
-  const bookPages = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.85, 0.55),
-    new THREE.MeshBasicMaterial({ map: bookPagesTex, side: THREE.DoubleSide }),
+  const caseFileSheet = new THREE.Mesh(
+    new THREE.PlaneGeometry(sheetW, sheetD),
+    new THREE.MeshBasicMaterial({
+      map: caseFileTex,
+      side: THREE.DoubleSide,
+    }),
   );
-  bookPages.position.copy(book.position);
-  bookPages.position.y += 0.045;
-  bookPages.rotation.x = -Math.PI / 2;
-  bookPages.rotation.z = 0.15;
-  bookPages.userData.tag = "book";
-  root.add(bookPages);
+  caseFileSheet.rotation.x = -Math.PI / 2;
+  caseFileSheet.rotation.z = 0.12;
+  caseFileSheet.position.set(0.38, deskTopY + 0.004, -1.48);
+  caseFileSheet.visible = false;
+  caseFileSheet.receiveShadow = true;
+  caseFileSheet.castShadow = false;
+  caseFileSheet.userData.tag = "case-file";
+  caseFileSheet.userData.baseY = caseFileSheet.position.y;
+  caseFileSheet.userData.floatActive = false;
+  root.add(caseFileSheet);
+  hoverables.push(caseFileSheet);
 
   // ---- Plant --------------------------------------------------------
   const plant = new THREE.Group();
@@ -774,29 +731,13 @@ export function createDesktopDiorama(): DioramaObjects {
 
   // ---- Animation step -----------------------------------------------
   const steamBaseY = coffeeSteam.position.y;
-  const penBaseY = pen.position.y;
-  const penBaseRotZ = pen.rotation.z;
+  const caseFileBaseY = caseFileSheet.position.y;
   const plantBaseRotation = plant.rotation.clone();
   const keyboardBaseY = keyboard.position.y;
   const mugBaseRot = {
     x: mug.rotation.x,
     y: mug.rotation.y,
     z: mug.rotation.z,
-  };
-  const bookBase = {
-    x: book.rotation.x,
-    y: book.rotation.y,
-    z: book.rotation.z,
-  };
-  const bookPagesBase = {
-    x: bookPages.rotation.x,
-    y: bookPages.rotation.y,
-    z: bookPages.rotation.z,
-  };
-  const photoBase = {
-    x: photoFrame.rotation.x,
-    y: photoFrame.rotation.y,
-    z: photoFrame.rotation.z,
   };
   const deskBaseScale = desk.scale.x;
 
@@ -859,11 +800,12 @@ export function createDesktopDiorama(): DioramaObjects {
     coffeeSteam.position.y = steamY;
     (coffeeSteam.material as THREE.MeshBasicMaterial).opacity = steamOp;
 
-    // Pen idle: tiny breathing if floating-pen anomaly is on (handled by anomaly)
-    if (!pen.userData.floatActive) {
-      pen.position.y = penBaseY;
+    // Case file: hover when pen-floating anomaly retargets here.
+    if (!caseFileSheet.userData.floatActive) {
+      caseFileSheet.position.y = caseFileBaseY;
     } else {
-      pen.position.y = penBaseY + 0.025 + Math.sin(elapsed * 1.6) * 0.005;
+      caseFileSheet.position.y =
+        caseFileBaseY + 0.02 + Math.sin(elapsed * 1.45) * 0.008;
     }
 
     // Plant glitch jitter when the plant-glitching anomaly is on. This
@@ -902,22 +844,14 @@ export function createDesktopDiorama(): DioramaObjects {
       mug.rotation.set(mugBaseRot.x, mugBaseRot.y, mugBaseRot.z);
     }
 
-    const penEnd = pen.userData.flavorEndMs as number | undefined;
-    if (penEnd && nowMs < penEnd) {
-      const u = 1 - (penEnd - nowMs) / 620;
-      pen.rotation.z = penBaseRotZ + u * Math.PI * 2;
+    const caseFileFlavorEnd = caseFileSheet.userData.flavorEndMs as
+      | number
+      | undefined;
+    if (caseFileFlavorEnd && nowMs < caseFileFlavorEnd) {
+      const u = 1 - (caseFileFlavorEnd - nowMs) / 620;
+      caseFileSheet.rotation.z = 0.12 + Math.sin(u * Math.PI * 2) * 0.04;
     } else {
-      pen.rotation.z = penBaseRotZ;
-    }
-
-    const bookEnd = book.userData.flavorEndMs as number | undefined;
-    if (bookEnd && nowMs < bookEnd) {
-      const u = 1 - (bookEnd - nowMs) / 620;
-      book.rotation.x = bookBase.x + Math.sin(u * Math.PI) * 0.12;
-      bookPages.rotation.x = bookPagesBase.x + Math.sin(u * Math.PI * 2) * 0.08;
-    } else {
-      book.rotation.x = bookBase.x;
-      bookPages.rotation.x = bookPagesBase.x;
+      caseFileSheet.rotation.z = 0.12;
     }
 
     const kbEnd = keyboard.userData.flavorEndMs as number | undefined;
@@ -926,14 +860,6 @@ export function createDesktopDiorama(): DioramaObjects {
       keyboard.position.y = keyboardBaseY + Math.sin(u * Math.PI) * 0.035;
     } else {
       keyboard.position.y = keyboardBaseY;
-    }
-
-    const photoEnd = photoFrame.userData.flavorEndMs as number | undefined;
-    if (photoEnd && nowMs < photoEnd) {
-      const u = 1 - (photoEnd - nowMs) / 620;
-      photoFrame.rotation.z = photoBase.z + Math.sin(u * Math.PI) * 0.1;
-    } else {
-      photoFrame.rotation.z = photoBase.z;
     }
 
     const deskEnd = desk.userData.flavorEndMs as number | undefined;
@@ -963,11 +889,10 @@ export function createDesktopDiorama(): DioramaObjects {
 
   const mascotFootObstacles: DeskFootCircle[] = [
     { x: mug.position.x, z: mug.position.z, r: 0.38 },
-    { x: pen.position.x, z: pen.position.z, r: 0.44 },
+    { x: caseFileSheet.position.x, z: caseFileSheet.position.z, r: 0.55 },
     { x: keyboard.position.x, z: keyboard.position.z, r: 1.16 },
     { x: monitor.position.x, z: monitor.position.z, r: 1.12 },
     { x: reagentTray.position.x, z: reagentTray.position.z, r: 0.7 },
-    { x: photoFrame.position.x, z: photoFrame.position.z, r: 0.36 },
     {
       x: evidenceEnvelopeRoot.position.x,
       z: evidenceEnvelopeRoot.position.z,
@@ -980,7 +905,6 @@ export function createDesktopDiorama(): DioramaObjects {
       r: 0.32,
     },
     { x: lampShadowProp.position.x, z: lampShadowProp.position.z, r: 0.82 },
-    { x: book.position.x, z: book.position.z, r: 0.52 },
     { x: plant.position.x, z: plant.position.z, r: 0.36 },
     { x: calendar.position.x, z: calendar.position.z, r: 0.34 },
   ];
@@ -995,20 +919,16 @@ export function createDesktopDiorama(): DioramaObjects {
     monitorReflection,
     mug,
     mugLabel,
-    pen,
     calendar,
     evidenceEnvelope,
     evidenceEnvelopeRoot,
     reagentTray,
     reagentSpinner,
-    photoFrame,
-    photoImage,
     lamp,
     lampCard,
     lampShadowStandee,
     lampShadowProp,
-    book,
-    bookPages,
+    caseFileSheet,
     coffeeSteam,
     keyboard,
     plant,

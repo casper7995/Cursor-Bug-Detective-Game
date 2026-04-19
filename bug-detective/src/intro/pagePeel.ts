@@ -221,6 +221,44 @@ export function makeFakePageTexture(
   return tex;
 }
 
+/**
+ * Ruled blank sheet for the `blank-book` anomaly (retargeted to desk case file).
+ */
+export function makeCaseFileBlankDeskTexture(
+  width: number,
+  height: number,
+): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = width;
+  c.height = height;
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("2d context unavailable");
+  ctx.fillStyle = "#f7f4ed";
+  ctx.fillRect(0, 0, width, height);
+  const navH = Math.max(40, height * 0.07);
+  ctx.fillStyle = "#1f2330";
+  ctx.fillRect(0, 0, width, navH);
+  ctx.fillStyle = "#e8efff";
+  ctx.font = `${Math.floor(navH * 0.38)}px ui-sans-serif, sans-serif`;
+  ctx.textBaseline = "middle";
+  ctx.fillText("case-file.html", width * 0.04, navH / 2);
+  ctx.fillStyle = "#9aa0b0";
+  ctx.font = `${Math.floor(height * 0.022)}px ui-sans-serif, sans-serif`;
+  ctx.fillText("No body copy — strangely silent.", width * 0.06, navH + 36);
+  const lineTop = navH + 56;
+  const lineBot = height - 24;
+  const n = 22;
+  for (let i = 0; i < n; i++) {
+    const y = lineTop + (i / (n - 1)) * (lineBot - lineTop);
+    ctx.fillStyle = "rgba(42, 45, 54, 0.14)";
+    ctx.fillRect(width * 0.06, y, width * 0.88, 1.2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
 export interface PagePeel {
   readonly mesh: THREE.Mesh;
   /** Begin the peel animation. */
@@ -232,7 +270,7 @@ export interface PagePeel {
   readonly done: boolean;
 }
 
-const PEEL_DURATION_SEC = 2.05;
+const PEEL_DURATION_SEC = 2.65;
 
 export interface PagePeelOptions {
   width: number;
@@ -301,7 +339,7 @@ export function createPagePeel(opts: PagePeelOptions): PagePeel {
     const t = Math.min(1, elapsed / PEEL_DURATION_SEC);
     // Smoothstep: gentle start/end so the curl reads less "snappy".
     const eased = t * t * (3 - 2 * t);
-    uniforms.uPeel.value = -0.05 + eased * 1.2; // overshoot to fully clear
+    uniforms.uPeel.value = -0.05 + eased * 1.02; // gentler curl; still clears frame
     if (t >= 1) {
       done = true;
       mesh.visible = false;

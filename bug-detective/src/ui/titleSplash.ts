@@ -46,7 +46,6 @@ export function showTitleSplash(container: HTMLElement): TitleSplash {
     <div class="bd-title__inner">
       <canvas class="bd-title__stage" aria-hidden="true"></canvas>
       <h1 class="bd-title__h1">Cursor Detective</h1>
-      <p class="bd-title__sub">A daily anomaly hunt</p>
       <p class="bd-title__cta">Click to continue</p>
       <p class="bd-title__introcue">Then move your mouse — a case file lifts away to your desk.</p>
       <p class="bd-title__hint">Vibe Jam 2026</p>
@@ -309,12 +308,7 @@ function ensureStyle(): void {
     .bd-title__h1 {
       font-size: clamp(36px, 7vw, 64px);
       letter-spacing: -0.02em;
-      margin: 8px 0 4px;
-    }
-    .bd-title__sub {
-      font-size: 18px;
-      opacity: 0.78;
-      margin: 0 0 28px;
+      margin: 8px 0 28px;
     }
     .bd-title__introcue {
       font-size: 15px;

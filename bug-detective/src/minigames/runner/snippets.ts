@@ -47,9 +47,9 @@ export const ANOMALY_SNIPPETS: Record<AnomalyId, readonly string[]> = {
     "reflect(monitor, scene); // reflection bug",
   ],
   "photo-self": [
-    "if (photo.face === user.self) alert('familiar');",
-    "// photo — that face is familiar (self)",
-    "expect(photo.subject).toBe('your own face');",
+    "if (caseFile.face === user.self) alert('familiar');",
+    "// case file — that face is familiar (self)",
+    "expect(caseFile.subject).toBe('your own face');",
   ],
   "sticky-warning": [
     "if (evidence.envelope.text.includes('behind')) warn('yesterday');",
@@ -57,9 +57,9 @@ export const ANOMALY_SNIPPETS: Record<AnomalyId, readonly string[]> = {
     'envelope.note = "they\'re behind you";',
   ],
   "pen-floating": [
-    "if (pen.floats && pen.above(desk)) trace('holding');",
-    "// pen floats above desk — nothing holding it up",
-    "physics.assert(pen.support === null); // floats",
+    "if (caseFile.floats && caseFile.above(desk)) trace('holding');",
+    "// case file floats above desk — nothing holding it up",
+    "physics.assert(caseFile.support === null); // floats",
   ],
   "lamp-shadow-wrong": [
     "if (shadow.direction !== light) bug('wrong');",
@@ -72,9 +72,9 @@ export const ANOMALY_SNIPPETS: Record<AnomalyId, readonly string[]> = {
     "particles.steam.gravity = +1; // falls",
   ],
   "blank-book": [
-    "if (book.pages.every(p => p.blank)) silent();",
-    "// book — strangely silent (blank pages)",
-    "expect(book.open).toHaveLength(0); // blank",
+    "if (caseFile.body.every(line => !line.trim())) silent();",
+    "// case file — strangely silent (blank body)",
+    "expect(caseFile.lines).toHaveLength(0); // blank",
   ],
   "keyboard-extra-key": [
     "if (keyboard.keys.has('extra_red')) warn('many');",

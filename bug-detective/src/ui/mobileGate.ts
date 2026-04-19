@@ -69,19 +69,25 @@ export function mountMobileGate(container: HTMLElement): Promise<void> {
 
     const url = window.location.href;
     const tweet = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-      "🐛 Bug Detective — daily 90-second anomaly hunt. Best on desktop:",
+      "🐛 Bug Detective — a quick anomaly hunt. Best on desktop:",
     )}&url=${encodeURIComponent(url)}`;
-    const shareLink = panel.querySelector<HTMLAnchorElement>(".bd-mobile-gate__share");
+    const shareLink = panel.querySelector<HTMLAnchorElement>(
+      ".bd-mobile-gate__share",
+    );
     if (shareLink) shareLink.href = tweet;
 
-    const copyBtn = panel.querySelector<HTMLButtonElement>(".bd-mobile-gate__copy");
+    const copyBtn = panel.querySelector<HTMLButtonElement>(
+      ".bd-mobile-gate__copy",
+    );
     if (copyBtn) {
       copyBtn.addEventListener("click", () => {
         void copyToClipboard(url, copyBtn);
       });
     }
 
-    const playBtn = panel.querySelector<HTMLButtonElement>(".bd-mobile-gate__play");
+    const playBtn = panel.querySelector<HTMLButtonElement>(
+      ".bd-mobile-gate__play",
+    );
     if (playBtn) {
       playBtn.addEventListener("click", () => {
         panel.classList.add("bd-mobile-gate--out");

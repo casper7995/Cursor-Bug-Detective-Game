@@ -38,7 +38,7 @@ import { formatGameScoresDetail } from "./game/score";
 import { GameState, assertNever, type RunnerMode } from "./game/gameState";
 import { EnvelopeSession } from "./minigames/envelope/envelopeSession";
 import { ReagentSession } from "./minigames/reagent/reagentSession";
-import { LampSession } from "./minigames/lamp/lampSession";
+import { TamperSession } from "./minigames/tamper/tamperSession";
 import { deriveRunnerClueSet } from "./minigames/runner/clueTokens";
 import { RunnerSession } from "./minigames/runner/session";
 import { swapMonitorScreenMap } from "./minigames/runner/monitorSurface";
@@ -312,7 +312,7 @@ function bootGameInner(simplified: boolean): void {
   type DeskMini =
     | { kind: "envelope"; session: EnvelopeSession }
     | { kind: "reagent"; session: ReagentSession }
-    | { kind: "lamp"; session: LampSession };
+    | { kind: "tamper"; session: TamperSession };
 
   let deskMinigame: DeskMini | null = null;
   let deskMiniCamReturn: {
@@ -341,19 +341,19 @@ function bootGameInner(simplified: boolean): void {
     deskMinigame = null;
   }
 
-  function getDeskZoomTarget(kind: "envelope" | "reagent" | "lamp"): {
+  function getDeskZoomTarget(kind: "envelope" | "reagent" | "tamper"): {
     camPos: THREE.Vector3;
     lookAt: THREE.Vector3;
   } {
     let obj: THREE.Object3D = diorama.evidenceEnvelopeRoot;
     if (kind === "reagent") obj = diorama.reagentTray;
-    if (kind === "lamp") obj = diorama.lamp;
+    if (kind === "tamper") obj = diorama.lamp;
     obj.updateMatrixWorld(true);
     deskZoomBox.setFromObject(obj);
     deskZoomBox.getCenter(deskZoomCenter);
     const lookAt = deskZoomCenter.clone();
     const offset =
-      kind === "lamp"
+      kind === "tamper"
         ? new THREE.Vector3(1.05, 0.52, 1.08)
         : kind === "reagent"
           ? new THREE.Vector3(0.88, 0.44, 0.98)
@@ -427,7 +427,7 @@ function bootGameInner(simplified: boolean): void {
   }
 
   async function startDeskMini(
-    kind: "envelope" | "reagent" | "lamp",
+    kind: "envelope" | "reagent" | "tamper",
     _now: number,
   ): Promise<void> {
     if (deskMinigame) return;
@@ -443,7 +443,7 @@ function bootGameInner(simplified: boolean): void {
 
     if (kind === "envelope") diorama.flags.envelopeOpen = true;
     if (kind === "reagent") diorama.flags.reagentActive = true;
-    if (kind === "lamp") diorama.flags.lampActive = true;
+    if (kind === "tamper") diorama.flags.lampActive = true;
 
     const { camPos, lookAt } = getDeskZoomTarget(kind);
     await cameraRig.scriptedTo(camPos, lookAt, 520);
@@ -480,14 +480,14 @@ function bootGameInner(simplified: boolean): void {
       session.attachPointer(runnerOverlay.canvas);
       deskMinigame = { kind: "reagent", session };
     } else {
-      const session = new LampSession({
+      const session = new TamperSession({
         overlayCtx: runnerOverlay.ctx,
         getOverlayViewport: getVp,
         clueWord: words.tamper,
         onExit,
       });
       session.attachPointer(runnerOverlay.canvas);
-      deskMinigame = { kind: "lamp", session };
+      deskMinigame = { kind: "tamper", session };
     }
     await runnerOverlay.fadeIn(220);
   }
@@ -618,7 +618,7 @@ function bootGameInner(simplified: boolean): void {
       if (state.phase.kind !== "investigating") return;
       if (tag === "evidence-envelope") void startDeskMini("envelope", now);
       else if (tag === "reagent-tray") void startDeskMini("reagent", now);
-      else void startDeskMini("lamp", now);
+      else void startDeskMini("tamper", now);
     },
     { passive: true },
   );
@@ -1272,7 +1272,7 @@ function bootGameInner(simplified: boolean): void {
       const out = deskMinigame.session.getOutcome();
       if (out) {
         const kind = deskMinigame.kind;
-        const slot =
+        const slot: "sentence" | "errand" | "tamper" =
           kind === "envelope"
             ? "sentence"
             : kind === "reagent"

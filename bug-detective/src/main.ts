@@ -37,7 +37,7 @@ import {
 import { formatGameScoresDetail } from "./game/score";
 import { GameState, assertNever, type RunnerMode } from "./game/gameState";
 import { EnvelopeSession } from "./minigames/envelope/envelopeSession";
-import { ReagentSession } from "./minigames/reagent/reagentSession";
+import { ErrandSession } from "./minigames/errand/errandSession";
 import { TamperSession } from "./minigames/tamper/tamperSession";
 import { deriveRunnerClueSet } from "./minigames/runner/clueTokens";
 import { RunnerSession } from "./minigames/runner/session";
@@ -311,7 +311,7 @@ function bootGameInner(simplified: boolean): void {
 
   type DeskMini =
     | { kind: "envelope"; session: EnvelopeSession }
-    | { kind: "reagent"; session: ReagentSession }
+    | { kind: "errand"; session: ErrandSession }
     | { kind: "tamper"; session: TamperSession };
 
   let deskMinigame: DeskMini | null = null;
@@ -341,12 +341,12 @@ function bootGameInner(simplified: boolean): void {
     deskMinigame = null;
   }
 
-  function getDeskZoomTarget(kind: "envelope" | "reagent" | "tamper"): {
+  function getDeskZoomTarget(kind: "envelope" | "errand" | "tamper"): {
     camPos: THREE.Vector3;
     lookAt: THREE.Vector3;
   } {
     let obj: THREE.Object3D = diorama.evidenceEnvelopeRoot;
-    if (kind === "reagent") obj = diorama.reagentTray;
+    if (kind === "errand") obj = diorama.reagentTray;
     if (kind === "tamper") obj = diorama.lamp;
     obj.updateMatrixWorld(true);
     deskZoomBox.setFromObject(obj);
@@ -355,7 +355,7 @@ function bootGameInner(simplified: boolean): void {
     const offset =
       kind === "tamper"
         ? new THREE.Vector3(1.05, 0.52, 1.08)
-        : kind === "reagent"
+        : kind === "errand"
           ? new THREE.Vector3(0.88, 0.44, 0.98)
           : new THREE.Vector3(0.72, 0.4, 0.92);
     const camPos = lookAt.clone().add(offset);
@@ -427,7 +427,7 @@ function bootGameInner(simplified: boolean): void {
   }
 
   async function startDeskMini(
-    kind: "envelope" | "reagent" | "tamper",
+    kind: "envelope" | "errand" | "tamper",
     _now: number,
   ): Promise<void> {
     if (deskMinigame) return;
@@ -442,7 +442,7 @@ function bootGameInner(simplified: boolean): void {
     cameraRig.copyLookAtInto(deskMiniCamReturn.look);
 
     if (kind === "envelope") diorama.flags.envelopeOpen = true;
-    if (kind === "reagent") diorama.flags.reagentActive = true;
+    if (kind === "errand") diorama.flags.reagentActive = true;
     if (kind === "tamper") diorama.flags.lampActive = true;
 
     const { camPos, lookAt } = getDeskZoomTarget(kind);
@@ -470,15 +470,15 @@ function bootGameInner(simplified: boolean): void {
       });
       session.attachPointer(runnerOverlay.canvas);
       deskMinigame = { kind: "envelope", session };
-    } else if (kind === "reagent") {
-      const session = new ReagentSession({
+    } else if (kind === "errand") {
+      const session = new ErrandSession({
         overlayCtx: runnerOverlay.ctx,
         getOverlayViewport: getVp,
-        clueToken: words.errand,
+        clueWord: words.errand,
         onExit,
       });
       session.attachPointer(runnerOverlay.canvas);
-      deskMinigame = { kind: "reagent", session };
+      deskMinigame = { kind: "errand", session };
     } else {
       const session = new TamperSession({
         overlayCtx: runnerOverlay.ctx,
@@ -617,7 +617,7 @@ function bootGameInner(simplified: boolean): void {
       const now = performance.now();
       if (state.phase.kind !== "investigating") return;
       if (tag === "evidence-envelope") void startDeskMini("envelope", now);
-      else if (tag === "reagent-tray") void startDeskMini("reagent", now);
+      else if (tag === "reagent-tray") void startDeskMini("errand", now);
       else void startDeskMini("tamper", now);
     },
     { passive: true },
@@ -1275,7 +1275,7 @@ function bootGameInner(simplified: boolean): void {
         const slot: "sentence" | "errand" | "tamper" =
           kind === "envelope"
             ? "sentence"
-            : kind === "reagent"
+            : kind === "errand"
               ? "errand"
               : "tamper";
         state.pinNotebookPage(slot, {

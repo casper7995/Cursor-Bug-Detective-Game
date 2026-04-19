@@ -7,6 +7,8 @@ export const Action = {
   MenuConfirm: "MenuConfirm",
   MenuBack: "MenuBack",
   Settings: "Settings",
+  /** Jump in the monitor code-runner minigame. */
+  RunnerJump: "RunnerJump",
 } as const;
 
 export type ActionName = (typeof Action)[keyof typeof Action];
@@ -19,4 +21,5 @@ export const DEFAULT_BINDINGS: Record<ActionName, string[]> = {
   [Action.MenuConfirm]: ["Enter", "Space"],
   [Action.MenuBack]: ["Escape"],
   [Action.Settings]: ["Comma"],
+  [Action.RunnerJump]: ["Space", "ArrowUp", "KeyW"],
 };

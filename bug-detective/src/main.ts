@@ -12,7 +12,11 @@ import { createAnswerPanel } from "./ui/answerPanel";
 import { createResultsPanel } from "./ui/resultsPanel";
 import { ANOMALIES, pickAnomaly, type PickedAnomaly } from "./scene/anomalies";
 import { fallbackSeed, fetchSeed, todayUtc } from "./api/seedClient";
-import { fetchLeaderboard, postScore } from "./api/scoreClient";
+import {
+  fetchLeaderboard,
+  postScore,
+  RUNNER_PUZZLE_ID,
+} from "./api/scoreClient";
 import { renderShareCard, tweetIntent, shareCardBlob } from "./ui/shareCard";
 import { renderLeaderboardPanel } from "./ui/leaderboard";
 import { createCountdown } from "./ui/countdown";
@@ -28,8 +32,10 @@ import {
   sfxWrong,
   toggleMute,
 } from "./audio/audio";
-import { GameState, assertNever } from "./game/gameState";
-import { createTimer, type Timer } from "./game/timer";
+import { GameState, assertNever, type RunnerMode } from "./game/gameState";
+import { createTimer, ROUND_DURATION_MS, type Timer } from "./game/timer";
+import { RunnerSession } from "./minigames/runner/session";
+import { swapMonitorScreenMap } from "./minigames/runner/monitorSurface";
 import { InputManager } from "./input/inputManager";
 import { Action } from "./input/actions";
 import { isMobile, mountMobileGate } from "./ui/mobileGate";
@@ -139,11 +145,12 @@ function bootGameInner(simplified: boolean): void {
 
   const mascot = createMascotMesh();
   // Default to intro-scale (small, OS-cursor-sized). Investigation-time the
-  // scale is bumped up so the mascot reads as a desk figurine. v3 mascot is
-  // taller (humanoid body) so game scale is smaller than v2.
+  // scale is bumped up so the mascot reads as a desk figurine. The chibi
+  // redesign has an oversized head on a small body, so total height shrank;
+  // we scale up slightly to keep the mascot's apparent presence on the desk.
   const MASCOT_INTRO_SCALE = 0.06;
-  const MASCOT_GAME_SCALE = 0.35;
-  const MASCOT_FEET_OFFSET = 1.05; // local-space distance from origin to soles
+  const MASCOT_GAME_SCALE = 0.32;
+  const MASCOT_FEET_OFFSET = 0.89; // local-space distance from origin to soles
   mascot.group.scale.setScalar(MASCOT_INTRO_SCALE);
   scene.add(mascot.group);
 
@@ -267,6 +274,77 @@ function bootGameInner(simplified: boolean): void {
   input.attach(window);
 
   let timer: Timer | null = null;
+  /** Elapsed investigation time frozen while the monitor runner is active. */
+  let runnerElapsedFreeze = 0;
+  let runnerSession: RunnerSession | null = null;
+  let runnerSurfaceRestore: (() => void) | null = null;
+
+  function readPlayerName(): string {
+    try {
+      return (localStorage.getItem("bd:name") ?? "anon").slice(0, 16);
+    } catch {
+      return "anon";
+    }
+  }
+
+  function disposeRunnerVisuals(): void {
+    runnerSurfaceRestore?.();
+    runnerSurfaceRestore = null;
+    runnerSession?.dispose();
+    runnerSession = null;
+    mascotController.setFrozen(false);
+  }
+
+  function endRunnerSession(now: number): void {
+    disposeRunnerVisuals();
+    if (timer) {
+      timer = createTimer(now - runnerElapsedFreeze);
+    }
+  }
+
+  function startRunnerSession(mode: RunnerMode, now: number): void {
+    exitInspectZoom(200);
+    mascotController.setFrozen(true);
+    runnerElapsedFreeze = timer ? timer.elapsedMs(now) : 0;
+    runnerSurfaceRestore?.();
+    runnerSession?.dispose();
+    runnerSession = new RunnerSession(seed, mode, THREE);
+    const swap = swapMonitorScreenMap(
+      diorama.monitorScreen,
+      runnerSession.getTexture(),
+    );
+    runnerSurfaceRestore = swap.restore;
+    hud.setStatusText(
+      mode === "daily"
+        ? "code run — Space jump · Esc exit"
+        : "endless run — Space jump · Esc exit",
+    );
+  }
+
+  const monitorLaunchRay = new THREE.Raycaster();
+  const monitorLaunchNdc = new THREE.Vector2();
+  renderer.domElement.addEventListener(
+    "pointerdown",
+    (e: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      monitorLaunchNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      monitorLaunchNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      monitorLaunchRay.setFromCamera(monitorLaunchNdc, cameraRig.camera);
+      const hits = monitorLaunchRay.intersectObjects(
+        diorama.hoverables as THREE.Object3D[],
+        false,
+      );
+      const tag = hits[0]?.object.userData.tag;
+      if (tag !== "monitor" && tag !== "monitor-screen") return;
+      const now = performance.now();
+      const p = state.phase;
+      if (p.kind !== "investigating") return;
+      const mode: RunnerMode = p.monitorDailyClear ? "endless" : "daily";
+      if (!state.enterRunner(now, mode)) return;
+      startRunnerSession(mode, now);
+    },
+    { passive: true },
+  );
   // Plan Day 3: clue counter increments only AFTER the first 5s of the
   // round, so reflexive carpet-bombing hovers aren't penalised. The
   // HOVER_CLUE_THRESHOLD_MS gate also requires the player to dwell on
@@ -330,19 +408,12 @@ function bootGameInner(simplified: boolean): void {
       }
       // Persist correct submissions to the worker (best-effort, no UI block).
       if (phase.correct) {
-        // localStorage can throw in Safari Private Browsing — fall back to "anon".
-        let name = "anon";
-        try {
-          name = (localStorage.getItem("bd:name") ?? "anon").slice(0, 16);
-        } catch {
-          /* ignore */
-        }
         void postScore({
           date: targetDate,
           score: phase.score,
           cluesUsed: phase.cluesUsed,
           elapsedMs: phase.elapsedMs,
-          name,
+          name: readPlayerName(),
         }).then((res) => {
           if (res)
             console.info(`[bug-detective] posted score, rank=${res.rank}`);
@@ -472,6 +543,9 @@ function bootGameInner(simplified: boolean): void {
   }
 
   function restartRound(): void {
+    if (state.phase.kind === "runner" || runnerSession) {
+      disposeRunnerVisuals();
+    }
     // Daily-case integrity: by default, restart replays the SAME daily
     // anomaly. The `?seed=` URL override is the dev-only escape hatch
     // that bumps the seed each restart so iteration through the anomaly
@@ -690,6 +764,59 @@ function bootGameInner(simplified: boolean): void {
         mascot.group.position.lerp(tmpFeet, a);
       }
       mascot.setStride(0, 0);
+    } else if (state.phase.kind === "runner") {
+      if (timer) {
+        hud.setTimer(Math.max(0, ROUND_DURATION_MS - runnerElapsedFreeze));
+      }
+      if (runnerSession) {
+        if (input.consumePress(Action.MenuBack)) {
+          endRunnerSession(now);
+          state.returnToInvestigatingFromRunner({});
+          hud.setStatusText("find the bug — hover to investigate");
+        } else {
+          const jump = input.consumePress(Action.RunnerJump);
+          runnerSession.step(dtSec, jump);
+          const out = runnerSession.getOutcome();
+          if (out) {
+            endRunnerSession(now);
+            if (out.kind === "daily_clear") {
+              const phase = state.returnToInvestigatingFromRunner({
+                cluesIncrement: true,
+                monitorDailyClear: true,
+              });
+              sfxClueFound();
+              if (phase) hud.setCluesUsed(phase.cluesUsed);
+              hud.setStatusText(`runner clue: ${picked.def.tooltipHint}`);
+            } else if (out.kind === "daily_fail") {
+              state.returnToInvestigatingFromRunner({});
+              hud.setStatusText("find the bug — hover to investigate");
+            } else {
+              state.returnToInvestigatingFromRunner({
+                monitorDailyClear: true,
+              });
+              hud.setStatusText(
+                `endless over — best ${out.score} · click monitor to replay`,
+              );
+              void postScore(
+                {
+                  date: targetDate,
+                  score: Math.floor(out.score),
+                  cluesUsed: 0,
+                  elapsedMs: runnerElapsedFreeze,
+                  name: readPlayerName(),
+                },
+                RUNNER_PUZZLE_ID,
+              ).then((res) => {
+                if (!res) return;
+                hud.setStatusText(
+                  `endless over — rank ${res.rank} · click monitor to replay`,
+                );
+              });
+            }
+          }
+        }
+      }
+      mascot.setStride(0, 0);
     } else if (state.phase.kind === "investigating") {
       if (timer) hud.setTimer(timer.remainingMs(now));
 
@@ -801,6 +928,8 @@ function bootGameInner(simplified: boolean): void {
         maybeBeginIntroExit(now);
         break;
       case "investigating":
+        break;
+      case "runner":
         break;
       case "answering":
         // Answer panel covers the canvas — no need to raycast hover or

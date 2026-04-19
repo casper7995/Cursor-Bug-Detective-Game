@@ -1,5 +1,6 @@
 const API = import.meta.env.VITE_LEADERBOARD_API ?? "";
-const PUZZLE_ID = "bug-detective-v1";
+export const DAILY_PUZZLE_ID = "bug-detective-v1";
+export const RUNNER_PUZZLE_ID = "bug-detective-runner-v1";
 
 export function hasLeaderboardApi(): boolean {
   return Boolean(API && API.length > 1);
@@ -21,11 +22,14 @@ export interface ScoreSubmission {
   name: string;
 }
 
-export async function fetchLeaderboard(date: string): Promise<LeaderboardEntry[]> {
+export async function fetchLeaderboard(
+  date: string,
+  puzzleId = DAILY_PUZZLE_ID,
+): Promise<LeaderboardEntry[]> {
   if (!hasLeaderboardApi()) return [];
   try {
     const r = await fetch(
-      `${API}/leaderboard?date=${encodeURIComponent(date)}&puzzleId=${encodeURIComponent(PUZZLE_ID)}`,
+      `${API}/leaderboard?date=${encodeURIComponent(date)}&puzzleId=${encodeURIComponent(puzzleId)}`,
     );
     if (!r.ok) return [];
     const j = (await r.json()) as { scores?: LeaderboardEntry[] };
@@ -37,6 +41,7 @@ export async function fetchLeaderboard(date: string): Promise<LeaderboardEntry[]
 
 export async function postScore(
   s: ScoreSubmission,
+  puzzleId = DAILY_PUZZLE_ID,
 ): Promise<{ rank: number } | null> {
   if (!hasLeaderboardApi()) return null;
   try {
@@ -45,7 +50,7 @@ export async function postScore(
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         date: s.date,
-        puzzleId: PUZZLE_ID,
+        puzzleId,
         score: s.score,
         cluesUsed: s.cluesUsed,
         elapsedMs: s.elapsedMs,

@@ -470,10 +470,10 @@ export function createDesktopDiorama(): DioramaObjects {
   reagentTray.add(reagentSpinner);
 
   const reagentHit = new THREE.Mesh(
-    new THREE.BoxGeometry(1.25, 0.5, 0.85),
+    new THREE.BoxGeometry(1.05, 0.35, 0.65),
     new THREE.MeshBasicMaterial({ visible: false }),
   );
-  reagentHit.position.set(0, 0.22, 0);
+  reagentHit.position.set(0, 0.18, 0);
   reagentHit.userData.tag = "reagent-tray";
   reagentTray.add(reagentHit);
   hoverables.push(reagentHit);

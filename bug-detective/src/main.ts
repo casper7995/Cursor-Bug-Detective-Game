@@ -617,6 +617,7 @@ function bootGameInner(simplified: boolean): void {
         return;
       const now = performance.now();
       if (state.phase.kind !== "investigating") return;
+      console.info(`[bug-detective] desk-mini click tag=${tag}`);
       if (tag === "evidence-envelope") void startDeskMini("sentence", now);
       else if (tag === "reagent-tray") void startDeskMini("errand", now);
       else void startDeskMini("tamper", now);

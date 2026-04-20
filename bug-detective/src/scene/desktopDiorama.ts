@@ -516,6 +516,17 @@ export function createDesktopDiorama(): DioramaObjects {
   evidenceEnvelopeRoot.add(evidenceEnvelope);
   hoverables.push(evidenceEnvelope);
 
+  // Generous invisible hit volume so the whole envelope footprint
+  // (body + flap area) launches the Sentence mini, not just the label face.
+  const envelopeHit = new THREE.Mesh(
+    new THREE.BoxGeometry(0.84, 0.18, 0.6),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  );
+  envelopeHit.position.set(0, 0.07, 0);
+  envelopeHit.userData.tag = "evidence-envelope";
+  evidenceEnvelopeRoot.add(envelopeHit);
+  hoverables.push(envelopeHit);
+
   const flapPivot = new THREE.Group();
   flapPivot.position.set(0, 0.026, -0.24);
   evidenceEnvelopeRoot.add(flapPivot);
@@ -572,6 +583,17 @@ export function createDesktopDiorama(): DioramaObjects {
   lampBase.userData.tag = "lamp";
   lamp.add(lampBase);
   hoverables.push(lampBase);
+
+  // Tall invisible hit-cylinder so clicking anywhere on the lamp body
+  // (neck / shade / bulb) launches the Tampering mini.
+  const lampHit = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.32, 0.32, 1.2, 12),
+    new THREE.MeshBasicMaterial({ visible: false }),
+  );
+  lampHit.position.y = 0.6;
+  lampHit.userData.tag = "lamp";
+  lamp.add(lampHit);
+  hoverables.push(lampHit);
 
   const lampNeck = new THREE.Mesh(
     new THREE.CylinderGeometry(0.04, 0.04, 0.9, 12),

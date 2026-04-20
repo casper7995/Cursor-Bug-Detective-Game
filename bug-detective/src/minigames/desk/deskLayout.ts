@@ -78,38 +78,6 @@ export function drawDeskChromeAi(ctx: CanvasRenderingContext2D): void {
   ctx.restore();
 }
 
-/**
- * Paint the standard desk-mini chrome (help [?] + close [✕] buttons) using a
- * font that's guaranteed to have both glyphs across browsers. Each session
- * still owns its own background; this only stamps the two top-right pills.
- */
-export function drawDeskChrome(ctx: CanvasRenderingContext2D): void {
-  const hb = { x: W - 82, y: 10, w: 30, h: 26 };
-  const cb = getDeskCloseButtonRect();
-  ctx.save();
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = "rgba(245,78,0,0.6)";
-  ctx.fillStyle = "rgba(20,18,11,0.72)";
-  ctx.beginPath();
-  ctx.roundRect(hb.x, hb.y, hb.w, hb.h, 6);
-  ctx.fill();
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.roundRect(cb.x, cb.y, cb.w, cb.h, 6);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#f7f7f4";
-  ctx.font = "700 14px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("?", hb.x + hb.w / 2, hb.y + hb.h / 2 + 1);
-  // Use ASCII × instead of U+2715 — wider font coverage, renders reliably.
-  ctx.fillText("\u00d7", cb.x + cb.w / 2, cb.y + cb.h / 2 + 1);
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-  ctx.restore();
-}
-
 /** Map pointer to internal mini-game canvas coordinates. */
 export function clientToDeskGame(
   clientX: number,

@@ -1,30 +1,29 @@
-/** Finish the Sentence — desk mini session class. */
+/** Finish the Sentence — desk mini, restyled as Cursor's Tab autocomplete. */
 
 import type { MiniGameOutcome } from "../types";
+import { CURSOR_AI } from "../../ui/cursorAiTheme";
 import { RUNNER_DRAW } from "../runner/sim";
 import {
   clientToDeskGame,
   DESK_SCRIM,
-  drawDeskChrome,
+  drawDeskChromeAi,
   getDeskFullRect,
   hitDeskCloseButton,
 } from "../desk/deskLayout";
 import { hitDeskHelpButton, TutorialGate } from "../desk/tutorialGate";
 import type { AnomalyId } from "../../scene/anomalies";
 import { pickTemplate } from "./templates";
-import {
-  injectName,
-  scoreSentenceRun,
-  shouldEmitOutcome,
-} from "./scoring";
+import { injectName, scoreSentenceRun, shouldEmitOutcome } from "./scoring";
 import {
   assembleParagraph,
+  drawEditorScene,
   drawIntroCard,
   drawSentenceTutorialDiagram,
   drawShareCard,
-  drawSuggestionBalloons,
-  drawTypewriterScene,
-  getBalloonRects,
+  drawSuggestionPopover,
+  getSuggestionRowRects,
+  inSuggestionRect,
+  SENTENCE_LAYOUT,
 } from "./draw";
 import {
   type PickColor,
@@ -38,7 +37,7 @@ const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
 
 const INTRO_DURATION_S = 1.5;
-const TYPE_PER_SENTENCE_S = 1.4; // typewriter clack-types prefix in this many sec
+const TYPE_PER_SENTENCE_S = 1.4;
 const PICK_TIMEOUT_S = 2.5;
 const RESULT_AUTOCLOSE_S = 5.0;
 
@@ -52,11 +51,7 @@ export interface SentenceSessionOpts {
 
 type Phase =
   | { kind: "intro"; t: number }
-  | {
-      kind: "type";
-      sentenceIdx: number;
-      t: number;
-    }
+  | { kind: "type"; sentenceIdx: number; t: number }
   | {
       kind: "pick";
       sentenceIdx: number;
@@ -97,12 +92,12 @@ export class SentenceSession {
   private outcome: MiniGameOutcome | null = null;
   private pointerBound = false;
   private readonly gate = new TutorialGate({
-    title: "Finish the sentence",
-    tagline: "Pick a suggestion before the typewriter does it for you.",
+    title: "Tab — autocomplete the case file",
+    tagline: "Press Tab for the recommended suggestion.",
     howToLines: [
-      "BLUE = the right finish for the case file.",
-      "PURPLE = funny, costs you points.",
-      "ORANGE = honest mistake; idle = typewriter picks orange for you.",
+      "Tab or Enter accepts the recommended (blue) suggestion.",
+      "Press 1 / 2 / 3 — or click — to pick a different row.",
+      "Idle 2.5s and the typewriter picks the orange option for you.",
     ],
     drawDiagram: drawSentenceTutorialDiagram,
     storageKey: "bd:miniTutorial:sentence",
@@ -142,19 +137,12 @@ export class SentenceSession {
     this.pointerBound = true;
     const move = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
-      if (this.phase.kind === "pick") {
-        const slot = this.template.slots[this.phase.sentenceIdx];
-        if (!slot) return;
-        const rects = getBalloonRects(this.renderCtx, W, H, slot.options);
-        let hover: PickColor | null = null;
-        for (const r of rects) {
-          if (inRect(p.x, p.y, r)) {
-            hover = r.color;
-            break;
-          }
-        }
-        this.phase.hover = hover;
-      }
+      if (this.phase.kind !== "pick") return;
+      const slot = this.template.slots[this.phase.sentenceIdx];
+      if (!slot) return;
+      const rows = getSuggestionRowRects(this.renderCtx, slot.options);
+      const hit = inSuggestionRect(rows, p.x, p.y);
+      this.phase.hover = hit ? hit.color : null;
     };
     const down = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
@@ -178,24 +166,46 @@ export class SentenceSession {
       if (this.phase.kind === "pick") {
         const slot = this.template.slots[this.phase.sentenceIdx];
         if (!slot) return;
-        const rects = getBalloonRects(this.renderCtx, W, H, slot.options);
-        for (const r of rects) {
-          if (inRect(p.x, p.y, r)) {
-            this.commitPick(r.color);
-            return;
-          }
-        }
+        const rows = getSuggestionRowRects(this.renderCtx, slot.options);
+        const hit = inSuggestionRect(rows, p.x, p.y);
+        if (hit) this.commitPick(hit.color);
       }
     };
     root.addEventListener("pointermove", move, { passive: true });
     root.addEventListener("pointerdown", down);
     const key = (e: KeyboardEvent): void => {
-      if (e.key !== "Escape") return;
-      if (this.gate.isBlocking()) {
-        this.gate.dismissFromKey();
+      if (e.key === "Escape") {
+        if (this.gate.isBlocking()) {
+          this.gate.dismissFromKey();
+          return;
+        }
+        this.onExit();
         return;
       }
-      this.onExit();
+      if (this.gate.isBlocking() || this.outcome) return;
+      if (this.phase.kind !== "pick") return;
+      // Tab / Enter → accept recommended (blue).
+      if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        this.commitPick("blue");
+        return;
+      }
+      if (e.key === "1") {
+        e.preventDefault();
+        this.commitPick("blue");
+        return;
+      }
+      if (e.key === "2") {
+        e.preventDefault();
+        this.commitPick("purple");
+        return;
+      }
+      if (e.key === "3") {
+        e.preventDefault();
+        this.commitPick("orange");
+        return;
+      }
     };
     window.addEventListener("keydown", key);
     (this as unknown as { _cleanup?: () => void })._cleanup = (): void => {
@@ -222,7 +232,6 @@ export class SentenceSession {
   }
 
   private maybeInjectNameForNext(): void {
-    // If 3 consecutive blues, inject name into the NEXT slot's prefix.
     let streak = 0;
     for (let i = this.picks.length - 1; i >= 0; i--) {
       if (this.picks[i]?.color === "blue") streak++;
@@ -301,16 +310,12 @@ export class SentenceSession {
           t: this.phase.t + dtSec,
           hover: this.phase.hover,
         };
-        if (this.phase.t >= PICK_TIMEOUT_S) {
-          this.commitIdle();
-        }
+        if (this.phase.t >= PICK_TIMEOUT_S) this.commitIdle();
         break;
       }
       case "result": {
         this.phase = { kind: "result", t: this.phase.t + dtSec };
-        if (this.phase.t >= RESULT_AUTOCLOSE_S) {
-          this.finalizeOutcome();
-        }
+        if (this.phase.t >= RESULT_AUTOCLOSE_S) this.finalizeOutcome();
         break;
       }
       default: {
@@ -328,9 +333,7 @@ export class SentenceSession {
     return this.picks.length;
   }
 
-  private currentParagraphProgress(): { paragraph: string; progress01: number } {
-    // Build the paragraph up to the current sentence; for the in-progress
-    // sentence, only show the prefix typing progress.
+  private currentParagraph(): string {
     const idx = this.currentSentenceIdx();
     const completedParts: string[] = [];
     for (let i = 0; i < this.picks.length; i++) {
@@ -343,45 +346,48 @@ export class SentenceSession {
       else if (pick.color === "purple") chosen = slot.options.purple;
       completedParts.push(`${prefix}${chosen}${slot.suffix}`);
     }
-    let typingProgress = 1;
     if (this.phase.kind === "type") {
-      typingProgress = Math.min(1, this.phase.t / TYPE_PER_SENTENCE_S);
+      const typingProgress = Math.min(1, this.phase.t / TYPE_PER_SENTENCE_S);
       const slot = this.template.slots[idx];
       if (slot) {
         const prefix = this.resolvedPrefixes[idx] ?? slot.prefix;
-        const visiblePrefix = prefix.slice(
-          0,
-          Math.floor(prefix.length * typingProgress),
+        completedParts.push(
+          prefix.slice(0, Math.floor(prefix.length * typingProgress)),
         );
-        completedParts.push(visiblePrefix);
       }
     } else if (this.phase.kind === "pick") {
       const slot = this.template.slots[idx];
       if (slot) {
         const prefix = this.resolvedPrefixes[idx] ?? slot.prefix;
-        completedParts.push(`${prefix}___`);
+        completedParts.push(prefix);
       }
     }
-    const paragraph = completedParts.join(" ");
-    return { paragraph, progress01: 1 };
+    return completedParts.join(" ");
   }
 
   private draw(): void {
     const ctx = this.renderCtx;
-    const { paragraph } = this.currentParagraphProgress();
-    drawTypewriterScene(ctx, W, H, paragraph, 1);
+    const paragraph = this.currentParagraph();
+    const showCaret =
+      this.phase.kind === "type" || this.phase.kind === "pick";
+    drawEditorScene(ctx, W, H, paragraph, 1, showCaret);
 
-    drawDeskChrome(ctx);
+    // Title strip
+    ctx.fillStyle = CURSOR_AI.ink;
+    ctx.font = "700 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+    ctx.fillText("Tab — autocomplete", 18, 26);
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
+    ctx.fillText(`· case_file.md`, 162, 26);
 
-    // Phase overlays
     if (this.phase.kind === "intro") {
       drawIntroCard(ctx, W, H, this.phase.t / INTRO_DURATION_S);
     } else if (this.phase.kind === "pick") {
       const slot = this.template.slots[this.phase.sentenceIdx];
       if (slot) {
-        const rects = getBalloonRects(ctx, W, H, slot.options);
+        const rows = getSuggestionRowRects(ctx, slot.options);
         const remain = Math.max(0, 1 - this.phase.t / PICK_TIMEOUT_S);
-        drawSuggestionBalloons(ctx, rects, this.phase.hover, remain);
+        drawSuggestionPopover(ctx, rows, this.phase.hover, remain);
       }
     } else if (this.phase.kind === "result") {
       const result = scoreSentenceRun(this.picks);
@@ -390,17 +396,11 @@ export class SentenceSession {
         this.picks,
         this.resolvedPrefixes,
       );
-      drawShareCard(
-        ctx,
-        W,
-        H,
-        result.ending,
-        finalParagraph,
-        result.score,
-      );
+      drawShareCard(ctx, W, H, result.ending, finalParagraph, result.score);
     }
 
     this.drawProgressDots(ctx);
+    drawDeskChromeAi(ctx);
     this.gate.draw(ctx, W, H);
     this.blit();
   }
@@ -408,22 +408,24 @@ export class SentenceSession {
   private drawProgressDots(ctx: CanvasRenderingContext2D): void {
     const total = SENTENCE_SLOTS_PER_TEMPLATE;
     const cur = this.currentSentenceIdx();
+    const baseX = SENTENCE_LAYOUT.editorX + SENTENCE_LAYOUT.editorW + 6;
+    void baseX;
     for (let i = 0; i < total; i++) {
-      const x = 28 + i * 12;
-      const y = 30;
+      const x = 280 + i * 14;
+      const y = 26;
       const pick = this.picks[i];
-      let color = "rgba(245,240,232,0.3)";
+      let color: string = CURSOR_AI.border;
       if (pick) {
         color =
           pick.color === "blue"
-            ? "#5d9bff"
+            ? CURSOR_AI.blue
             : pick.color === "purple"
-              ? "#b58aff"
+              ? CURSOR_AI.purple
               : pick.color === "idle"
-                ? "rgba(247,247,244,0.5)"
-                : "#ff8b3d";
+                ? CURSOR_AI.inkSubtle
+                : CURSOR_AI.accent;
       } else if (i === cur) {
-        color = "rgba(245,78,0,0.9)";
+        color = CURSOR_AI.accent;
       }
       ctx.fillStyle = color;
       ctx.beginPath();
@@ -460,12 +462,3 @@ export class SentenceSession {
     (this as unknown as { _cleanup?: () => void })._cleanup?.();
   }
 }
-
-function inRect(
-  x: number,
-  y: number,
-  r: { x: number; y: number; w: number; h: number },
-): boolean {
-  return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-}
-

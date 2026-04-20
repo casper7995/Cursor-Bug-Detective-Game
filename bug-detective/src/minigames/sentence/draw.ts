@@ -1,6 +1,7 @@
-/** Finish the Sentence canvas drawing helpers. */
+/** Tab autocomplete — Finish the Sentence rendered as a Cursor editor. */
 
-import { CURSOR } from "../../ui/cursorTheme";
+import { CURSOR_AI } from "../../ui/cursorAiTheme";
+import { drawAiAvatar, drawAiCard, drawAiProgressLine, inRect, type Rect } from "../desk/aiCard";
 import type { EndingKind, PickColor, SentenceSlot } from "./types";
 
 /** Wrap a string into lines no wider than width px in the current font. */
@@ -26,169 +27,234 @@ function wrapText(
 }
 
 const COLOR_BY_PICK: Record<PickColor, string> = {
-  blue: "#5d9bff",
-  purple: "#b58aff",
-  orange: "#ff8b3d",
+  blue: CURSOR_AI.blue,
+  purple: CURSOR_AI.purple,
+  orange: CURSOR_AI.accent,
 };
 
-export interface BalloonRect {
-  readonly x: number;
-  readonly y: number;
-  readonly w: number;
-  readonly h: number;
-  readonly color: PickColor;
-  readonly word: string;
+// ---------------------------------------------------------------------
+// Editor surface — Cursor IDE styling
+// ---------------------------------------------------------------------
+export const SENTENCE_LAYOUT = {
+  editorX: 16,
+  editorY: 44,
+  editorW: 480,
+  editorH: 196,
+  /** Suggestion popover positioned beneath the editor. */
+  popoverX: 28,
+  popoverY: 250,
+  popoverW: 358,
+  popoverRowH: 22,
+} as const;
+
+export interface EditorScenePos {
+  /** End-of-typed-text position (caret), in canvas coords. */
+  caretX: number;
+  caretY: number;
 }
 
-export function getBalloonRects(
-  ctx: CanvasRenderingContext2D,
-  W: number,
-  H: number,
-  options: { blue: string; purple: string; orange: string },
-): readonly BalloonRect[] {
-  ctx.font = "13px 'Cursor Mono', monospace";
-  const colors: PickColor[] = ["blue", "purple", "orange"];
-  const labels: string[] = [options.blue, options.purple, options.orange];
-  const measured = labels.map(
-    (l) => Math.max(72, Math.min(180, ctx.measureText(l).width + 28)),
-  );
-  const totalW = measured.reduce((a, b) => a + b, 0) + (colors.length - 1) * 12;
-  const x0 = (W - totalW) / 2;
-  const y = H - 88;
-  let cur = x0;
-  const rects: BalloonRect[] = [];
-  for (let i = 0; i < colors.length; i++) {
-    const color = colors[i] as PickColor;
-    const word = labels[i] as string;
-    const w = measured[i] as number;
-    rects.push({ x: cur, y, w, h: 36, color, word });
-    cur += w + 12;
-  }
-  return rects;
-}
-
-export function drawTypewriterScene(
+export function drawEditorScene(
   ctx: CanvasRenderingContext2D,
   W: number,
   H: number,
   paragraph: string,
   typingProgress01: number,
-): void {
-  // Background — dark slate bar with paper rolling out
-  ctx.fillStyle = CURSOR.bgTop;
+  showCaret: boolean,
+): EditorScenePos {
+  const L = SENTENCE_LAYOUT;
+  // Page background
+  ctx.fillStyle = "#eceae3";
   ctx.fillRect(0, 0, W, H);
 
-  // Type-ribbon on top (thin metallic strip)
-  ctx.fillStyle = "rgba(60,55,42,0.95)";
-  ctx.fillRect(0, 38, W, 14);
-  ctx.fillStyle = "rgba(245,78,0,0.85)";
-  ctx.fillRect(0, 50, W, 2);
+  drawAiCard(ctx, L.editorX, L.editorY, L.editorW, L.editorH, { radius: 8 });
 
-  // Paper card
-  const paperX = 36;
-  const paperY = 60;
-  const paperW = W - 72;
-  const paperH = H - paperY - 84;
-  ctx.fillStyle = CURSOR.warmCream;
-  ctx.strokeStyle = "rgba(20,18,11,0.45)";
-  ctx.lineWidth = 1.5;
+  // File-tab strip
+  ctx.fillStyle = CURSOR_AI.surfaceMute;
+  ctx.fillRect(L.editorX + 1, L.editorY + 1, L.editorW - 2, 22);
+  ctx.strokeStyle = CURSOR_AI.border;
   ctx.beginPath();
-  ctx.roundRect(paperX, paperY, paperW, paperH, 4);
-  ctx.fill();
+  ctx.moveTo(L.editorX + 1, L.editorY + 23);
+  ctx.lineTo(L.editorX + L.editorW - 1, L.editorY + 23);
   ctx.stroke();
-  // Sprocket holes (paper-feed look) along left edge
-  ctx.fillStyle = CURSOR.bgTop;
-  for (let i = 0; i < 7; i++) {
-    const cy = paperY + 14 + i * 18;
-    if (cy + 6 > paperY + paperH - 8) break;
-    ctx.beginPath();
-    ctx.arc(paperX + 9, cy, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Faint ruled lines
-  ctx.strokeStyle = "rgba(60,40,12,0.12)";
-  ctx.lineWidth = 0.5;
-  for (let i = 1; i < 8; i++) {
-    const ly = paperY + 16 + i * 18;
-    if (ly > paperY + paperH - 10) break;
-    ctx.beginPath();
-    ctx.moveTo(paperX + 22, ly);
-    ctx.lineTo(paperX + paperW - 12, ly);
-    ctx.stroke();
-  }
-
-  // Title
-  ctx.fillStyle = CURSOR.gold;
-  ctx.font = "600 12px 'Cursor Gothic', sans-serif";
+  // Filename pill
+  ctx.fillStyle = CURSOR_AI.surface;
+  const tabW = 134;
+  ctx.fillRect(L.editorX + 8, L.editorY + 1, tabW, 22);
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.beginPath();
+  ctx.moveTo(L.editorX + 8 + tabW, L.editorY + 1);
+  ctx.lineTo(L.editorX + 8 + tabW, L.editorY + 23);
+  ctx.stroke();
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textBaseline = "middle";
+  ctx.fillText("case_file.md", L.editorX + 18, L.editorY + 12);
+  // Right-side breadcrumb
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText("press Tab to accept", L.editorX + L.editorW - 12, L.editorY + 12);
   ctx.textAlign = "left";
-  ctx.fillText("CASE FILE — DICTATION", 28, 28);
-  ctx.fillStyle = CURSOR.text;
-  ctx.font = "10px sans-serif";
-  ctx.fillText("tap a suggestion · idle = typewriter picks for you", 200, 28);
 
-  // Body text — typewriter-style
-  ctx.fillStyle = CURSOR.ink;
-  ctx.font = "13px 'Cursor Mono', monospace";
+  // Gutter (line numbers)
+  const gutterW = 32;
+  const bodyX = L.editorX + gutterW;
+  const bodyY = L.editorY + 32;
+  ctx.fillStyle = CURSOR_AI.surfaceMute;
+  ctx.fillRect(L.editorX + 1, bodyY - 8, gutterW, L.editorH - 32);
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+
+  // Body text
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
   const totalChars = paragraph.length;
   const visibleChars = Math.floor(
     totalChars * Math.max(0, Math.min(1, typingProgress01)),
   );
   const visible = paragraph.slice(0, visibleChars);
-  const lines = wrapText(ctx, visible, paperW - 32);
-  let yLine = paperY + 22;
-  for (const line of lines) {
-    ctx.fillText(line, paperX + 22, yLine);
-    yLine += 18;
-    if (yLine > paperY + paperH - 8) break;
+  const lines = wrapText(ctx, visible, L.editorW - gutterW - 24);
+
+  // Render visible lines + line numbers
+  let yLine = bodyY + 6;
+  let lastLineW = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] as string;
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(String(i + 1), L.editorX + gutterW - 6, yLine);
+    ctx.textAlign = "left";
+    ctx.fillStyle = CURSOR_AI.ink;
+    ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
+    ctx.fillText(line, bodyX + 8, yLine);
+    lastLineW = ctx.measureText(line).width;
+    yLine += 16;
+    if (yLine > L.editorY + L.editorH - 6) break;
   }
-  // Blinking cursor at end of last line
-  if (lines.length > 0) {
-    const last = lines[lines.length - 1] as string;
-    const lineW = ctx.measureText(last).width;
+
+  // Caret position — end of last rendered line
+  const caretX = bodyX + 8 + lastLineW + 1;
+  const caretY = yLine - 16;
+  if (showCaret) {
     const blink = Math.floor(performance.now() / 500) % 2 === 0;
     if (blink) {
-      ctx.fillStyle = CURSOR.ink;
-      ctx.fillRect(paperX + 22 + lineW + 2, yLine - 12, 7, 2);
+      ctx.fillStyle = CURSOR_AI.accent;
+      ctx.fillRect(caretX, caretY - 10, 2, 14);
     }
   }
+  ctx.textBaseline = "alphabetic";
+  return { caretX, caretY };
 }
 
-export function drawSuggestionBalloons(
+// ---------------------------------------------------------------------
+// Suggestion popover — Cursor inline-completions style
+// ---------------------------------------------------------------------
+export interface SuggestionRowRect extends Rect {
+  readonly color: PickColor;
+  readonly word: string;
+  readonly index: number;
+}
+
+export function getSuggestionRowRects(
   ctx: CanvasRenderingContext2D,
-  rects: readonly BalloonRect[],
+  options: { blue: string; purple: string; orange: string },
+): readonly SuggestionRowRect[] {
+  const L = SENTENCE_LAYOUT;
+  const colors: PickColor[] = ["blue", "purple", "orange"];
+  const labels = [options.blue, options.purple, options.orange];
+  ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
+  const widths = labels.map((l) => ctx.measureText(l).width);
+  const popW = Math.max(L.popoverW, Math.max(...widths) + 80);
+  const rows: SuggestionRowRect[] = [];
+  for (let i = 0; i < colors.length; i++) {
+    rows.push({
+      x: L.popoverX,
+      y: L.popoverY + i * L.popoverRowH,
+      w: popW,
+      h: L.popoverRowH,
+      color: colors[i] as PickColor,
+      word: labels[i] as string,
+      index: i,
+    });
+  }
+  return rows;
+}
+
+export function drawSuggestionPopover(
+  ctx: CanvasRenderingContext2D,
+  rows: readonly SuggestionRowRect[],
   hover: PickColor | null,
   secondsLeft01: number,
 ): void {
-  for (const r of rects) {
-    const color = COLOR_BY_PICK[r.color];
+  if (rows.length === 0) return;
+  const first = rows[0] as SuggestionRowRect;
+  const last = rows[rows.length - 1] as SuggestionRowRect;
+  const popW = first.w;
+  const popH = last.y + last.h - first.y + 24;
+  // Soft popover card
+  drawAiCard(ctx, first.x, first.y, popW, popH, { radius: 8 });
+  // Each row
+  for (const r of rows) {
     const isHover = hover === r.color;
-    ctx.fillStyle = isHover ? color : "rgba(20,18,11,0.85)";
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
+    if (isHover) {
+      ctx.fillStyle = COLOR_BY_PICK[r.color];
+      ctx.globalAlpha = 0.08;
+      ctx.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h);
+      ctx.globalAlpha = 1;
+    }
+    // Leading arrow icon in row color
+    ctx.fillStyle = COLOR_BY_PICK[r.color];
+    ctx.font = "700 12px 'Cursor Mono', ui-monospace, monospace";
+    ctx.textBaseline = "middle";
+    ctx.fillText("→", r.x + 12, r.y + r.h / 2 + 1);
+    // Word
+    ctx.fillStyle = CURSOR_AI.ink;
+    ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
+    ctx.fillText(r.word, r.x + 30, r.y + r.h / 2 + 1);
+    // Hint badge on the right
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+    ctx.textAlign = "right";
+    const badge = r.color === "blue" ? "Tab" : String(r.index + 1);
+    const aux =
+      r.color === "blue"
+        ? "recommended"
+        : r.color === "purple"
+          ? "alt"
+          : "honest mistake";
+    ctx.fillText(aux, r.x + r.w - 50, r.y + r.h / 2 + 1);
+    // Number / Tab badge pill on the very right
+    ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
+    const badgeW = 34;
+    const badgeX = r.x + r.w - badgeW - 8;
+    const badgeY = r.y + (r.h - 14) / 2;
+    ctx.fillStyle = CURSOR_AI.surfaceMute;
     ctx.beginPath();
-    ctx.roundRect(r.x, r.y, r.w, r.h, 10);
+    ctx.roundRect(badgeX, badgeY, badgeW, 14, 4);
     ctx.fill();
+    ctx.strokeStyle = CURSOR_AI.border;
     ctx.stroke();
-    ctx.fillStyle = isHover ? "#fff" : color;
-    ctx.font = "13px 'Cursor Mono', monospace";
+    ctx.fillStyle = CURSOR_AI.inkMute;
     ctx.textAlign = "center";
-    ctx.fillText(r.word, r.x + r.w / 2, r.y + 23);
+    ctx.fillText(badge, badgeX + badgeW / 2, badgeY + 8);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
   }
-  // Idle timer bar
-  if (rects.length > 0) {
-    const first = rects[0] as BalloonRect;
-    const last = rects[rects.length - 1] as BalloonRect;
-    const x = first.x;
-    const w = last.x + last.w - first.x;
-    const y = first.y + first.h + 6;
-    ctx.fillStyle = "rgba(20,18,11,0.5)";
-    ctx.fillRect(x, y, w, 4);
-    ctx.fillStyle = CURSOR.gold;
-    ctx.fillRect(x, y, w * Math.max(0, Math.min(1, secondsLeft01)), 4);
-  }
-  ctx.textAlign = "left";
+  // Idle timer line at the bottom of the popover
+  drawAiProgressLine(
+    ctx,
+    first.x + 8,
+    first.y + popH - 10,
+    popW - 16,
+    secondsLeft01,
+    { tone: secondsLeft01 < 0.25 ? "alert" : "default" },
+  );
 }
 
+// ---------------------------------------------------------------------
+// Intro / result cards
+// ---------------------------------------------------------------------
 export function drawIntroCard(
   ctx: CanvasRenderingContext2D,
   W: number,
@@ -196,58 +262,38 @@ export function drawIntroCard(
   progress01: number,
 ): void {
   ctx.save();
-  ctx.fillStyle = "rgba(8,7,5,0.92)";
+  ctx.fillStyle = CURSOR_AI.scrim;
   ctx.fillRect(0, 0, W, H);
   const w = 380;
-  const h = 130;
+  const h = 160;
   const x = (W - w) / 2;
   const y = (H - h) / 2;
-  ctx.fillStyle = "#1a1812";
-  ctx.strokeStyle = CURSOR.orange;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 12);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = CURSOR.gold;
-  ctx.font = "600 14px 'Cursor Gothic', sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("FINISH THE SENTENCE", x + w / 2, y + 30);
-  ctx.fillStyle = CURSOR.textHi;
+  drawAiCard(ctx, x, y, w, h, { radius: 14 });
+  drawAiAvatar(ctx, x + 32, y + 36, { size: 28 });
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "700 14px 'Cursor Gothic', sans-serif";
+  ctx.fillText("Tab — autocomplete the case file", x + 60, y + 30);
+  ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
+  ctx.fillText("4 sentences · 3 suggestions each", x + 60, y + 48);
+  ctx.fillStyle = CURSOR_AI.ink;
   ctx.fillText(
-    "The typewriter clack-types. You finish the blank.",
-    x + w / 2,
-    y + 54,
+    "Press Tab for the recommended suggestion.",
+    x + 24,
+    y + 80,
   );
-  ctx.fillStyle = "#5d9bff";
-  ctx.font = "11px 'Cursor Mono', monospace";
-  ctx.fillText("blue = right", x + 100, y + 78);
-  ctx.fillStyle = "#b58aff";
-  ctx.fillText("purple = funny", x + w / 2, y + 78);
-  ctx.fillStyle = "#ff8b3d";
-  ctx.fillText("orange = oops", x + w - 100, y + 78);
-  // Progress bar
-  ctx.fillStyle = "rgba(245,240,232,0.3)";
-  ctx.fillRect(x + 20, y + h - 14, w - 40, 4);
-  ctx.fillStyle = CURSOR.gold;
-  ctx.fillRect(
-    x + 20,
-    y + h - 14,
-    (w - 40) * Math.max(0, Math.min(1, progress01)),
-    4,
-  );
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.fillText("Or pick row 1 / 2 / 3 with the keys or by clicking.", x + 24, y + 98);
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.fillText("Idle 2.5s and the typewriter picks the orange option.", x + 24, y + 116);
+  drawAiProgressLine(ctx, x + 24, y + h - 22, w - 48, progress01);
   ctx.restore();
-  ctx.textAlign = "left";
 }
 
 /**
- * Render the share-card ending.
- * Four visual variants per the spec:
- * - by-the-book: crisp, classy.
- * - cursed-case-file: comic-sans + ketchup stain.
- * - improv: marker on napkin.
- * - typewriter-wrote-it: sad font, single tear.
+ * Render the four-ending share card embedded inside the AI surface.
+ * Keeps the kitsch art for "cursed" / "improv" / "typewriter" — only
+ * the surrounding chrome is product-grade.
  */
 export function drawShareCard(
   ctx: CanvasRenderingContext2D,
@@ -258,106 +304,55 @@ export function drawShareCard(
   score: number,
 ): void {
   ctx.save();
-  ctx.fillStyle = "rgba(8,7,5,0.85)";
+  ctx.fillStyle = CURSOR_AI.scrim;
   ctx.fillRect(0, 0, W, H);
-  const w = 420;
-  const h = 240;
+  const w = 440;
+  const h = 244;
   const x = (W - w) / 2;
   const y = (H - h) / 2;
+  drawAiCard(ctx, x, y, w, h, { radius: 14 });
 
-  switch (ending) {
-    case "by-the-book": {
-      ctx.fillStyle = "#fbf6ec";
-      ctx.strokeStyle = "#3a2d10";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 6);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = "#231a08";
-      ctx.font = "700 16px 'Cursor Gothic', serif";
-      ctx.textAlign = "center";
-      ctx.fillText("BY THE BOOK DETECTIVE", x + w / 2, y + 28);
-      drawParagraph(ctx, paragraph, x + 20, y + 50, w - 40, 14, "#231a08");
-      drawScoreFooter(ctx, score, x, y, w, h, "#3a2d10");
-      break;
-    }
-    case "cursed-case-file": {
-      ctx.fillStyle = "#ffe8c1";
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 6);
-      ctx.fill();
-      // Ketchup stain
-      ctx.fillStyle = "rgba(180,30,30,0.55)";
-      ctx.beginPath();
-      ctx.arc(x + w - 40, y + 28, 18, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(x + w - 56, y + 16, 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#7a3a1a";
-      ctx.font = "700 18px 'Comic Sans MS', 'Cursor Gothic', cursive";
-      ctx.textAlign = "center";
-      ctx.fillText("CURSED CASE FILE", x + w / 2, y + 28);
-      drawParagraph(ctx, paragraph, x + 20, y + 54, w - 40, 14, "#3d2812");
-      drawScoreFooter(ctx, score, x, y, w, h, "#7a3a1a");
-      break;
-    }
-    case "improv": {
-      // Napkin: off-white with diagonal hatch + marker
-      ctx.fillStyle = "#f5f0df";
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 18);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(180,150,90,0.35)";
-      ctx.lineWidth = 1;
-      for (let i = -h; i < w + h; i += 16) {
-        ctx.beginPath();
-        ctx.moveTo(x + i, y);
-        ctx.lineTo(x + i + h, y + h);
-        ctx.stroke();
-      }
-      ctx.fillStyle = "#1d4173";
-      ctx.font = "700 18px 'Marker Felt', 'Cursor Gothic', sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("IMPROV DETECTIVE", x + w / 2, y + 28);
-      drawParagraph(ctx, paragraph, x + 24, y + 54, w - 48, 14, "#1d4173");
-      drawScoreFooter(ctx, score, x, y, w, h, "#1d4173");
-      break;
-    }
-    case "typewriter-wrote-it": {
-      ctx.fillStyle = "#e0e2e8";
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 6);
-      ctx.fill();
-      ctx.strokeStyle = "#3a4252";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.fillStyle = "#3a4252";
-      ctx.font = "italic 700 16px 'Cursor Gothic', serif";
-      ctx.textAlign = "center";
-      ctx.fillText("THE TYPEWRITER WROTE IT FOR YOU", x + w / 2, y + 30);
-      drawParagraph(ctx, paragraph, x + 20, y + 54, w - 40, 14, "#3a4252");
-      // Single tear
-      ctx.fillStyle = "rgba(80,140,200,0.7)";
-      ctx.beginPath();
-      ctx.moveTo(x + w - 40, y + 56);
-      ctx.quadraticCurveTo(x + w - 36, y + 78, x + w - 40, y + 86);
-      ctx.quadraticCurveTo(x + w - 44, y + 78, x + w - 40, y + 56);
-      ctx.fill();
-      drawScoreFooter(ctx, score, x, y, w, h, "#3a4252");
-      break;
-    }
-    default: {
-      const _: never = ending;
-      void _;
-    }
-  }
-  ctx.fillStyle = "rgba(247,247,244,0.7)";
-  ctx.font = "10px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("click to close", W / 2, y + h + 20);
+  // Top header strip — ending stamp
+  ctx.fillStyle = CURSOR_AI.surfaceMute;
+  ctx.fillRect(x + 1, y + 1, w - 2, 28);
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText("RESULT", x + 14, y + 18);
+  const endingLabel: Record<EndingKind, string> = {
+    "by-the-book": "BY THE BOOK DETECTIVE",
+    "cursed-case-file": "CURSED CASE FILE",
+    improv: "IMPROV DETECTIVE",
+    "typewriter-wrote-it": "THE TYPEWRITER WROTE IT FOR YOU",
+  };
+  ctx.fillStyle =
+    ending === "by-the-book"
+      ? CURSOR_AI.green
+      : ending === "cursed-case-file"
+        ? CURSOR_AI.accent
+        : ending === "improv"
+          ? CURSOR_AI.blue
+          : CURSOR_AI.inkMute;
+  ctx.font = "700 11px 'Cursor Gothic', sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(endingLabel[ending], x + w - 14, y + 18);
   ctx.textAlign = "left";
+
+  // Paragraph body
+  drawParagraph(ctx, paragraph, x + 22, y + 50, w - 44, 16);
+
+  // Footer score row
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText("score", x + 22, y + h - 30);
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "700 22px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText(String(score), x + 22, y + h - 12);
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText("click anywhere to close", x + w - 22, y + h - 14);
+  ctx.textAlign = "left";
+
   ctx.restore();
 }
 
@@ -368,37 +363,21 @@ function drawParagraph(
   y: number,
   width: number,
   lineH: number,
-  color: string,
 ): void {
-  ctx.fillStyle = color;
-  ctx.font = "12px 'Cursor Mono', monospace";
-  ctx.textAlign = "left";
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
   const lines = wrapText(ctx, text, width);
   let yy = y;
   for (const line of lines) {
     ctx.fillText(line, x, yy);
     yy += lineH;
-    if (yy > y + 120) break;
+    if (yy > y + 160) break;
   }
-  ctx.textAlign = "left";
 }
 
-function drawScoreFooter(
-  ctx: CanvasRenderingContext2D,
-  score: number,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  color: string,
-): void {
-  ctx.fillStyle = color;
-  ctx.font = "700 22px 'Cursor Mono', monospace";
-  ctx.textAlign = "center";
-  ctx.fillText(`${score} pts`, x + w / 2, y + h - 14);
-  ctx.textAlign = "left";
-}
-
+// ---------------------------------------------------------------------
+// Tutorial diagram + paragraph assembly (carry-over)
+// ---------------------------------------------------------------------
 export function drawSentenceTutorialDiagram(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -408,24 +387,30 @@ export function drawSentenceTutorialDiagram(
 ): void {
   ctx.save();
   const cy = y + h / 2;
-  ctx.fillStyle = "rgba(245,240,232,0.95)";
-  ctx.fillRect(x, cy - 14, 60, 28);
-  ctx.strokeStyle = "rgba(60,60,60,0.6)";
-  ctx.strokeRect(x, cy - 14, 60, 28);
-  ctx.fillStyle = "#231a08";
-  ctx.font = "12px 'Cursor Mono', monospace";
-  ctx.fillText("…and the", x + 4, cy + 4);
-  ctx.fillStyle = "#5d9bff";
-  ctx.fillText("blank", x + 70, cy + 4);
-  ctx.fillStyle = "#b58aff";
-  ctx.fillText("blank", x + 110, cy + 4);
-  ctx.fillStyle = "#ff8b3d";
-  ctx.fillText("blank", x + 150, cy + 4);
-  ctx.fillStyle = CURSOR.textHi;
-  ctx.font = "10px 'Cursor Gothic', sans-serif";
-  ctx.fillText("PICK ONE", x + 200, cy + 4);
-  ctx.restore();
+  ctx.fillStyle = CURSOR_AI.surface;
+  ctx.fillRect(x, cy - 12, 80, 22);
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.strokeRect(x, cy - 12, 80, 22);
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textBaseline = "middle";
+  ctx.fillText("the date", x + 6, cy);
+  ctx.fillStyle = CURSOR_AI.ghost;
+  ctx.fillText("…", x + 56, cy);
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText("press Tab", x + 100, cy);
+  ctx.fillStyle = CURSOR_AI.surfaceMute;
+  ctx.fillRect(x + 156, cy - 8, 24, 16);
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.strokeRect(x + 156, cy - 8, 24, 16);
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("Tab", x + 168, cy + 1);
   ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
 }
 
 /** Build the full assembled paragraph from picked options. */
@@ -457,4 +442,14 @@ export function assembleParagraph(
     out.push(`${prefix}${chosen}${slot.suffix}`);
   }
   return out.join(" ");
+}
+
+/** Pure helper exported for tests. */
+export function inSuggestionRect(
+  rows: readonly SuggestionRowRect[],
+  x: number,
+  y: number,
+): SuggestionRowRect | null {
+  for (const r of rows) if (inRect(x, y, r)) return r;
+  return null;
 }

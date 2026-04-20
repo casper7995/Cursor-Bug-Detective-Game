@@ -235,8 +235,16 @@ export class TutorialGate {
       innerCloseRect.h,
     );
     ctx.fillStyle = CURSOR.textHi;
-    ctx.font = "700 12px sans-serif";
-    ctx.fillText("\u2715", innerCloseRect.x + 9, innerCloseRect.y + 17);
+    ctx.font = "700 14px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      "\u00d7",
+      innerCloseRect.x + innerCloseRect.w / 2,
+      innerCloseRect.y + innerCloseRect.h / 2 + 1,
+    );
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
 
     ctx.fillStyle = "rgba(237,236,236,0.7)";
     ctx.font = "10px sans-serif";

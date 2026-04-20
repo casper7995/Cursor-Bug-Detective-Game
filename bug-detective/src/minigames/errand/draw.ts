@@ -218,31 +218,61 @@ export function drawHelperSprite(
 ): void {
   ctx.save();
   ctx.translate(cx, cy);
-  // Round body
   const isLost = helper.state === "lost";
-  ctx.fillStyle = isLost ? "rgba(120,120,120,0.6)" : "#1a1812";
+  const isMoving =
+    helper.state === "moving" ||
+    helper.state === "filling" ||
+    helper.state === "alert";
+  // Round body (chibi mascot)
+  ctx.fillStyle = isLost ? "rgba(140,140,140,0.65)" : "#1a1812";
   ctx.beginPath();
-  ctx.arc(0, 4, 16, 0, Math.PI * 2);
+  ctx.arc(0, 8, 14, 0, Math.PI * 2);
   ctx.fill();
-  // Cube head
-  ctx.fillStyle = isLost ? "rgba(140,140,140,0.7)" : "rgba(247,247,244,0.95)";
-  ctx.fillRect(-12, -16, 24, 18);
+  // White belly accent
+  ctx.fillStyle = isLost ? "rgba(180,180,180,0.4)" : "rgba(247,247,244,0.9)";
+  ctx.beginPath();
+  ctx.arc(0, 12, 9, 0, Math.PI, false);
+  ctx.fill();
+  // Tilted cube head
+  ctx.save();
+  ctx.translate(0, -8);
+  ctx.rotate(-0.18);
+  ctx.fillStyle = isLost ? "rgba(160,160,160,0.7)" : "rgba(247,247,244,0.95)";
+  ctx.fillRect(-10, -8, 20, 16);
   ctx.strokeStyle = CURSOR.orange;
   ctx.lineWidth = 1.2;
-  ctx.strokeRect(-12, -16, 24, 18);
-  // Cursor wedge
+  ctx.strokeRect(-10, -8, 20, 16);
+  // Cursor wedge inside cube
   ctx.fillStyle = "#000";
   ctx.beginPath();
-  ctx.moveTo(-6, -10);
-  ctx.lineTo(4, -10);
-  ctx.lineTo(-1, -2);
+  ctx.moveTo(-5, -3);
+  ctx.lineTo(4, -3);
+  ctx.lineTo(-1, 5);
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
+  // Tiny legs / running shoe slip when moving
+  if (isMoving) {
+    ctx.fillStyle = "#1a1812";
+    ctx.beginPath();
+    ctx.ellipse(-7, 22, 5, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(7, 22, 5, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Speed line
+    ctx.strokeStyle = CURSOR.orange;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-22, 6);
+    ctx.lineTo(-14, 6);
+    ctx.stroke();
+  }
   // Number badge
   ctx.fillStyle = CURSOR.gold;
-  ctx.font = "9px 'Cursor Mono', monospace";
+  ctx.font = "700 9px 'Cursor Mono', monospace";
   ctx.textAlign = "center";
-  ctx.fillText(`H${helper.index + 1}`, 0, 25);
+  ctx.fillText(`H${helper.index + 1}`, 0, 28);
   ctx.restore();
   ctx.textAlign = "left";
 }
@@ -256,7 +286,7 @@ export function drawAbortModal(
 ): { abort: { x: number; y: number; w: number; h: number };
      push: { x: number; y: number; w: number; h: number } } {
   ctx.save();
-  ctx.fillStyle = "rgba(8,7,5,0.65)";
+  ctx.fillStyle = "rgba(8,7,5,0.78)";
   ctx.fillRect(0, 0, W, H);
   const w = 320;
   const h = 130;
@@ -337,7 +367,7 @@ export function drawErrandIntro(
   progress01: number,
 ): void {
   ctx.save();
-  ctx.fillStyle = "rgba(8,7,5,0.55)";
+  ctx.fillStyle = "rgba(8,7,5,0.92)";
   ctx.fillRect(0, 0, W, H);
   const w = 360;
   const h = 110;
@@ -353,18 +383,18 @@ export function drawErrandIntro(
   ctx.fillStyle = CURSOR.gold;
   ctx.font = "600 14px 'Cursor Gothic', sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("ERRAND RACE", x + w / 2, y + 30);
+  ctx.fillText("ERRAND RACE — DISPATCH 3 HELPERS", x + w / 2, y + 30);
   ctx.fillStyle = CURSOR.textHi;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
   ctx.fillText(
-    "Send 3 helpers to 5 drawers. Read the icons.",
+    "5 drawers. 3 cloud agents. Read the icons.",
     x + w / 2,
     y + 54,
   );
   ctx.fillStyle = CURSOR.text;
   ctx.font = "11px sans-serif";
   ctx.fillText(
-    "Trapped drawers ping you mid-fill — abort or push.",
+    "Cup/key = clue · ? = junk · ⚠ = trap. Trap drawers ping mid-fill.",
     x + w / 2,
     y + 72,
   );
@@ -389,7 +419,7 @@ export function drawErrandResult(
   score: number,
 ): void {
   ctx.save();
-  ctx.fillStyle = "rgba(8,7,5,0.78)";
+  ctx.fillStyle = "rgba(8,7,5,0.94)";
   ctx.fillRect(0, 0, W, H);
   const w = 360;
   const h = 180;

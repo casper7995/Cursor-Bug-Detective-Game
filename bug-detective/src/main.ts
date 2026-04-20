@@ -498,6 +498,8 @@ function showWebGLError(container: HTMLElement): void {
     const ret = deskMiniCamReturn;
     deskMiniCamReturn = null;
     disposeDeskMiniOnly();
+    // Bring the HUD back into view as we return to the desk.
+    hud.element.style.opacity = "1";
     if (ret) {
       void cameraRig.scriptedTo(ret.pos, ret.look, 420);
     }
@@ -522,6 +524,9 @@ function showWebGLError(container: HTMLElement): void {
     exitInspectZoom(200);
     mascotController.setFrozen(true);
     disposeRunnerVisuals();
+    // Tuck the HUD evidence row away while the mini owns the screen.
+    hud.element.style.opacity = "0";
+    hud.element.style.transition = "opacity 220ms ease";
 
     deskMiniCamReturn = {
       pos: cameraRig.camera.position.clone(),

@@ -25,7 +25,7 @@ const CURSOR_TEXT_HI = "#f7f7f4";
 const CURSOR_ORANGE = "#f54e00";
 const CURSOR_GOLD = "#c08532";
 const CURSOR_BLACK = "#14120b";
-const HUD_BAR = "rgba(20,18,11,0.55)";
+const HUD_BAR = "rgba(20,18,11,0.94)";
 const FONT_MONO = SNIPPET_MONO_FONT;
 const FONT_MONO_HI =
   "600 13px 'Cursor Mono', 'Berkeley Mono', ui-monospace, monospace";

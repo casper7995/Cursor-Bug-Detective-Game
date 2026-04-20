@@ -3,8 +3,6 @@
 import { CURSOR } from "../../ui/cursorTheme";
 import type { EndingKind, PickColor, SentenceSlot } from "./types";
 
-const W_LIMIT = 460; // wrap width for typewriter text
-
 /** Wrap a string into lines no wider than width px in the current font. */
 function wrapText(
   ctx: CanvasRenderingContext2D,
@@ -76,38 +74,82 @@ export function drawTypewriterScene(
   paragraph: string,
   typingProgress01: number,
 ): void {
-  // Background paper roll
+  // Background — dark slate bar with paper rolling out
   ctx.fillStyle = CURSOR.bgTop;
   ctx.fillRect(0, 0, W, H);
+
+  // Type-ribbon on top (thin metallic strip)
+  ctx.fillStyle = "rgba(60,55,42,0.95)";
+  ctx.fillRect(0, 38, W, 14);
+  ctx.fillStyle = "rgba(245,78,0,0.85)";
+  ctx.fillRect(0, 50, W, 2);
+
+  // Paper card
+  const paperX = 36;
+  const paperY = 60;
+  const paperW = W - 72;
+  const paperH = H - paperY - 84;
   ctx.fillStyle = CURSOR.warmCream;
-  ctx.strokeStyle = "rgba(245,78,0,0.3)";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(20,18,11,0.45)";
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.roundRect(20, 50, W - 40, H - 90, 6);
+  ctx.roundRect(paperX, paperY, paperW, paperH, 4);
   ctx.fill();
   ctx.stroke();
+  // Sprocket holes (paper-feed look) along left edge
+  ctx.fillStyle = CURSOR.bgTop;
+  for (let i = 0; i < 7; i++) {
+    const cy = paperY + 14 + i * 18;
+    if (cy + 6 > paperY + paperH - 8) break;
+    ctx.beginPath();
+    ctx.arc(paperX + 9, cy, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Faint ruled lines
+  ctx.strokeStyle = "rgba(60,40,12,0.12)";
+  ctx.lineWidth = 0.5;
+  for (let i = 1; i < 8; i++) {
+    const ly = paperY + 16 + i * 18;
+    if (ly > paperY + paperH - 10) break;
+    ctx.beginPath();
+    ctx.moveTo(paperX + 22, ly);
+    ctx.lineTo(paperX + paperW - 12, ly);
+    ctx.stroke();
+  }
 
   // Title
   ctx.fillStyle = CURSOR.gold;
   ctx.font = "600 12px 'Cursor Gothic', sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText("CASE FILE — TYPEWRITER", 28, 30);
+  ctx.fillText("CASE FILE — DICTATION", 28, 28);
   ctx.fillStyle = CURSOR.text;
   ctx.font = "10px sans-serif";
-  ctx.fillText("tap a suggestion · idle = typewriter picks for you", 28, 44);
+  ctx.fillText("tap a suggestion · idle = typewriter picks for you", 200, 28);
 
   // Body text — typewriter-style
   ctx.fillStyle = CURSOR.ink;
   ctx.font = "13px 'Cursor Mono', monospace";
   const totalChars = paragraph.length;
-  const visibleChars = Math.floor(totalChars * Math.max(0, Math.min(1, typingProgress01)));
+  const visibleChars = Math.floor(
+    totalChars * Math.max(0, Math.min(1, typingProgress01)),
+  );
   const visible = paragraph.slice(0, visibleChars);
-  const lines = wrapText(ctx, visible, W_LIMIT);
-  let yLine = 80;
+  const lines = wrapText(ctx, visible, paperW - 32);
+  let yLine = paperY + 22;
   for (const line of lines) {
-    ctx.fillText(line, 32, yLine);
+    ctx.fillText(line, paperX + 22, yLine);
     yLine += 18;
-    if (yLine > H - 110) break;
+    if (yLine > paperY + paperH - 8) break;
+  }
+  // Blinking cursor at end of last line
+  if (lines.length > 0) {
+    const last = lines[lines.length - 1] as string;
+    const lineW = ctx.measureText(last).width;
+    const blink = Math.floor(performance.now() / 500) % 2 === 0;
+    if (blink) {
+      ctx.fillStyle = CURSOR.ink;
+      ctx.fillRect(paperX + 22 + lineW + 2, yLine - 12, 7, 2);
+    }
   }
 }
 
@@ -154,7 +196,7 @@ export function drawIntroCard(
   progress01: number,
 ): void {
   ctx.save();
-  ctx.fillStyle = "rgba(8,7,5,0.55)";
+  ctx.fillStyle = "rgba(8,7,5,0.92)";
   ctx.fillRect(0, 0, W, H);
   const w = 380;
   const h = 130;

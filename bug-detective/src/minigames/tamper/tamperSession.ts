@@ -6,15 +6,11 @@ import { RUNNER_DRAW } from "../runner/sim";
 import {
   clientToDeskGame,
   DESK_SCRIM,
-  getDeskCloseButtonRect,
+  drawDeskChrome,
   getDeskFullRect,
   hitDeskCloseButton,
 } from "../desk/deskLayout";
-import {
-  getDeskHelpButtonRect,
-  hitDeskHelpButton,
-  TutorialGate,
-} from "../desk/tutorialGate";
+import { hitDeskHelpButton, TutorialGate } from "../desk/tutorialGate";
 import {
   buildTamperRound,
   namespacedSeed,
@@ -375,19 +371,7 @@ export class TamperSession {
       showRealTamper,
     );
 
-    // Header chrome
-    const hb = getDeskHelpButtonRect(W);
-    ctx.strokeStyle = "rgba(245,78,0,0.55)";
-    ctx.strokeRect(hb.x, hb.y, hb.w, hb.h);
-    ctx.fillStyle = CURSOR.ink;
-    ctx.font = "700 12px sans-serif";
-    ctx.fillText("?", hb.x + 10, hb.y + 18);
-    const cb = getDeskCloseButtonRect();
-    ctx.strokeStyle = "rgba(245,78,0,0.65)";
-    ctx.strokeRect(cb.x, cb.y, cb.w, cb.h);
-    ctx.fillStyle = CURSOR.ink;
-    ctx.font = "700 14px sans-serif";
-    ctx.fillText("✕", cb.x + 9, cb.y + 19);
+    drawDeskChrome(ctx);
 
     // Phase overlays
     if (this.phase.kind === "intro") {
@@ -444,17 +428,26 @@ export class TamperSession {
     if (!cur) return;
     const dots = TAMPER_CALLS_PER_ROUND;
     for (let i = 0; i < dots; i++) {
-      const x = 28 + i * 12;
+      const x = 270 + i * 14;
       ctx.fillStyle =
         i < cur.callIndex
-          ? "rgba(80,180,80,0.9)"
+          ? "rgba(80,180,80,0.95)"
           : i === cur.callIndex
             ? CURSOR.orange
             : "rgba(245,240,232,0.3)";
       ctx.beginPath();
-      ctx.arc(x, 30, 4, 0, Math.PI * 2);
+      ctx.arc(x, 24, 4, 0, Math.PI * 2);
       ctx.fill();
     }
+    // Caption next to the progress dots
+    ctx.fillStyle = "rgba(245,240,232,0.6)";
+    ctx.font = "9px 'Cursor Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.fillText(
+      `call ${cur.callIndex + 1} / ${TAMPER_CALLS_PER_ROUND}`,
+      270 + dots * 14 + 6,
+      27,
+    );
   }
 
   private blit(): void {

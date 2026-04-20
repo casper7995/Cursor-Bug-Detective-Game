@@ -38,18 +38,11 @@ export function drawTamperFrame(
   ctx.fillStyle = CURSOR.bgTop;
   ctx.fillRect(0, 0, W, H);
 
-  // Title strip
+  // Title strip — top-left, kept above the panels.
   ctx.fillStyle = CURSOR.gold;
   ctx.font = "600 12px 'Cursor Gothic', sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText(`TAMPERING — ${scene.displayName.toUpperCase()}`, 28, 50);
-  ctx.fillStyle = CURSOR.text;
-  ctx.font = "500 10px sans-serif";
-  ctx.fillText(
-    "Bugbot pings a spot. Agree, disagree, or catch it lying.",
-    28,
-    62,
-  );
+  ctx.fillText(`TAMPERING · ${scene.displayName}`, 28, 28);
 
   drawPanel(
     ctx,
@@ -109,25 +102,25 @@ function drawPanel(
   ctx.fillStyle = "rgba(101,73,42,0.55)";
   ctx.fillRect(x + 6, y + PANEL_H - 36, PANEL_W - 12, 30);
 
-  // Each candidate spot rendered as a soft chip + label.
+  // Each candidate spot rendered as a soft chip with a tiny prop sketch.
   for (const spot of scene.spots) {
     const cx = x + spot.x;
     const cy = y + spot.y;
     const isTampered = tonight && spot.tampered;
-    const fill = isTampered ? "rgba(245,78,0,0.15)" : "rgba(60,60,60,0.18)";
+    const fill = isTampered ? "rgba(245,78,0,0.18)" : "rgba(80,80,80,0.22)";
     ctx.fillStyle = fill;
     ctx.beginPath();
     ctx.arc(cx, cy, spot.r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(20,18,11,0.4)";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(20,18,11,0.5)";
+    ctx.lineWidth = 1.2;
     ctx.stroke();
-
-    // Tiny prop glyph — letter from the spot label.
-    ctx.fillStyle = CURSOR.ink;
-    ctx.font = "600 11px 'Cursor Mono', monospace";
+    drawPropSketch(ctx, spot.label, cx, cy, Math.min(spot.r - 4, 18));
+    // Tiny caption below
+    ctx.fillStyle = "rgba(20,18,11,0.55)";
+    ctx.font = "8px 'Cursor Mono', monospace";
     ctx.textAlign = "center";
-    ctx.fillText(spot.label.charAt(0).toUpperCase(), cx, cy + 4);
+    ctx.fillText(spot.label, cx, cy + spot.r + 8);
   }
 
   // Bugbot pointer ring on TONIGHT panel
@@ -174,6 +167,31 @@ export interface BugbotBubblePos {
   readonly h: number;
 }
 
+/** Snarky one-liners cycled deterministically off the call index. */
+const BUGBOT_QUIPS_TAMPERED: readonly string[] = [
+  "Suspect! 100% suspect.",
+  "I knew it. I always know.",
+  "This is the one. Trust me.",
+  "Smells fishy. Like, code-smell fishy.",
+  "Tampered. Pretty sure. Mostly sure.",
+  "Don't touch — it might bite.",
+];
+const BUGBOT_QUIPS_CLEAN: readonly string[] = [
+  "Looks clean. Boring, even.",
+  "Nothing here. Move along.",
+  "I checked. It's fine. Probably.",
+  "Spotless. Suspiciously spotless?",
+  "Just vibes. Good ones.",
+  "All good. Reviewed and approved.",
+];
+
+function bugbotQuip(call: TamperCall): string {
+  const pool =
+    call.bugbotClaim === "tampered" ? BUGBOT_QUIPS_TAMPERED : BUGBOT_QUIPS_CLEAN;
+  const idx = (call.callIndex * 7919 + call.bugbotConfidencePct * 17) % pool.length;
+  return pool[idx] as string;
+}
+
 export function drawBugbotBubble(
   ctx: CanvasRenderingContext2D,
   W: number,
@@ -182,10 +200,11 @@ export function drawBugbotBubble(
 ): BugbotBubblePos {
   const target = spotById(scene, call.bugbotPointsAtSpotId);
   const claim = call.bugbotClaim === "tampered" ? "TAMPERED" : "CLEAN";
-  const text = `Bugbot says ${claim}`;
-  const conf = `confidence ${call.bugbotConfidencePct}%`;
-  const w = 188;
-  const h = 44;
+  const quip = bugbotQuip(call);
+  const text = `Bugbot: ${claim}`;
+  const conf = `“${quip}” · ${call.bugbotConfidencePct}%`;
+  const w = 248;
+  const h = 50;
   const baseX = TONIGHT_PANEL_X + (target ? target.x : 96) - w / 2;
   const baseY = PANEL_Y - h - 6;
   const x = Math.max(8, Math.min(W - w - 8, baseX));
@@ -197,13 +216,23 @@ export function drawBugbotBubble(
   ctx.roundRect(x, y, w, h, 8);
   ctx.fill();
   ctx.stroke();
+  // Cursor-mascot avatar tile inside the bubble
+  ctx.fillStyle = "rgba(247,247,244,0.95)";
+  ctx.fillRect(x + 8, y + 8, 26, 26);
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.moveTo(x + 14, y + 14);
+  ctx.lineTo(x + 30, y + 14);
+  ctx.lineTo(x + 22, y + 30);
+  ctx.closePath();
+  ctx.fill();
   ctx.fillStyle = CURSOR.textHi;
   ctx.font = "700 12px 'Cursor Gothic', sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText(text, x + 10, y + 18);
+  ctx.fillText(text, x + 42, y + 20);
   ctx.fillStyle = CURSOR.gold;
   ctx.font = "10px 'Cursor Mono', monospace";
-  ctx.fillText(conf, x + 10, y + 34);
+  ctx.fillText(conf, x + 42, y + 38);
 
   // Pointer triangle to target
   if (target) {
@@ -336,7 +365,7 @@ export function drawIntroCard(
   progress01: number,
 ): void {
   ctx.save();
-  ctx.fillStyle = "rgba(8,7,5,0.6)";
+  ctx.fillStyle = "rgba(8,7,5,0.92)";
   ctx.fillRect(0, 0, W, H);
   const w = 360;
   const h = 130;
@@ -388,7 +417,7 @@ export function drawResultCard(
   total: number,
 ): void {
   ctx.save();
-  ctx.fillStyle = "rgba(8,7,5,0.78)";
+  ctx.fillStyle = "rgba(8,7,5,0.94)";
   ctx.fillRect(0, 0, W, H);
   const w = 360;
   const h = 170;
@@ -416,6 +445,173 @@ export function drawResultCard(
   ctx.fillStyle = "rgba(247,247,244,0.7)";
   ctx.font = "10px sans-serif";
   ctx.fillText("click to close", x + w / 2, y + h - 14);
+  ctx.restore();
+  ctx.textAlign = "left";
+}
+
+/** Tiny vector glyph for each known prop-name; renders inside a spot chip. */
+function drawPropSketch(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  cx: number,
+  cy: number,
+  size: number,
+): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = CURSOR.ink;
+  ctx.fillStyle = CURSOR.ink;
+  switch (label) {
+    case "stamp":
+      ctx.strokeRect(-size * 0.5, -size * 0.4, size, size * 0.8);
+      ctx.fillStyle = "rgba(245,78,0,0.9)";
+      ctx.beginPath();
+      ctx.arc(0, 0, size * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "photo":
+      ctx.strokeRect(-size * 0.5, -size * 0.4, size, size * 0.8);
+      ctx.beginPath();
+      ctx.arc(-size * 0.2, -size * 0.1, size * 0.12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.5, size * 0.3);
+      ctx.lineTo(0, -size * 0.05);
+      ctx.lineTo(size * 0.5, size * 0.3);
+      ctx.stroke();
+      break;
+    case "pen":
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.4, -size * 0.4);
+      ctx.lineTo(size * 0.5, size * 0.3);
+      ctx.stroke();
+      ctx.fillRect(size * 0.35, size * 0.18, size * 0.18, size * 0.18);
+      break;
+    case "paperclip":
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.3, -size * 0.4);
+      ctx.lineTo(-size * 0.3, size * 0.3);
+      ctx.quadraticCurveTo(-size * 0.05, size * 0.55, size * 0.2, size * 0.3);
+      ctx.lineTo(size * 0.2, -size * 0.2);
+      ctx.quadraticCurveTo(size * 0.05, -size * 0.45, -size * 0.1, -size * 0.2);
+      ctx.lineTo(-size * 0.1, size * 0.1);
+      ctx.stroke();
+      break;
+    case "signature":
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.5, size * 0.1);
+      ctx.bezierCurveTo(
+        -size * 0.2,
+        -size * 0.6,
+        size * 0.1,
+        size * 0.4,
+        size * 0.5,
+        -size * 0.05,
+      );
+      ctx.stroke();
+      break;
+    case "vial":
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.25, -size * 0.5);
+      ctx.lineTo(-size * 0.25, size * 0.3);
+      ctx.quadraticCurveTo(0, size * 0.55, size * 0.25, size * 0.3);
+      ctx.lineTo(size * 0.25, -size * 0.5);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(80,180,80,0.75)";
+      ctx.fillRect(-size * 0.22, 0, size * 0.44, size * 0.3);
+      break;
+    case "tag":
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.4, -size * 0.3);
+      ctx.lineTo(size * 0.2, -size * 0.3);
+      ctx.lineTo(size * 0.5, 0);
+      ctx.lineTo(size * 0.2, size * 0.3);
+      ctx.lineTo(-size * 0.4, size * 0.3);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(size * 0.18, 0, size * 0.06, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    case "key":
+      ctx.beginPath();
+      ctx.arc(-size * 0.25, 0, size * 0.18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.07, 0);
+      ctx.lineTo(size * 0.5, 0);
+      ctx.moveTo(size * 0.25, 0);
+      ctx.lineTo(size * 0.25, size * 0.2);
+      ctx.moveTo(size * 0.4, 0);
+      ctx.lineTo(size * 0.4, size * 0.2);
+      ctx.stroke();
+      break;
+    case "boot":
+    case "boot print":
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.4, size * 0.3);
+      ctx.lineTo(-size * 0.4, -size * 0.3);
+      ctx.quadraticCurveTo(-size * 0.4, -size * 0.55, 0, -size * 0.45);
+      ctx.lineTo(size * 0.5, -size * 0.05);
+      ctx.lineTo(size * 0.5, size * 0.3);
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    case "ledger":
+      ctx.strokeRect(-size * 0.4, -size * 0.4, size * 0.8, size * 0.8);
+      ctx.beginPath();
+      for (let i = 1; i < 4; i++) {
+        ctx.moveTo(-size * 0.3, -size * 0.4 + (i * size * 0.2));
+        ctx.lineTo(size * 0.3, -size * 0.4 + (i * size * 0.2));
+      }
+      ctx.stroke();
+      break;
+    case "shade":
+    case "lampshade":
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.5, size * 0.4);
+      ctx.lineTo(-size * 0.3, -size * 0.4);
+      ctx.lineTo(size * 0.3, -size * 0.4);
+      ctx.lineTo(size * 0.5, size * 0.4);
+      ctx.closePath();
+      ctx.stroke();
+      break;
+    case "switch":
+      ctx.strokeRect(-size * 0.3, -size * 0.4, size * 0.6, size * 0.8);
+      ctx.fillStyle = CURSOR.ink;
+      ctx.fillRect(-size * 0.18, -size * 0.05, size * 0.36, size * 0.18);
+      break;
+    case "wire":
+      ctx.beginPath();
+      ctx.moveTo(-size * 0.5, -size * 0.3);
+      for (let i = 0; i <= 4; i++) {
+        const xx = -size * 0.5 + (i * size) / 4;
+        const yy = i % 2 === 0 ? -size * 0.3 : size * 0.3;
+        ctx.lineTo(xx, yy);
+      }
+      ctx.stroke();
+      break;
+    case "shadow":
+      ctx.fillStyle = "rgba(20,18,11,0.55)";
+      ctx.beginPath();
+      ctx.ellipse(0, size * 0.1, size * 0.55, size * 0.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case "book":
+      ctx.strokeRect(-size * 0.4, -size * 0.3, size * 0.8, size * 0.6);
+      ctx.beginPath();
+      ctx.moveTo(0, -size * 0.3);
+      ctx.lineTo(0, size * 0.3);
+      ctx.stroke();
+      break;
+    default:
+      ctx.fillStyle = CURSOR.ink;
+      ctx.font = "600 11px 'Cursor Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(label.charAt(0).toUpperCase(), 0, size * 0.3);
+      break;
+  }
   ctx.restore();
   ctx.textAlign = "left";
 }

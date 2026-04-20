@@ -1,20 +1,15 @@
 /** Finish the Sentence — desk mini session class. */
 
-import { CURSOR } from "../../ui/cursorTheme";
 import type { MiniGameOutcome } from "../types";
 import { RUNNER_DRAW } from "../runner/sim";
 import {
   clientToDeskGame,
   DESK_SCRIM,
-  getDeskCloseButtonRect,
+  drawDeskChrome,
   getDeskFullRect,
   hitDeskCloseButton,
 } from "../desk/deskLayout";
-import {
-  getDeskHelpButtonRect,
-  hitDeskHelpButton,
-  TutorialGate,
-} from "../desk/tutorialGate";
+import { hitDeskHelpButton, TutorialGate } from "../desk/tutorialGate";
 import type { AnomalyId } from "../../scene/anomalies";
 import { pickTemplate } from "./templates";
 import {
@@ -376,19 +371,7 @@ export class SentenceSession {
     const { paragraph } = this.currentParagraphProgress();
     drawTypewriterScene(ctx, W, H, paragraph, 1);
 
-    // Header chrome
-    const hb = getDeskHelpButtonRect(W);
-    ctx.strokeStyle = "rgba(245,78,0,0.55)";
-    ctx.strokeRect(hb.x, hb.y, hb.w, hb.h);
-    ctx.fillStyle = CURSOR.ink;
-    ctx.font = "700 12px sans-serif";
-    ctx.fillText("?", hb.x + 10, hb.y + 18);
-    const cb = getDeskCloseButtonRect();
-    ctx.strokeStyle = "rgba(245,78,0,0.65)";
-    ctx.strokeRect(cb.x, cb.y, cb.w, cb.h);
-    ctx.fillStyle = CURSOR.ink;
-    ctx.font = "700 14px sans-serif";
-    ctx.fillText("✕", cb.x + 9, cb.y + 19);
+    drawDeskChrome(ctx);
 
     // Phase overlays
     if (this.phase.kind === "intro") {

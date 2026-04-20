@@ -1,12 +1,12 @@
-/** Errand Race — desk mini session class. */
+/** Errand Race — desk mini, restyled as a Cursor Agents queue. */
 
-import { CURSOR } from "../../ui/cursorTheme";
 import type { MiniGameOutcome } from "../types";
+import { CURSOR_AI } from "../../ui/cursorAiTheme";
 import { RUNNER_DRAW } from "../runner/sim";
 import {
   clientToDeskGame,
   DESK_SCRIM,
-  drawDeskChrome,
+  drawDeskChromeAi,
   getDeskFullRect,
   hitDeskCloseButton,
 } from "../desk/deskLayout";
@@ -26,15 +26,14 @@ import {
   type HelperIndex,
 } from "./types";
 import {
+  agentRowAt,
   drawAbortModal,
-  drawDrawerRow,
+  drawAgentsCard,
   drawErrandIntro,
   drawErrandResult,
   drawErrandTutorialDiagram,
-  drawHelperHome,
-  drawHelperSprite,
-  drawerRect,
-  helperHomeRect,
+  drawTasksCard,
+  taskCardAt,
 } from "./draw";
 import { clueTokenForErrand } from "./clueTokens";
 
@@ -68,6 +67,11 @@ type Phase =
   | { kind: "return"; t: number }
   | { kind: "result"; t: number };
 
+interface AbortHits {
+  readonly abort: { x: number; y: number; w: number; h: number };
+  readonly push: { x: number; y: number; w: number; h: number };
+}
+
 export class ErrandSession {
   private readonly overlayCtx: CanvasRenderingContext2D;
   private readonly getOverlayViewport: () => { cssW: number; cssH: number };
@@ -83,13 +87,15 @@ export class ErrandSession {
   private pointerY = 0;
   private grabbedHelper: HelperIndex | null = null;
   private alertedTrapHandled = new Set<HelperIndex>();
+  /** Cached abort-modal hit rects, captured during draw. */
+  private abortHits: AbortHits | null = null;
   private readonly gate = new TutorialGate({
-    title: "Send the helpers",
-    tagline: "Drag 3 helpers onto 5 drawers. Read the icons.",
+    title: "Cursor Agents — dispatch queue",
+    tagline: "Drag agents onto task cards. Read the icons.",
     howToLines: [
-      "Each helper fills one drawer at a time.",
-      "Hint icons hint at content (cup/key tend to be clues, warn = trap).",
-      "Trap drawers ping mid-fill — ABORT to be safe, PUSH for a 50/50.",
+      "Each agent runs one task at a time.",
+      "Cup / key tend to deliver clues. ⚠ tasks ping mid-run.",
+      "On a tripwire: Abort to play it safe, or Push run for a 50/50.",
     ],
     drawDiagram: drawErrandTutorialDiagram,
     storageKey: "bd:miniTutorial:errand",
@@ -139,10 +145,10 @@ export class ErrandSession {
       const p = this.gameFromClient(e.clientX, e.clientY);
       this.pointerX = p.x;
       this.pointerY = p.y;
-      if (this.phase.kind === "alert") {
-        const rects = drawAbortModalHitRects(W, H);
-        if (inRect(p.x, p.y, rects.abort)) this.phase.hover = "abort";
-        else if (inRect(p.x, p.y, rects.push)) this.phase.hover = "push";
+      if (this.phase.kind === "alert" && this.abortHits) {
+        const hits = this.abortHits;
+        if (inRect(p.x, p.y, hits.abort)) this.phase.hover = "abort";
+        else if (inRect(p.x, p.y, hits.push)) this.phase.hover = "push";
         else this.phase.hover = null;
       }
     };
@@ -167,21 +173,19 @@ export class ErrandSession {
         this.finalizeOutcome();
         return;
       }
-      if (this.phase.kind === "alert") {
-        const rects = drawAbortModalHitRects(W, H);
-        if (inRect(p.x, p.y, rects.abort)) this.resolveAlert("abort");
-        else if (inRect(p.x, p.y, rects.push)) this.resolveAlert("push");
+      if (this.phase.kind === "alert" && this.abortHits) {
+        if (inRect(p.x, p.y, this.abortHits.abort)) this.resolveAlert("abort");
+        else if (inRect(p.x, p.y, this.abortHits.push))
+          this.resolveAlert("push");
         return;
       }
       if (this.phase.kind === "dispatch") {
-        // Try to grab a helper from home row.
-        for (let i = 0; i < this.helpers.length; i++) {
-          const h = this.helpers[i] as Helper;
-          if (h.state !== "waiting") continue;
-          const r = helperHomeRect(i);
-          if (inRect(p.x, p.y, r)) {
-            this.grabbedHelper = i as HelperIndex;
-            return;
+        // Grab a waiting agent from its row.
+        const idx = agentRowAt(this.helpers, p.x, p.y);
+        if (idx !== null) {
+          const helper = this.helpers[idx];
+          if (helper && helper.state === "waiting") {
+            this.grabbedHelper = idx as HelperIndex;
           }
         }
       }
@@ -191,24 +195,16 @@ export class ErrandSession {
       this.pointerX = p.x;
       this.pointerY = p.y;
       if (this.grabbedHelper === null) return;
-      // Drop on a drawer if any.
-      let dropped = false;
-      for (let i = 0; i < this.round.drawers.length; i++) {
-        const r = drawerRect(i);
-        if (inRect(p.x, p.y, r)) {
-          if (
-            canAssignHelper(this.helpers, this.grabbedHelper as number, i)
-          ) {
-            const helper = this.helpers[this.grabbedHelper] as Helper;
-            helper.drawerAssigned = i as DrawerIndex;
-            helper.state = "filling";
-            helper.fillProgress = 0;
-            dropped = true;
-          }
-          break;
+      // Drop on a task card?
+      const taskIdx = taskCardAt(this.round.drawers, p.x, p.y);
+      if (taskIdx !== null) {
+        if (canAssignHelper(this.helpers, this.grabbedHelper as number, taskIdx)) {
+          const helper = this.helpers[this.grabbedHelper] as Helper;
+          helper.drawerAssigned = taskIdx as DrawerIndex;
+          helper.state = "filling";
+          helper.fillProgress = 0;
         }
       }
-      void dropped;
       this.grabbedHelper = null;
     };
     root.addEventListener("pointermove", move, { passive: true });
@@ -238,7 +234,6 @@ export class ErrandSession {
   private autoAssignRemaining(): void {
     for (const helper of this.helpers) {
       if (helper.drawerAssigned !== null) continue;
-      // Pick the first drawer not already assigned.
       for (let i = 0; i < this.round.drawers.length; i++) {
         if (canAssignHelper(this.helpers, helper.index, i)) {
           helper.drawerAssigned = i as DrawerIndex;
@@ -260,7 +255,6 @@ export class ErrandSession {
       helper.state = "returning";
       helper.result = null;
     } else {
-      // Push — coin flip per drawer.
       if (drawer.trapPushIsClue) {
         helper.state = "returning";
         helper.result = "clue";
@@ -294,10 +288,7 @@ export class ErrandSession {
       }
       case "dispatch": {
         this.phase = { kind: "dispatch", t: this.phase.t + dtSec };
-        if (
-          this.allHelpersAssigned() ||
-          this.phase.t >= DISPATCH_TIMEOUT_S
-        ) {
+        if (this.allHelpersAssigned() || this.phase.t >= DISPATCH_TIMEOUT_S) {
           if (!this.allHelpersAssigned()) this.autoAssignRemaining();
           this.phase = { kind: "watch", t: 0 };
         }
@@ -306,13 +297,10 @@ export class ErrandSession {
       case "watch": {
         this.phase = { kind: "watch", t: this.phase.t + dtSec };
         this.advanceFillers(dtSec);
-        // Trigger trap alerts.
         for (const helper of this.helpers) {
           if (helper.state !== "filling") continue;
           if (helper.drawerAssigned === null) continue;
-          const drawer = this.round.drawers[
-            helper.drawerAssigned
-          ] as Drawer;
+          const drawer = this.round.drawers[helper.drawerAssigned] as Drawer;
           if (
             drawer.content === "trap" &&
             !this.alertedTrapHandled.has(helper.index) &&
@@ -340,10 +328,7 @@ export class ErrandSession {
           helperIdx: this.phase.helperIdx,
           hover: this.phase.hover,
         };
-        if (this.phase.t >= ABORT_WINDOW_S) {
-          // Timeout: default to ABORT (safe but no clue).
-          this.resolveAlert("abort");
-        }
+        if (this.phase.t >= ABORT_WINDOW_S) this.resolveAlert("abort");
         break;
       }
       case "return": {
@@ -355,9 +340,7 @@ export class ErrandSession {
       }
       case "result": {
         this.phase = { kind: "result", t: this.phase.t + dtSec };
-        if (this.phase.t >= RESULT_AUTOCLOSE_S) {
-          this.finalizeOutcome();
-        }
+        if (this.phase.t >= RESULT_AUTOCLOSE_S) this.finalizeOutcome();
         break;
       }
       default: {
@@ -376,7 +359,6 @@ export class ErrandSession {
       const inc = (dtSec * 1000) / drawer.fillRateMs;
       helper.fillProgress = Math.min(1, helper.fillProgress + inc);
       if (helper.fillProgress >= 1) {
-        // Resolve.
         helper.result = drawer.content === "clue" ? "clue" : null;
         helper.state = "returning";
       }
@@ -399,10 +381,6 @@ export class ErrandSession {
       helpersLost: lost,
     });
     if (clues === 0) {
-      // Player can replay; no slot fill, stay open until they Esc.
-      // Show the result card but don't emit outcome — main loop checks
-      // getOutcome() per frame. Mark `outcome` only via Esc / close button.
-      // For safety, we still let them dismiss with result-card click.
       this.onExit();
       return;
     }
@@ -414,72 +392,44 @@ export class ErrandSession {
 
   private draw(): void {
     const ctx = this.renderCtx;
-    ctx.fillStyle = CURSOR.bgTop;
+    // Light page background
+    ctx.fillStyle = "#eceae3";
     ctx.fillRect(0, 0, W, H);
 
-    // Background panel
-    ctx.fillStyle = CURSOR.warmCream;
-    ctx.strokeStyle = "rgba(245,78,0,0.45)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(16, 40, W - 32, H - 60, 10);
-    ctx.fill();
-    ctx.stroke();
-
     // Title strip
-    ctx.fillStyle = CURSOR.gold;
-    ctx.font = "600 12px 'Cursor Gothic', sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText("ERRAND RACE — DISPATCH HELPERS", 28, 30);
+    ctx.fillStyle = CURSOR_AI.ink;
+    ctx.font = "700 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+    ctx.fillText("Cursor Agents", 18, 26);
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
+    ctx.fillText("· dispatch queue", 110, 26);
 
-    drawDrawerRow(ctx, this.round.drawers, this.helpers);
-
-    // Show helpers either at home (waiting) or moved into drawer slots.
-    drawHelperHome(
+    drawTasksCard(ctx, this.round.drawers, this.helpers);
+    drawAgentsCard(
       ctx,
       this.helpers,
+      this.round.drawers,
       this.grabbedHelper,
       this.pointerX,
       this.pointerY,
     );
-    // Helpers actively in drawers — already drawn as the H# marker in
-    // drawDrawerRow, but draw a small sprite atop the drawer for clarity.
-    for (const h of this.helpers) {
-      if (h.state === "filling" || h.state === "alert") {
-        if (h.drawerAssigned === null) continue;
-        const r = drawerRect(h.drawerAssigned);
-        drawHelperSprite(ctx, r.x + r.w / 2, r.y + r.h / 2 - 6, h);
-      } else if (h.state === "returning" || h.state === "lost") {
-        // Position outcome marker over the helper home slot.
-        const home = helperHomeRect(h.index);
-        drawHelperSprite(ctx, home.x + home.w / 2, home.y + home.h / 2, h);
-        ctx.fillStyle =
-          h.state === "lost"
-            ? CURSOR.orange
-            : h.result === "clue"
-              ? "rgba(80,180,80,0.95)"
-              : "rgba(247,247,244,0.7)";
-        ctx.font = "9px 'Cursor Mono', monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(
-          h.state === "lost"
-            ? "lost"
-            : h.result === "clue"
-              ? "+CLUE"
-              : "junk",
-          home.x + home.w / 2,
-          home.y + home.h + 14,
-        );
-      }
-    }
 
-    drawDeskChrome(ctx);
+    // Footer status text
+    const phaseText = this.phaseFooterText();
+    if (phaseText) {
+      ctx.fillStyle = CURSOR_AI.inkSubtle;
+      ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(phaseText, W / 2, H - 10);
+      ctx.textAlign = "left";
+    }
 
     // Phase overlays
     if (this.phase.kind === "intro") {
       drawErrandIntro(ctx, W, H, this.phase.t / INTRO_DURATION_S);
+      this.abortHits = null;
     } else if (this.phase.kind === "alert") {
-      drawAbortModal(
+      this.abortHits = drawAbortModal(
         ctx,
         W,
         H,
@@ -500,35 +450,37 @@ export class ErrandSession {
         helpersSafe: safe,
         helpersLost: lost,
       });
-      drawErrandResult(ctx, W, H, { clues, helpersSafe: safe, helpersLost: lost }, score);
-    } else if (this.phase.kind === "dispatch") {
-      ctx.fillStyle = CURSOR.ink;
-      ctx.font = "11px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(
-        "drag a helper onto a drawer · auto-dispatch in " +
-          Math.max(0, Math.ceil(DISPATCH_TIMEOUT_S - this.phase.t)) +
-          "s",
-        W / 2,
-        H - 20,
+      drawErrandResult(
+        ctx,
+        W,
+        H,
+        { clues, helpersSafe: safe, helpersLost: lost },
+        score,
       );
-      ctx.textAlign = "left";
-    } else if (this.phase.kind === "watch") {
-      ctx.fillStyle = CURSOR.ink;
-      ctx.font = "11px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("watch your helpers · trap drawers will ping", W / 2, H - 20);
-      ctx.textAlign = "left";
-    } else if (this.phase.kind === "return") {
-      ctx.fillStyle = CURSOR.ink;
-      ctx.font = "11px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("helpers returning…", W / 2, H - 20);
-      ctx.textAlign = "left";
+      this.abortHits = null;
+    } else {
+      this.abortHits = null;
     }
 
+    drawDeskChromeAi(ctx);
     this.gate.draw(ctx, W, H);
     this.blit();
+  }
+
+  private phaseFooterText(): string | null {
+    switch (this.phase.kind) {
+      case "dispatch":
+        return `drag agents onto task cards · auto-dispatch in ${Math.max(
+          0,
+          Math.ceil(DISPATCH_TIMEOUT_S - this.phase.t),
+        )}s`;
+      case "watch":
+        return "agents running · ⚠ tasks may ping for review";
+      case "return":
+        return "agents reporting back…";
+      default:
+        return null;
+    }
   }
 
   private blit(): void {
@@ -566,25 +518,4 @@ function inRect(
   r: { x: number; y: number; w: number; h: number },
 ): boolean {
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-}
-
-/** Mirror modal layout from drawAbortModal so hit-testing stays in sync. */
-function drawAbortModalHitRects(
-  W: number,
-  H: number,
-): {
-  abort: { x: number; y: number; w: number; h: number };
-  push: { x: number; y: number; w: number; h: number };
-} {
-  const w = 320;
-  const h = 130;
-  const x = (W - w) / 2;
-  const y = (H - h) / 2;
-  const bw = 130;
-  const bh = 36;
-  const by = y + h - bh - 24;
-  return {
-    abort: { x: x + 18, y: by, w: bw, h: bh },
-    push: { x: x + w - bw - 18, y: by, w: bw, h: bh },
-  };
 }

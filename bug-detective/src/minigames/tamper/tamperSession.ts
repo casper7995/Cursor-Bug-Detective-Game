@@ -1,12 +1,12 @@
-/** Spot the Tampering — desk-mini session class. */
+/** Spot the Tampering — desk-mini session, restyled as a "Bugbot review". */
 
-import { CURSOR } from "../../ui/cursorTheme";
 import type { MiniGameOutcome } from "../types";
+import { CURSOR_AI } from "../../ui/cursorAiTheme";
 import { RUNNER_DRAW } from "../runner/sim";
 import {
   clientToDeskGame,
   DESK_SCRIM,
-  drawDeskChrome,
+  drawDeskChromeAi,
   getDeskFullRect,
   hitDeskCloseButton,
 } from "../desk/deskLayout";
@@ -18,22 +18,20 @@ import {
   scoreTamperRound,
 } from "./round";
 import {
-  drawAgreeDisagreeButtons,
-  drawBugbotBubble,
-  drawDisagreePointPrompt,
+  drawChatCard,
+  drawDiffCard,
   drawIntroCard,
   drawResultCard,
-  drawTamperFrame,
   drawTamperTutorialDiagram,
-  getAgreeDisagreeButtons,
+  spotRowAt,
+  TAMPER_LAYOUT,
+  type ChatHits,
 } from "./draw";
 import {
   type CallVerdict,
   type TamperRound,
-  type TamperSpot,
   TAMPER_CALLS_PER_ROUND,
 } from "./types";
-import { spotById } from "./round";
 import { clueTokenForTamper } from "./clueTokens";
 
 const W = RUNNER_DRAW.canvasW;
@@ -53,13 +51,15 @@ export interface TamperSessionOpts {
   readonly onExit: () => void;
 }
 
+type Hover = "approve" | "reject" | "suggestFix" | null;
+
 type Phase =
   | { kind: "intro"; t: number }
   | {
       kind: "call";
       callIndex: number;
       t: number;
-      hover: "agree" | "disagree" | null;
+      hover: Hover;
     }
   | {
       kind: "disagree-point";
@@ -85,13 +85,15 @@ export class TamperSession {
   private phase: Phase = { kind: "intro", t: 0 };
   private outcome: MiniGameOutcome | null = null;
   private pointerBound = false;
+  /** Cached hit-rects from the most recent draw — re-used by pointer events. */
+  private chatHits: ChatHits | null = null;
   private readonly gate = new TutorialGate({
-    title: "Spot the tampering",
-    tagline: "Bugbot points at TONIGHT. Agree, disagree, or catch a lie.",
+    title: "Bugbot review",
+    tagline: "Bugbot reviews the case file. Approve, reject, or suggest a fix.",
     howToLines: [
-      "Bugbot calls one spot per round and gives a confidence.",
-      "Click AGREE if you think Bugbot is right.",
-      "Click DISAGREE — then tap the real tampered spot to catch the lie.",
+      "Bugbot calls 6 lines and gives a confidence score.",
+      "Approve when you agree, Reject when you disagree.",
+      "Suggest fix → and tap the real tampered row to catch a lie.",
     ],
     drawDiagram: drawTamperTutorialDiagram,
     storageKey: "bd:miniTutorial:tamper",
@@ -102,12 +104,7 @@ export class TamperSession {
     this.getOverlayViewport = opts.getOverlayViewport;
     this.onExit = opts.onExit;
     this.clueWord = opts.clueWord;
-    const seed = namespacedSeed(
-      // Daily seed already baked into clueWord variation per-anomaly.
-      // Fold the word itself so day-to-day variation is preserved.
-      0x9e3779b1,
-      `tamper:${opts.clueWord}`,
-    );
+    const seed = namespacedSeed(0x9e3779b1, `tamper:${opts.clueWord}`);
     this.round = buildTamperRound(seed);
     const c = document.createElement("canvas");
     c.width = W;
@@ -133,19 +130,11 @@ export class TamperSession {
     call: TamperRound["calls"][number];
     callIndex: number;
   } | null {
-    if (this.phase.kind === "call") {
-      return {
-        call: this.round.calls[this.phase.callIndex] as TamperRound["calls"][number],
-        callIndex: this.phase.callIndex,
-      };
-    }
-    if (this.phase.kind === "disagree-point") {
-      return {
-        call: this.round.calls[this.phase.callIndex] as TamperRound["calls"][number],
-        callIndex: this.phase.callIndex,
-      };
-    }
-    if (this.phase.kind === "verdict") {
+    if (
+      this.phase.kind === "call" ||
+      this.phase.kind === "disagree-point" ||
+      this.phase.kind === "verdict"
+    ) {
       return {
         call: this.round.calls[this.phase.callIndex] as TamperRound["calls"][number],
         callIndex: this.phase.callIndex,
@@ -160,12 +149,14 @@ export class TamperSession {
 
     const move = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
-      if (this.phase.kind === "call") {
-        const rects = getAgreeDisagreeButtons(W, H);
-        if (inRect(p.x, p.y, rects.agree)) this.phase.hover = "agree";
-        else if (inRect(p.x, p.y, rects.disagree)) this.phase.hover = "disagree";
-        else this.phase.hover = null;
-      }
+      if (this.phase.kind !== "call") return;
+      const hits = this.chatHits;
+      if (!hits) return;
+      let hover: Hover = null;
+      if (inRect(p.x, p.y, hits.approve)) hover = "approve";
+      else if (inRect(p.x, p.y, hits.reject)) hover = "reject";
+      else if (inRect(p.x, p.y, hits.suggestFix)) hover = "suggestFix";
+      if (this.phase.hover !== hover) this.phase.hover = hover;
     };
     const down = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
@@ -187,26 +178,32 @@ export class TamperSession {
         return;
       }
       if (this.phase.kind === "call") {
-        const rects = getAgreeDisagreeButtons(W, H);
-        if (inRect(p.x, p.y, rects.agree)) {
+        const hits = this.chatHits;
+        if (!hits) return;
+        if (inRect(p.x, p.y, hits.approve)) {
           this.commitVerdict({ kind: "agree" });
-        } else if (inRect(p.x, p.y, rects.disagree)) {
-          // Move into the point sub-state so the player can catch a lie.
+          return;
+        }
+        if (inRect(p.x, p.y, hits.reject)) {
+          this.commitVerdict({ kind: "disagree" });
+          return;
+        }
+        if (inRect(p.x, p.y, hits.suggestFix)) {
           this.phase = {
             kind: "disagree-point",
             callIndex: this.phase.callIndex,
             t: 0,
           };
+          return;
         }
         return;
       }
       if (this.phase.kind === "disagree-point") {
-        // Either tap a spot (catch attempt) or auto-fall-through after timer.
-        const tap = this.findSpotAt(p.x, p.y);
-        if (tap) {
-          this.commitVerdict({ kind: "disagree-point", spotId: tap.id });
+        const hit = spotRowAt(this.round.scene, p.x, p.y);
+        if (hit) {
+          this.commitVerdict({ kind: "disagree-point", spotId: hit.spotId });
         } else {
-          // Tap outside any spot → treat as plain disagree.
+          // Click outside any TONIGHT row → fall back to plain disagree.
           this.commitVerdict({ kind: "disagree" });
         }
         return;
@@ -230,21 +227,6 @@ export class TamperSession {
     };
   }
 
-  private findSpotAt(x: number, y: number): TamperSpot | null {
-    // Tap test: against TONIGHT panel only (right-side panel).
-    // Spot center in canvas coords lives at TONIGHT_PANEL_X + spot.x.
-    // We import constants implicitly via draw spot helper — but to avoid
-    // a draw-time dep, recompute the offset here.
-    const TONIGHT_X = 24 + 222 + 18; // mirrors draw.ts constants
-    const TONIGHT_Y = 70;
-    for (const s of this.round.scene.spots) {
-      const cx = TONIGHT_X + s.x;
-      const cy = TONIGHT_Y + s.y;
-      if (Math.hypot(x - cx, y - cy) <= s.r + 2) return s;
-    }
-    return null;
-  }
-
   private commitVerdict(v: CallVerdict): void {
     if (
       this.phase.kind !== "call" &&
@@ -261,13 +243,11 @@ export class TamperSession {
 
   private autoForwardFromCall(): void {
     if (this.phase.kind !== "call") return;
-    // Time ran out — record an idle "agree" (most common safe default).
     this.commitVerdict({ kind: "agree" });
   }
 
   private autoForwardFromDisagreePoint(): void {
     if (this.phase.kind !== "disagree-point") return;
-    // Player ran out of time — count as plain disagree.
     this.commitVerdict({ kind: "disagree" });
   }
 
@@ -292,7 +272,6 @@ export class TamperSession {
 
   step(dtSec: number): void {
     if (this.gate.isBlocking()) {
-      // Render but don't advance phase clocks while tutorial is up.
       this.draw();
       return;
     }
@@ -311,9 +290,7 @@ export class TamperSession {
           t: this.phase.t + dtSec,
           hover: this.phase.hover,
         };
-        if (this.phase.t >= CALL_DURATION_S) {
-          this.autoForwardFromCall();
-        }
+        if (this.phase.t >= CALL_DURATION_S) this.autoForwardFromCall();
         break;
       }
       case "disagree-point": {
@@ -322,9 +299,8 @@ export class TamperSession {
           callIndex: this.phase.callIndex,
           t: this.phase.t + dtSec,
         };
-        if (this.phase.t >= POINT_DURATION_S) {
+        if (this.phase.t >= POINT_DURATION_S)
           this.autoForwardFromDisagreePoint();
-        }
         break;
       }
       case "verdict": {
@@ -334,16 +310,12 @@ export class TamperSession {
           t: this.phase.t + dtSec,
           result: this.phase.result,
         };
-        if (this.phase.t >= VERDICT_FLASH_S) {
-          this.advanceAfterVerdict();
-        }
+        if (this.phase.t >= VERDICT_FLASH_S) this.advanceAfterVerdict();
         break;
       }
       case "result": {
         this.phase = { kind: "result", t: this.phase.t + dtSec };
-        if (this.phase.t >= RESULT_AUTOCLOSE_S) {
-          this.finalizeOutcome();
-        }
+        if (this.phase.t >= RESULT_AUTOCLOSE_S) this.finalizeOutcome();
         break;
       }
       default: {
@@ -356,22 +328,49 @@ export class TamperSession {
 
   private draw(): void {
     const ctx = this.renderCtx;
-    ctx.fillStyle = CURSOR.bgTop;
+    // Light page background so cards have something to sit on.
+    ctx.fillStyle = "#eceae3";
     ctx.fillRect(0, 0, W, H);
+
+    // Title strip
+    ctx.fillStyle = CURSOR_AI.ink;
+    ctx.font = "700 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+    ctx.fillText("Bugbot review", 18, 26);
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
+    ctx.fillText(`· ${this.round.scene.displayName}`, 110, 26);
 
     const cur = this.currentCall();
     const showRealTamper =
       this.phase.kind === "verdict" && !this.phase.result.rightCall;
-    drawTamperFrame(
+    const pickingSpot = this.phase.kind === "disagree-point";
+    drawDiffCard(
       ctx,
-      W,
-      H,
       this.round.scene,
-      cur?.call ?? null,
+      cur?.call.bugbotPointsAtSpotId ?? null,
       showRealTamper,
+      pickingSpot,
     );
 
-    drawDeskChrome(ctx);
+    let secsLeft01 = 0;
+    if (this.phase.kind === "call") {
+      secsLeft01 = Math.max(0, 1 - this.phase.t / CALL_DURATION_S);
+    } else if (this.phase.kind === "disagree-point") {
+      secsLeft01 = Math.max(0, 1 - this.phase.t / POINT_DURATION_S);
+    } else if (this.phase.kind === "verdict") {
+      secsLeft01 = 1;
+    }
+    const hover = this.phase.kind === "call" ? this.phase.hover : null;
+    this.chatHits = drawChatCard(
+      ctx,
+      cur?.call ?? null,
+      hover,
+      secsLeft01,
+      pickingSpot,
+    );
+
+    // Bottom strip — progress dots + verdict flash
+    this.drawBottomStrip(ctx);
 
     // Phase overlays
     if (this.phase.kind === "intro") {
@@ -382,74 +381,56 @@ export class TamperSession {
         this.round.scene,
         this.phase.t / INTRO_DURATION_S,
       );
-    } else if (this.phase.kind === "call" && cur) {
-      drawBugbotBubble(ctx, W, cur.call, this.round.scene);
-      const rects = getAgreeDisagreeButtons(W, H);
-      const remain = Math.max(0, 1 - this.phase.t / CALL_DURATION_S);
-      drawAgreeDisagreeButtons(
-        ctx,
-        rects,
-        this.phase.hover === "agree",
-        this.phase.hover === "disagree",
-        remain,
-      );
-      this.drawCallProgress(ctx);
-    } else if (this.phase.kind === "disagree-point" && cur) {
-      drawBugbotBubble(ctx, W, cur.call, this.round.scene);
-      const remain = Math.max(0, 1 - this.phase.t / POINT_DURATION_S);
-      drawDisagreePointPrompt(ctx, W, H, remain);
-      this.drawCallProgress(ctx);
-    } else if (this.phase.kind === "verdict" && cur) {
-      drawBugbotBubble(ctx, W, cur.call, this.round.scene);
-      const r = this.phase.result;
-      ctx.fillStyle = r.rightCall ? "rgba(80,180,80,0.95)" : CURSOR.orange;
-      ctx.font = "700 16px 'Cursor Gothic', sans-serif";
-      ctx.textAlign = "center";
-      const txt = r.caughtLie
-        ? "+400 caught lying!"
-        : r.rightCall
-          ? "+150 right call"
-          : "−75 missed";
-      ctx.fillText(txt, W / 2, H - 30);
-      ctx.textAlign = "left";
-      this.drawCallProgress(ctx);
     } else if (this.phase.kind === "result") {
       const r = scoreTamperRound(this.round, this.verdicts);
       drawResultCard(ctx, W, H, r, TAMPER_CALLS_PER_ROUND);
     }
 
+    drawDeskChromeAi(ctx);
     this.gate.draw(ctx, W, H);
+
     this.blit();
   }
 
-  private drawCallProgress(ctx: CanvasRenderingContext2D): void {
-    // Tiny dots top-right of the panel showing call X of N.
+  private drawBottomStrip(ctx: CanvasRenderingContext2D): void {
     const cur = this.currentCall();
-    if (!cur) return;
-    const dots = TAMPER_CALLS_PER_ROUND;
-    // Render dots + counter at the bottom strip, between the panels and
-    // the agree/disagree buttons, so the Bugbot bubble doesn't collide.
-    const dotY = H - 60;
-    for (let i = 0; i < dots; i++) {
-      const x = 28 + i * 14;
-      ctx.fillStyle =
-        i < cur.callIndex
-          ? "rgba(80,180,80,0.95)"
-          : i === cur.callIndex
-            ? CURSOR.orange
-            : "rgba(245,240,232,0.3)";
-      ctx.beginPath();
-      ctx.arc(x, dotY, 4, 0, Math.PI * 2);
-      ctx.fill();
+    const stripY = H - 18;
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
+    if (cur) {
+      // Dots
+      for (let i = 0; i < TAMPER_CALLS_PER_ROUND; i++) {
+        const dx = TAMPER_LAYOUT.diffX + i * 12;
+        ctx.fillStyle =
+          i < cur.callIndex
+            ? CURSOR_AI.green
+            : i === cur.callIndex
+              ? CURSOR_AI.accent
+              : CURSOR_AI.border;
+        ctx.beginPath();
+        ctx.arc(dx, stripY, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = CURSOR_AI.inkMute;
+      ctx.fillText(
+        `call ${cur.callIndex + 1} / ${TAMPER_CALLS_PER_ROUND}`,
+        TAMPER_LAYOUT.diffX + TAMPER_CALLS_PER_ROUND * 12 + 8,
+        stripY + 3,
+      );
     }
-    ctx.fillStyle = "rgba(245,240,232,0.7)";
-    ctx.font = "9px 'Cursor Mono', monospace";
-    ctx.textAlign = "left";
-    ctx.fillText(
-      `call ${cur.callIndex + 1} / ${TAMPER_CALLS_PER_ROUND}`,
-      28 + dots * 14 + 6,
-      dotY + 3,
-    );
+    if (this.phase.kind === "verdict") {
+      const r = this.phase.result;
+      const txt = r.caughtLie
+        ? "+400 caught lying!"
+        : r.rightCall
+          ? "+150 right call"
+          : "−75 missed";
+      ctx.fillStyle = r.rightCall ? CURSOR_AI.green : CURSOR_AI.red;
+      ctx.font = "700 11px 'Cursor Gothic', sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(txt, TAMPER_LAYOUT.chatX + TAMPER_LAYOUT.chatW, stripY + 3);
+      ctx.textAlign = "left";
+    }
   }
 
   private blit(): void {
@@ -488,6 +469,3 @@ function inRect(
 ): boolean {
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
-
-// Re-export for tests / external callers.
-export { spotById };

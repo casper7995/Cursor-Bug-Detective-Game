@@ -427,9 +427,9 @@ export class TamperSession {
     const cur = this.currentCall();
     if (!cur) return;
     const dots = TAMPER_CALLS_PER_ROUND;
-    // Render dots + counter at the bottom strip, between the timer bar
-    // and the buttons, so the Bugbot bubble doesn't collide with them.
-    const dotY = H - 70;
+    // Render dots + counter at the bottom strip, between the panels and
+    // the agree/disagree buttons, so the Bugbot bubble doesn't collide.
+    const dotY = H - 60;
     for (let i = 0; i < dots; i++) {
       const x = 28 + i * 14;
       ctx.fillStyle =

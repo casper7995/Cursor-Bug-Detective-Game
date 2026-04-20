@@ -143,8 +143,13 @@ function showWebGLError(container: HTMLElement): void {
   container.appendChild(card);
 }
 
-function bootGameInner(simplified: boolean): void {
+  function bootGameInner(simplified: boolean): void {
   const { scene, renderer } = createSceneBundle(root);
+  // Expose a tiny debug probe used by the headless playtest to locate
+  // each launchable prop on screen. Cheap to keep in production — only
+  // runs when a tester pokes window.__bdProbe() in DevTools.
+  // (The implementation needs cameraRig + diorama + renderer in scope, so
+  // we install it after those are constructed below.)
 
   const cameraRig = new CameraRig(
     root.clientWidth / Math.max(root.clientHeight, 1),
@@ -155,6 +160,89 @@ function bootGameInner(simplified: boolean): void {
   const GAME_CAMERA_LOOKAT = new THREE.Vector3(-0.2, 0.3, -0.4);
 
   const diorama = createDesktopDiorama();
+
+  // Headless-playtest debug probe: returns the on-screen pixel coords of
+  // each launchable prop as projected by the current camera. Stays harmless
+  // in production — only fires when DevTools (or an automated test) calls
+  // `window.__bdProbe()`.
+  // Headless-playtest ray probe: returns the top-3 hoverable hits at the
+  // given client (x, y) so a tester can debug "why did this prop swallow
+  // my click?" cases.
+  (
+    window as unknown as { __bdRayProbe?: (x: number, y: number) => unknown }
+  ).__bdRayProbe = (
+    x: number,
+    y: number,
+  ): Array<{ tag: string; distance: number }> => {
+    const r = renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((x - r.left) / r.width) * 2 - 1,
+      -((y - r.top) / r.height) * 2 + 1,
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, cameraRig.camera);
+    const hits = ray.intersectObjects(
+      diorama.hoverables as THREE.Object3D[],
+      false,
+    );
+    return hits.slice(0, 3).map((h) => ({
+      tag: String(h.object.userData.tag ?? "?"),
+      distance: Number(h.distance.toFixed(3)),
+    }));
+  };
+
+  (window as unknown as { __bdProbe?: () => unknown }).__bdProbe = (): Record<
+    string,
+    { x: number; y: number }
+  > => {
+    const camera = cameraRig.camera;
+    const r = renderer.domElement.getBoundingClientRect();
+    const v = new THREE.Vector3();
+    const project = (obj: THREE.Object3D): { x: number; y: number } => {
+      obj.updateMatrixWorld(true);
+      obj.getWorldPosition(v);
+      v.project(camera);
+      return {
+        x: Math.round(((v.x + 1) / 2) * r.width + r.left),
+        y: Math.round(((-v.y + 1) / 2) * r.height + r.top),
+      };
+    };
+    const out: Record<string, { x: number; y: number }> = {
+      monitor: project(diorama.monitorScreen),
+      envelope: project(diorama.evidenceEnvelopeRoot),
+      reagent: project(diorama.reagentTray),
+      lamp: project(diorama.lamp),
+    };
+    // Project the centroid of every hoverable that carries one of the
+    // launcher tags so the headless playtest can find a definitive
+    // on-screen pixel for each clickable prop. Use bounding-box center
+    // since the group origin may not match the visible mesh center.
+    const box = new THREE.Box3();
+    const center = new THREE.Vector3();
+    for (const obj of diorama.hoverables) {
+      const tag = obj.userData.tag as string | undefined;
+      if (
+        tag !== "lamp" &&
+        tag !== "evidence-envelope" &&
+        tag !== "reagent-tray" &&
+        tag !== "monitor" &&
+        tag !== "monitor-screen"
+      )
+        continue;
+      obj.updateMatrixWorld(true);
+      box.setFromObject(obj);
+      box.getCenter(center);
+      const camera = cameraRig.camera;
+      const r = renderer.domElement.getBoundingClientRect();
+      center.project(camera);
+      const x = Math.round(((center.x + 1) / 2) * r.width + r.left);
+      const y = Math.round(((-center.y + 1) / 2) * r.height + r.top);
+      const key = `hit_${tag}`;
+      // First-found wins (some tags repeat: monitor bezel + screen).
+      if (!out[key]) out[key] = { x, y };
+    }
+    return out;
+  };
   diorama.root.visible = false; // hidden during the page-peel intro
   scene.add(diorama.root);
 

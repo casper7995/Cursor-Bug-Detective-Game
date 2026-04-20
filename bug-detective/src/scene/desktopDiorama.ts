@@ -470,10 +470,10 @@ export function createDesktopDiorama(): DioramaObjects {
   reagentTray.add(reagentSpinner);
 
   const reagentHit = new THREE.Mesh(
-    new THREE.BoxGeometry(0.95, 0.2, 0.55),
+    new THREE.BoxGeometry(1.25, 0.5, 0.85),
     new THREE.MeshBasicMaterial({ visible: false }),
   );
-  reagentHit.position.set(0, 0.12, 0);
+  reagentHit.position.set(0, 0.22, 0);
   reagentHit.userData.tag = "reagent-tray";
   reagentTray.add(reagentHit);
   hoverables.push(reagentHit);
@@ -584,13 +584,14 @@ export function createDesktopDiorama(): DioramaObjects {
   lamp.add(lampBase);
   hoverables.push(lampBase);
 
-  // Tall invisible hit-cylinder so clicking anywhere on the lamp body
-  // (neck / shade / bulb) launches the Tampering mini.
+  // Tall narrow invisible hit-cylinder so clicking anywhere on the lamp
+  // body (neck / shade / bulb) launches the Tampering mini. Kept narrow
+  // (0.18r) so it doesn't bleed into the envelope's screen projection.
   const lampHit = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.32, 0.32, 1.2, 12),
+    new THREE.CylinderGeometry(0.18, 0.18, 1.05, 12),
     new THREE.MeshBasicMaterial({ visible: false }),
   );
-  lampHit.position.y = 0.6;
+  lampHit.position.y = 0.55;
   lampHit.userData.tag = "lamp";
   lamp.add(lampHit);
   hoverables.push(lampHit);

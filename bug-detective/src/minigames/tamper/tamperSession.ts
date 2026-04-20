@@ -427,8 +427,11 @@ export class TamperSession {
     const cur = this.currentCall();
     if (!cur) return;
     const dots = TAMPER_CALLS_PER_ROUND;
+    // Render dots + counter at the bottom strip, between the timer bar
+    // and the buttons, so the Bugbot bubble doesn't collide with them.
+    const dotY = H - 70;
     for (let i = 0; i < dots; i++) {
-      const x = 270 + i * 14;
+      const x = 28 + i * 14;
       ctx.fillStyle =
         i < cur.callIndex
           ? "rgba(80,180,80,0.95)"
@@ -436,17 +439,16 @@ export class TamperSession {
             ? CURSOR.orange
             : "rgba(245,240,232,0.3)";
       ctx.beginPath();
-      ctx.arc(x, 24, 4, 0, Math.PI * 2);
+      ctx.arc(x, dotY, 4, 0, Math.PI * 2);
       ctx.fill();
     }
-    // Caption next to the progress dots
-    ctx.fillStyle = "rgba(245,240,232,0.6)";
+    ctx.fillStyle = "rgba(245,240,232,0.7)";
     ctx.font = "9px 'Cursor Mono', monospace";
     ctx.textAlign = "left";
     ctx.fillText(
       `call ${cur.callIndex + 1} / ${TAMPER_CALLS_PER_ROUND}`,
-      270 + dots * 14 + 6,
-      27,
+      28 + dots * 14 + 6,
+      dotY + 3,
     );
   }
 

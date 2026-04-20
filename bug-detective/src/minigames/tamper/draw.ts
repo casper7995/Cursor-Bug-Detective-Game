@@ -203,12 +203,13 @@ export function drawBugbotBubble(
   const quip = bugbotQuip(call);
   const text = `Bugbot: ${claim}`;
   const conf = `“${quip}” · ${call.bugbotConfidencePct}%`;
-  const w = 248;
-  const h = 50;
+  const w = 240;
+  const h = 30;
+  // Slim bubble centered between title and panels (y=36..66 fits the gap).
   const baseX = TONIGHT_PANEL_X + (target ? target.x : 96) - w / 2;
-  const baseY = PANEL_Y - h - 6;
-  const x = Math.max(8, Math.min(W - w - 8, baseX));
-  const y = Math.max(6, baseY);
+  const maxX = W - w - 96; // dodge ?+× pills on the right
+  const x = Math.max(8, Math.min(maxX, baseX));
+  const y = 36;
   ctx.fillStyle = "rgba(20,18,11,0.92)";
   ctx.strokeStyle = CURSOR.orange;
   ctx.lineWidth = 1.5;
@@ -216,23 +217,26 @@ export function drawBugbotBubble(
   ctx.roundRect(x, y, w, h, 8);
   ctx.fill();
   ctx.stroke();
-  // Cursor-mascot avatar tile inside the bubble
+  // Tiny cursor-mascot avatar tile inside the bubble (left side).
   ctx.fillStyle = "rgba(247,247,244,0.95)";
-  ctx.fillRect(x + 8, y + 8, 26, 26);
+  ctx.fillRect(x + 6, y + 6, 18, 18);
   ctx.fillStyle = "#000";
   ctx.beginPath();
-  ctx.moveTo(x + 14, y + 14);
-  ctx.lineTo(x + 30, y + 14);
-  ctx.lineTo(x + 22, y + 30);
+  ctx.moveTo(x + 10, y + 10);
+  ctx.lineTo(x + 21, y + 10);
+  ctx.lineTo(x + 16, y + 22);
   ctx.closePath();
   ctx.fill();
+  // Single line: "Bugbot: TAMPERED · "quip" 87%"
   ctx.fillStyle = CURSOR.textHi;
-  ctx.font = "700 12px 'Cursor Gothic', sans-serif";
+  ctx.font = "700 11px 'Cursor Gothic', sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText(text, x + 42, y + 20);
+  ctx.fillText(text, x + 30, y + 19);
   ctx.fillStyle = CURSOR.gold;
   ctx.font = "10px 'Cursor Mono', monospace";
-  ctx.fillText(conf, x + 42, y + 38);
+  // Place quip just to the right of the claim.
+  const claimW = ctx.measureText(text).width + 30 + 12;
+  ctx.fillText(conf, x + claimW, y + 19);
 
   // Pointer triangle to target
   if (target) {

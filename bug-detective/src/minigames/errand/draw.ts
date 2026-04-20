@@ -5,15 +5,15 @@ import type { Drawer, Helper, HintIcon } from "./types";
 
 /** Layout constants in 512×320 game canvas space. */
 export const ERRAND_LAYOUT = {
-  drawerY: 90,
+  drawerY: 80,
   drawerW: 84,
-  drawerH: 110,
+  drawerH: 100,
   drawerGap: 10,
   drawerXStart: 20,
-  helperRowY: 250,
-  helperW: 56,
-  helperH: 48,
-  helperGap: 16,
+  helperRowY: 230,
+  helperW: 64,
+  helperH: 64,
+  helperGap: 18,
 } as const;
 
 export function drawerRect(idx: number): {
@@ -223,56 +223,67 @@ export function drawHelperSprite(
     helper.state === "moving" ||
     helper.state === "filling" ||
     helper.state === "alert";
-  // Round body (chibi mascot)
-  ctx.fillStyle = isLost ? "rgba(140,140,140,0.65)" : "#1a1812";
+  // Round black body (chibi mascot — half-and-half cursor reference look)
+  ctx.fillStyle = isLost ? "rgba(140,140,140,0.65)" : "#0d0c08";
   ctx.beginPath();
-  ctx.arc(0, 8, 14, 0, Math.PI * 2);
+  ctx.arc(0, 6, 18, 0, Math.PI * 2);
   ctx.fill();
-  // White belly accent
-  ctx.fillStyle = isLost ? "rgba(180,180,180,0.4)" : "rgba(247,247,244,0.9)";
-  ctx.beginPath();
-  ctx.arc(0, 12, 9, 0, Math.PI, false);
-  ctx.fill();
-  // Tilted cube head
+  // White hemisphere on the bottom-right
   ctx.save();
-  ctx.translate(0, -8);
-  ctx.rotate(-0.18);
-  ctx.fillStyle = isLost ? "rgba(160,160,160,0.7)" : "rgba(247,247,244,0.95)";
-  ctx.fillRect(-10, -8, 20, 16);
+  ctx.beginPath();
+  ctx.arc(0, 6, 18, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = isLost ? "rgba(200,200,200,0.5)" : "rgba(247,247,244,0.95)";
+  ctx.fillRect(-2, 6, 22, 22);
+  ctx.restore();
+  // Tilted cube head (larger and clearer)
+  ctx.save();
+  ctx.translate(0, -16);
+  ctx.rotate(-0.16);
+  ctx.fillStyle = isLost ? "rgba(180,180,180,0.85)" : "rgba(247,247,244,0.97)";
+  ctx.fillRect(-12, -10, 24, 20);
   ctx.strokeStyle = CURSOR.orange;
-  ctx.lineWidth = 1.2;
-  ctx.strokeRect(-10, -8, 20, 16);
-  // Cursor wedge inside cube
+  ctx.lineWidth = 1.4;
+  ctx.strokeRect(-12, -10, 24, 20);
+  // Cursor wedge inside cube — pointing down-left to match Cursor logo.
   ctx.fillStyle = "#000";
   ctx.beginPath();
-  ctx.moveTo(-5, -3);
-  ctx.lineTo(4, -3);
-  ctx.lineTo(-1, 5);
+  ctx.moveTo(-7, -5);
+  ctx.lineTo(6, -5);
+  ctx.lineTo(-2, 8);
   ctx.closePath();
   ctx.fill();
   ctx.restore();
-  // Tiny legs / running shoe slip when moving
+  // Smile + eyes
+  ctx.fillStyle = isLost ? "rgba(140,140,140,0.7)" : "#fff";
+  ctx.beginPath();
+  ctx.arc(-5, 4, 1.4, 0, Math.PI * 2);
+  ctx.arc(5, 4, 1.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = isLost ? "rgba(140,140,140,0.7)" : "#fff";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(0, 9, 4, 0, Math.PI, false);
+  ctx.stroke();
   if (isMoving) {
     ctx.fillStyle = "#1a1812";
     ctx.beginPath();
-    ctx.ellipse(-7, 22, 5, 2.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(-7, 26, 5, 2.5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(7, 22, 5, 2.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(7, 26, 5, 2.5, 0, 0, Math.PI * 2);
     ctx.fill();
-    // Speed line
     ctx.strokeStyle = CURSOR.orange;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(-22, 6);
-    ctx.lineTo(-14, 6);
+    ctx.moveTo(-26, 6);
+    ctx.lineTo(-18, 6);
     ctx.stroke();
   }
-  // Number badge
   ctx.fillStyle = CURSOR.gold;
   ctx.font = "700 9px 'Cursor Mono', monospace";
   ctx.textAlign = "center";
-  ctx.fillText(`H${helper.index + 1}`, 0, 28);
+  ctx.fillText(`H${helper.index + 1}`, 0, 36);
   ctx.restore();
   ctx.textAlign = "left";
 }

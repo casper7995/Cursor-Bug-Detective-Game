@@ -46,10 +46,24 @@ describe("envelope substitution cipher", () => {
   });
 
   it("initialChipPool removes prefilled letters from pool", () => {
-    const c = buildCipher("AB", () => 0.11);
+    // normalizeWord("AB") is CASE — exercise short-word prefilled path honestly
+    const c = buildCipher("CASE", () => 0.11);
     const pool = initialChipPool(c);
     for (const g of c.prefilled) {
       expect(pool.includes(c.truth[g]!)).toBe(false);
     }
+  });
+
+  it("short words prefilled the first-appearance glyph only", () => {
+    const c = buildCipher("FLOAT", () => 0.99);
+    expect(c.word.length).toBeLessThanOrEqual(5);
+    expect(c.prefilled).toEqual([c.uniqueGlyphs[0]!]);
+    expect(c.glyphs[0]).toBe(c.uniqueGlyphs[0]);
+  });
+
+  it("long words have no prefilled glyph", () => {
+    const c = buildCipher("WARNING", () => 0.5);
+    expect(c.word.length).toBeGreaterThan(5);
+    expect(c.prefilled).toEqual([]);
   });
 });

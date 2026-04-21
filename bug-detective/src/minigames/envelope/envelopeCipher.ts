@@ -112,8 +112,7 @@ export function buildCipher(seedWord: string, rng: () => number): Cipher {
 
   const prefilled: string[] = [];
   if (word.length <= 5 && uniqueGlyphs.length > 0) {
-    const gi = Math.floor(rng() * uniqueGlyphs.length);
-    prefilled.push(uniqueGlyphs[gi]!);
+    prefilled.push(uniqueGlyphs[0]!);
   }
 
   return {

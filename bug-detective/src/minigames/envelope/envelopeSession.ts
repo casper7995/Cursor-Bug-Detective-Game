@@ -24,6 +24,13 @@ import {
 
 const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
+/** Drawn chip radius is 17; slightly larger pick target for touch. */
+const CHIP_PICK_RADIUS = 18;
+
+/** Drag pick: pool chip (restore index on cancel) or key slot (restore mapping on cancel). */
+type ChipInHand =
+  | { kind: "pool"; letter: string; poolIndex: number }
+  | { kind: "slot"; letter: string; glyph: string };
 
 export interface EnvelopeSessionOpts {
   readonly overlayCtx: CanvasRenderingContext2D;
@@ -44,7 +51,7 @@ export class EnvelopeSession {
   private readonly cipher: Cipher;
   private readonly mapping: Record<string, string | null>;
   private chipPool: string[];
-  private chipInHand: { letter: string; from: "pool" | number } | null = null;
+  private chipInHand: ChipInHand | null = null;
   private pointerX = 0;
   private pointerY = 0;
   private outcome: MiniGameOutcome | null = null;
@@ -95,7 +102,7 @@ export class EnvelopeSession {
     const n = this.cipher.uniqueGlyphs.length;
     const colH = 22;
     const mid = Math.ceil(n / 2);
-    const y0 = 120;
+    const y0 = 130;
     return this.cipher.uniqueGlyphs.map((glyph, i) => {
       const col = i < mid ? 0 : 1;
       const row = col === 0 ? i : i - mid;
@@ -164,6 +171,25 @@ export class EnvelopeSession {
     );
   }
 
+  /** Unlocked key slot under `p`, if any (locked rows ignored). */
+  private unlockedKeySlotAt(
+    p: { x: number; y: number },
+    rows: ReturnType<EnvelopeSession["keyRows"]>,
+  ): string | null {
+    for (const r of rows) {
+      if (r.locked) continue;
+      if (
+        p.x >= r.slotX &&
+        p.x <= r.slotX + r.slotW &&
+        p.y >= r.slotY &&
+        p.y <= r.slotY + r.slotH
+      ) {
+        return r.glyph;
+      }
+    }
+    return null;
+  }
+
   attachPointer(root: HTMLElement): void {
     if (this.pointerBound) return;
     this.pointerBound = true;
@@ -184,61 +210,48 @@ export class EnvelopeSession {
         this.gate.handlePointer(p.x, p.y, W, H);
         return;
       }
-      const rowsPick = this.keyRows();
-      const chipBandTop = this.chipPanelLayout(rowsPick).chipBandTop;
+      const rows = this.keyRows();
+      const chipBandTop = this.chipPanelLayout(rows).chipBandTop;
       for (const c of this.chipPoolLayoutAtBand(chipBandTop)) {
-        if (Math.hypot(p.x - c.x, p.y - c.y) < 18) {
-          const letter = this.chipPool.splice(c.poolIndex, 1)[0] as
-            | string
-            | undefined;
-          if (letter) this.chipInHand = { letter, from: "pool" };
+        if (Math.hypot(p.x - c.x, p.y - c.y) < CHIP_PICK_RADIUS) {
+          const idx = c.poolIndex;
+          const letter = this.chipPool.splice(idx, 1)[0] as string | undefined;
+          if (letter) {
+            this.chipInHand = { kind: "pool", letter, poolIndex: idx };
+          }
           return;
         }
       }
-      const rows = this.keyRows();
-      for (let si = 0; si < rows.length; si++) {
-        const r = rows[si]!;
-        if (r.locked) continue;
-        const g = r.glyph;
-        if (
-          p.x >= r.slotX &&
-          p.x <= r.slotX + r.slotW &&
-          p.y >= r.slotY &&
-          p.y <= r.slotY + r.slotH &&
-          this.mapping[g]
-        ) {
-          const letter = this.mapping[g]!;
-          this.mapping[g] = null;
-          this.chipPool.push(letter);
-          this.chipInHand = { letter, from: si };
-          return;
-        }
+      const g = this.unlockedKeySlotAt(p, rows);
+      if (g !== null && this.mapping[g]) {
+        const letter = this.mapping[g]!;
+        this.mapping[g] = null;
+        this.chipInHand = { kind: "slot", letter, glyph: g };
+        return;
       }
     };
     const up = (e: PointerEvent): void => {
       if (this.gate.isBlocking() || !this.chipInHand || this.outcome) return;
       const p = this.gameFromClient(e.clientX, e.clientY);
       const rows = this.keyRows();
+      const droppedGlyph = this.unlockedKeySlotAt(p, rows);
+
       let dropped = false;
-      for (let si = 0; si < rows.length; si++) {
-        const r = rows[si]!;
-        if (r.locked) continue;
-        const g = r.glyph;
-        if (
-          p.x >= r.slotX &&
-          p.x <= r.slotX + r.slotW &&
-          p.y >= r.slotY &&
-          p.y <= r.slotY + r.slotH
-        ) {
-          const prev = this.mapping[g];
-          if (prev) this.chipPool.push(prev);
-          this.mapping[g] = this.chipInHand.letter;
-          dropped = true;
-          break;
-        }
+      if (droppedGlyph !== null) {
+        const g = droppedGlyph;
+        const prev = this.mapping[g];
+        if (prev) this.chipPool.push(prev);
+        this.mapping[g] = this.chipInHand.letter;
+        dropped = true;
       }
+
       if (!dropped) {
-        this.chipPool.push(this.chipInHand.letter);
+        if (this.chipInHand.kind === "pool") {
+          const { letter, poolIndex } = this.chipInHand;
+          this.chipPool.splice(poolIndex, 0, letter);
+        } else {
+          this.mapping[this.chipInHand.glyph] = this.chipInHand.letter;
+        }
       }
       this.chipInHand = null;
       if (isCipherSolved(this.cipher, this.mapping)) {
@@ -250,13 +263,14 @@ export class EnvelopeSession {
         };
       }
     };
-    root.addEventListener("pointerdown", down);
-    root.addEventListener("pointerup", up);
-    root.addEventListener("pointermove", (e: PointerEvent) => {
+    const move = (e: PointerEvent): void => {
       const pt = this.gameFromClient(e.clientX, e.clientY);
       this.pointerX = pt.x;
       this.pointerY = pt.y;
-    });
+    };
+    root.addEventListener("pointerdown", down);
+    root.addEventListener("pointerup", up);
+    root.addEventListener("pointermove", move);
     const key = (e: KeyboardEvent): void => {
       if (e.key !== "Escape") return;
       if (this.gate.isBlocking()) {
@@ -269,6 +283,7 @@ export class EnvelopeSession {
     (this as unknown as { _cleanup?: () => void })._cleanup = (): void => {
       root.removeEventListener("pointerdown", down);
       root.removeEventListener("pointerup", up);
+      root.removeEventListener("pointermove", move);
       window.removeEventListener("keydown", key);
     };
   }
@@ -327,10 +342,17 @@ export class EnvelopeSession {
     ctx.font = "600 14px 'Cursor Mono', monospace";
     const preview = this.previewLine();
     ctx.fillText(preview.length > 42 ? preview.slice(0, 80) : preview, 44, 94);
+    ctx.fillStyle = "rgba(0,0,0,0.42)";
+    ctx.font = "10px 'Cursor Gothic', sans-serif";
+    ctx.fillText(
+      "Filled-in letters replace symbols above; the key still shows every symbol.",
+      44,
+      106,
+    );
 
     ctx.font = "600 11px 'Cursor Gothic', sans-serif";
     ctx.fillStyle = CURSOR.gold;
-    ctx.fillText("2 · KEY (symbol = letter)", 44, 112);
+    ctx.fillText("2 · KEY (symbol = letter)", 44, 122);
 
     const keyRows = this.keyRows();
     const chipPanel = this.chipPanelLayout(keyRows);
@@ -353,7 +375,7 @@ export class EnvelopeSession {
         ctx.fillStyle = "rgba(0,0,0,0.35)";
         ctx.font = "10px sans-serif";
         const hintX = Math.min(r.slotX + r.slotW + 6, cardInnerRight - 28);
-        ctx.fillText("hint", hintX, r.slotY + 16);
+        ctx.fillText("free", hintX, r.slotY + 16);
       }
     }
 

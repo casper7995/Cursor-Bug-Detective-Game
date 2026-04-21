@@ -149,6 +149,9 @@ function bootGameInner(simplified: boolean): void {
   const cameraRig = new CameraRig(
     root.clientWidth / Math.max(root.clientHeight, 1),
   );
+  // Camera must live in the scene graph so RenderPass(scene, camera) traverses
+  // camera children (e.g. the intro page-peel mesh parented under the camera).
+  scene.add(cameraRig.camera);
 
   // Game-time camera pose (used during investigation phase).
   const GAME_CAMERA_POS = new THREE.Vector3(3.2, 2.4, 5.2);

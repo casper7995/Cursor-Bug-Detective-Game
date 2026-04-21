@@ -32,4 +32,5 @@ Legend:
 
 (Each ralph-loop playthrough tick appends a short dated note here.)
 
+- 2026-04-21 — Cloud agent tick: interactive cells left as `—`; checklist adopted option (C) for headless runs (`[~]` partial until a browser session fills this table).
 - _(no sessions logged yet)_

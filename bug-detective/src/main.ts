@@ -1514,6 +1514,11 @@ function bootGameInner(simplified: boolean): void {
     lastFrame = now;
     const elapsed = (now - startTime) / 1000;
 
+    // Desk minis attach keydown on `window` (bubble). InputManager uses capture
+    // on `window` for runner — suppress global bindings so Tab/Enter/etc. reach
+    // sentence / errand / tamper sessions.
+    input.setSuppressGameKeys(deskMinigame !== null);
+
     cameraRig.update(dtMs);
     diorama.step(elapsed, dtSec);
 

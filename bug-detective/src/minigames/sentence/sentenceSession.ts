@@ -191,17 +191,17 @@ export class SentenceSession {
         this.commitPick("blue");
         return;
       }
-      if (e.key === "1") {
+      if (e.key === "1" || e.code === "Digit1" || e.code === "Numpad1") {
         e.preventDefault();
         this.commitPick("blue");
         return;
       }
-      if (e.key === "2") {
+      if (e.key === "2" || e.code === "Digit2" || e.code === "Numpad2") {
         e.preventDefault();
         this.commitPick("purple");
         return;
       }
-      if (e.key === "3") {
+      if (e.key === "3" || e.code === "Digit3" || e.code === "Numpad3") {
         e.preventDefault();
         this.commitPick("orange");
         return;

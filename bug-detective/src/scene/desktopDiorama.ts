@@ -195,6 +195,7 @@ export function createDesktopDiorama(): DioramaObjects {
   desk.receiveShadow = true;
   desk.userData.tag = "desk";
   root.add(desk);
+  hoverables.push(desk);
   // Desk is a hoverable target for the cursor raycaster but not a "clueable"
   // anomaly target — its tag is only used for cursor projection, not tooltips.
 

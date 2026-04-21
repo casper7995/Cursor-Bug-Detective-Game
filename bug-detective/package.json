@@ -10,10 +10,12 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "npm test && npm run build && bash scripts/check-jam-widget.sh",
+    "e2e": "playwright test",
+    "verify": "npm test && npm run e2e && npm run build && bash scripts/check-jam-widget.sh",
     "worker:deploy": "cd worker && wrangler deploy"
   },
   "devDependencies": {
+    "@playwright/test": "^1.51.1",
     "@types/three": "^0.184.0",
     "typescript": "^5.6.3",
     "vite": "^6.0.5",

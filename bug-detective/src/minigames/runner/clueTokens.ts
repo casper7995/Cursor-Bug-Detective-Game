@@ -1,32 +1,11 @@
 import type { PickedAnomaly } from "../../scene/anomalies";
 
 export interface RunnerClueSet {
-  /** Tokens to highlight in any matching snippet, e.g. ["calendar","tomorrow"]. */
+  /** Tokens to highlight in any matching snippet (cipher words, lowercased). */
   readonly tokens: readonly string[];
   /** Color cycle so different tokens read differently. */
   readonly palette: readonly string[];
 }
-
-const STOP = new Set([
-  "that",
-  "this",
-  "with",
-  "from",
-  "have",
-  "your",
-  "shows",
-  "looks",
-  "feels",
-  "wrong",
-  "there",
-  "what",
-  "when",
-  "where",
-  "which",
-  "about",
-  "after",
-  "before",
-]);
 
 /** Cursor warm palette — orange / gold / off-white accents. */
 const DEFAULT_PALETTE = [
@@ -36,27 +15,20 @@ const DEFAULT_PALETTE = [
   "rgba(245,78,0,0.25)",
 ] as const;
 
-function wordsFromText(s: string): string[] {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length >= 4 && !STOP.has(w));
-}
-
 /**
- * Derive up to 4 clue tokens from the picked anomaly’s hint + correct answer.
+ * Return all four cipher clue tokens from the picked anomaly, lowercased for
+ * case-insensitive matching against plank snippets. The cipher words are the
+ * ONLY highlightable tokens — literal answer words no longer leak onto planks.
  */
 export function deriveRunnerClueSet(picked: PickedAnomaly): RunnerClueSet {
-  const raw = `${picked.def.tooltipHint} ${picked.def.correctChoice}`;
+  const g = picked.def.gameClueWords;
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const w of wordsFromText(raw)) {
-    if (seen.has(w)) continue;
-    seen.add(w);
-    out.push(w);
-    if (out.length >= 4) break;
+  for (const raw of [g.runner, g.sentence, g.errand, g.tamper]) {
+    const tok = raw.toLowerCase().replace(/[^a-z]/g, "");
+    if (!tok || seen.has(tok)) continue;
+    seen.add(tok);
+    out.push(tok);
   }
   return { tokens: out, palette: [...DEFAULT_PALETTE] };
 }

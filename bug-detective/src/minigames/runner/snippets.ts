@@ -24,67 +24,71 @@ export const CODE_SNIPPETS: readonly string[] = [
   "type Anomaly = { id: string; severity: number };",
 ];
 
-/** One themed line per anomaly — keywords overlap with deriveRunnerClueSet tokens. */
+/**
+ * One themed line per anomaly — keywords embed the cipher tokens from
+ * anomalies.ts so `deriveRunnerClueSet` can highlight them mid-climb. The
+ * cipher words are oblique hints; they do NOT name the final answer.
+ */
 export const ANOMALY_SNIPPETS: Record<AnomalyId, readonly string[]> = {
   "calendar-tomorrow": [
-    "if (calendar.day === tomorrow.getDate()) flag('off');",
-    "// FIXME: date drifted by +1 — calendar.tomorrow",
-    "expect(calendar.label).toBe(today.toString());",
+    "if (day.offset === PLUS_ONE) flag('AHEAD');",
+    "// DAWN ticked early — the LOOP restarts a beat too soon",
+    "expect(calendar.tick).not.toBe('AHEAD'); // PLUS drift",
   ],
   "mug-name": [
-    "if (mug.label === user.name) suspect('familiar');",
-    "// label feels familiar — mug printed wrong name",
-    "const label = mug.label; trace('familiar', label);",
+    "if (mug.label === user.INK) suspect('MARKED');",
+    "// the glaze feels OWNED — MIRROR of last week's mug",
+    "const label = mug.INK; trace('MARKED', label);",
   ],
   "clock-ccw": [
-    "if (reagent.tray.swirl === 'cw') rewind();",
-    "// reagent tray — swirl runs wrong direction",
-    "expect(reagent.direction).not.toBe('cw');",
+    "if (tray.swirl === SPIRAL) rewind('EBB');",
+    "// the reagent wants to UNDO itself — watch the RECOIL",
+    "expect(tray.direction).not.toBe(SPIRAL); // EBB",
   ],
   "monitor-reflection": [
-    "if (monitor.reflection !== room) warn('off');",
-    "// monitor — reflection looks off vs scene",
-    "reflect(monitor, scene); // reflection bug",
+    "if (monitor.glass === ECHO) warn('DOUBLE');",
+    "// the WINDOW shows ELSE — someone's DOUBLE in the glass",
+    "reflect(monitor, ECHO); // WINDOW bug",
   ],
   "photo-self": [
-    "if (caseFile.face === user.self) alert('familiar');",
-    "// case file — that face is familiar (self)",
-    "expect(caseFile.subject).toBe('your own face');",
+    "if (caseFile.face === MIRROR) alert('TWIN');",
+    "// the GAZE sits INSIDE the file — a TWIN looks back",
+    "expect(caseFile.subject).toBe('TWIN'); // INSIDE",
   ],
   "sticky-warning": [
-    "if (evidence.envelope.text.includes('behind')) warn('yesterday');",
-    "// evidence envelope — new message in case file",
-    'envelope.note = "they\'re behind you";',
+    "if (envelope.text.includes('BREATH')) warn('HUSH');",
+    "// SHOULDER-prickle — PAPER breathes when you aren't looking",
+    'envelope.PAPER = "HUSH";',
   ],
   "pen-floating": [
-    "if (caseFile.floats && caseFile.above(desk)) trace('holding');",
-    "// case file floats above desk — nothing holding it up",
-    "physics.assert(caseFile.support === null); // floats",
+    "if (caseFile.HOVER && caseFile.AIRGAP) trace('LIFT');",
+    "// the page keeps its own VOID — nothing holding the LIFT",
+    "physics.assert(caseFile.support === VOID); // HOVER",
   ],
   "lamp-shadow-wrong": [
-    "if (shadow.direction !== light) bug('wrong');",
-    "// shadow — wrong direction vs lamp",
-    "expect(shadow.vector).toPointAwayFrom(lamp);",
+    "if (shadow.direction === TOWARD) bug('INVERT');",
+    "// the BEACON drags its shade — REACH bends the wrong way",
+    "expect(shadow.vector).not.toPointAwayFrom(BEACON);",
   ],
   "steam-down": [
-    "if (steam.velocity.y > 0) fix('coffee');",
-    "// steam — drifting the wrong way (down)",
-    "particles.steam.gravity = +1; // falls",
+    "if (vapor.velocity.y < 0) fix('SINK');",
+    "// the POUR runs the wrong way — CHILL fighting GRAVITY",
+    "particles.vapor.GRAVITY = +1; // SINK",
   ],
   "blank-book": [
-    "if (caseFile.body.every(line => !line.trim())) silent();",
-    "// case file — strangely silent (blank body)",
-    "expect(caseFile.lines).toHaveLength(0); // blank",
+    "if (caseFile.body.every(line => line === ERASED)) HOLLOW();",
+    "// every line is UNSAID — SILENT paper, HOLLOW page",
+    "expect(caseFile.lines).toBe(ERASED); // HOLLOW",
   ],
   "keyboard-extra-key": [
-    "if (keyboard.keys.has('extra_red')) warn('many');",
-    "// keyboard — one key too many",
-    "layout.count(keyboard) > 104;",
+    "if (keys.has(INTRUDER)) warn('ODD');",
+    "// one CRIMSON cap too many — the COUNT is off by one",
+    "layout.COUNT(keyboard) > 104; // CRIMSON",
   ],
   "plant-glitching": [
-    "if (plant.leaves.twitch) renderGlitch();",
-    "// plant — leaves twitching (wrong frame)",
-    "plant.mesh.userData.glitching = true;",
+    "if (plant.leaves.JITTER) renderGlitch('FRAME');",
+    "// the GREEN STUTTERs — a FRAME is missing from the loop",
+    "plant.mesh.userData.STUTTER = true;",
   ],
 };
 

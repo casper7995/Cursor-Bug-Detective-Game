@@ -61,7 +61,7 @@ export function createAnswerPanel(container: HTMLElement): AnswerPanel {
     promptEl.textContent = prompt;
     if (evidenceLine && evidenceLine.length > 0) {
       evidenceEl.style.display = "";
-      evidenceEl.textContent = `evidence: ${evidenceLine}`;
+      evidenceEl.textContent = `four clues, one culprit: ${evidenceLine}`;
     } else {
       evidenceEl.style.display = "none";
       evidenceEl.textContent = "";

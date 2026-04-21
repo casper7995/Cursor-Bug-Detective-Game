@@ -12,7 +12,7 @@ export const CASE_FILE_BODY_LINES: readonly string[] = [
   "• Open the monitor, envelope, reagent tray, and lamp. Each opens a",
   "  mini-game; solve it to lock a clue word in Evidence.",
   "• Gather all four clues, then tap Make the call and pick the anomaly.",
-  "• Esc or click exits inspect zoom; X closes desk minis.",
+  "• Esc (always) or click exits inspect zoom; X closes desk minis.",
   "",
   "This sheet is only the case jacket. Underneath: your desk, your tools,",
   "and today's bug. Lifting the page is stepping through into the room.",
@@ -41,7 +41,7 @@ export const HOWTO_MODAL_STEPS: readonly {
   },
   {
     title: "Controls",
-    body: "Click any prop to inspect. Esc or another click exits zoom. Close desk minis with the X in the corner.",
+    body: "Click any prop to inspect. Press Esc anytime to back out of hover zoom; click also exits. Desk minis: X to close (Esc exits the mini).",
     icon: "⌨",
   },
 ];

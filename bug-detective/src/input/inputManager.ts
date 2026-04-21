@@ -40,13 +40,13 @@ export class InputManager {
   }
 
   attach(target: Window = window): void {
-    target.addEventListener("keydown", this.onKeyDown);
-    target.addEventListener("keyup", this.onKeyUp);
+    target.addEventListener("keydown", this.onKeyDown, { capture: true });
+    target.addEventListener("keyup", this.onKeyUp, { capture: true });
   }
 
   detach(target: Window = window): void {
-    target.removeEventListener("keydown", this.onKeyDown);
-    target.removeEventListener("keyup", this.onKeyUp);
+    target.removeEventListener("keydown", this.onKeyDown, { capture: true });
+    target.removeEventListener("keyup", this.onKeyUp, { capture: true });
   }
 
   setBindings(bindings: Record<ActionName, string[]>): void {

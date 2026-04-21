@@ -143,7 +143,7 @@ function showWebGLError(container: HTMLElement): void {
   container.appendChild(card);
 }
 
-  function bootGameInner(simplified: boolean): void {
+function bootGameInner(simplified: boolean): void {
   const { scene, renderer } = createSceneBundle(root);
   // Expose a tiny debug probe used by the headless playtest to locate
   // each launchable prop on screen. Cheap to keep in production — only
@@ -729,15 +729,31 @@ function showWebGLError(container: HTMLElement): void {
   let inspectZoomActive = false;
   let inspectZoomCooldownUntil = 0;
 
+  /** Keep inspect dollying from crossing inside this radius around the focus. */
+  const INSPECT_MIN_DIST_FROM_FOCUS = 1.12;
+
+  function clampInspectCamToMinDistance(
+    camPos: THREE.Vector3,
+    focus: THREE.Vector3,
+  ): void {
+    const d = camPos.distanceTo(focus);
+    if (d >= INSPECT_MIN_DIST_FROM_FOCUS) return;
+    camPos
+      .subVectors(camPos, focus)
+      .normalize()
+      .multiplyScalar(INSPECT_MIN_DIST_FROM_FOCUS)
+      .add(focus);
+  }
+
   function anomalyInspectFraming(tag: string): {
     lerp: number;
     yLift: number;
     durationMs: number;
   } {
     if (tag === "lamp-shadow") {
-      return { lerp: 0.28, yLift: 0.42, durationMs: 520 };
+      return { lerp: 0.26, yLift: 0.38, durationMs: 520 };
     }
-    return { lerp: 0.52, yLift: 0.28, durationMs: 580 };
+    return { lerp: 0.36, yLift: 0.24, durationMs: 580 };
   }
 
   function endFlavorInspectNow(): void {
@@ -775,6 +791,7 @@ function showWebGLError(container: HTMLElement): void {
       0.45,
     );
     inspectCamPos.y += 0.24;
+    clampInspectCamToMinDistance(inspectCamPos, inspectAnomalyPos);
     void cameraRig.scriptedTo(inspectCamPos, inspectAnomalyPos, 500);
     if (flavorInspectTimer) clearTimeout(flavorInspectTimer);
     flavorInspectTimer = window.setTimeout(() => {
@@ -831,6 +848,20 @@ function showWebGLError(container: HTMLElement): void {
     mascotController.setFrozen(false);
     void cameraRig.scriptedTo(inspectReturnPos, inspectReturnLook, durationMs);
   }
+
+  /** Escape always exits hover inspect / flavor zoom (desk minis + runner keep their own Esc). */
+  document.addEventListener(
+    "keydown",
+    (e: KeyboardEvent) => {
+      if (e.code !== "Escape" || e.repeat) return;
+      if (state.phase.kind !== "investigating") return;
+      if (runnerSession || deskMinigame) return;
+      e.preventDefault();
+      if (inspectZoomActive) exitInspectZoom(420);
+      else endFlavorInspectNow();
+    },
+    { capture: true },
+  );
 
   function placeMascotAtDefaultDesk(deskTopY: number): void {
     mascot.group.position.set(

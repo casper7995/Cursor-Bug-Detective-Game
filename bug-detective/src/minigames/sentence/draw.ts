@@ -1,0 +1,455 @@
+/** Tab autocomplete — Finish the Sentence rendered as a Cursor editor. */
+
+import { CURSOR_AI } from "../../ui/cursorAiTheme";
+import { drawAiAvatar, drawAiCard, drawAiProgressLine, inRect, type Rect } from "../desk/aiCard";
+import type { EndingKind, PickColor, SentenceSlot } from "./types";
+
+/** Wrap a string into lines no wider than width px in the current font. */
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  width: number,
+): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (ctx.measureText(candidate).width <= width) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+const COLOR_BY_PICK: Record<PickColor, string> = {
+  blue: CURSOR_AI.blue,
+  purple: CURSOR_AI.purple,
+  orange: CURSOR_AI.accent,
+};
+
+// ---------------------------------------------------------------------
+// Editor surface — Cursor IDE styling
+// ---------------------------------------------------------------------
+export const SENTENCE_LAYOUT = {
+  editorX: 16,
+  editorY: 44,
+  editorW: 480,
+  editorH: 196,
+  /** Suggestion popover positioned beneath the editor. */
+  popoverX: 28,
+  popoverY: 250,
+  popoverW: 358,
+  popoverRowH: 22,
+} as const;
+
+export interface EditorScenePos {
+  /** End-of-typed-text position (caret), in canvas coords. */
+  caretX: number;
+  caretY: number;
+}
+
+export function drawEditorScene(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  paragraph: string,
+  typingProgress01: number,
+  showCaret: boolean,
+): EditorScenePos {
+  const L = SENTENCE_LAYOUT;
+  // Page background
+  ctx.fillStyle = "#eceae3";
+  ctx.fillRect(0, 0, W, H);
+
+  drawAiCard(ctx, L.editorX, L.editorY, L.editorW, L.editorH, { radius: 8 });
+
+  // File-tab strip
+  ctx.fillStyle = CURSOR_AI.surfaceMute;
+  ctx.fillRect(L.editorX + 1, L.editorY + 1, L.editorW - 2, 22);
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.beginPath();
+  ctx.moveTo(L.editorX + 1, L.editorY + 23);
+  ctx.lineTo(L.editorX + L.editorW - 1, L.editorY + 23);
+  ctx.stroke();
+  // Filename pill
+  ctx.fillStyle = CURSOR_AI.surface;
+  const tabW = 134;
+  ctx.fillRect(L.editorX + 8, L.editorY + 1, tabW, 22);
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.beginPath();
+  ctx.moveTo(L.editorX + 8 + tabW, L.editorY + 1);
+  ctx.lineTo(L.editorX + 8 + tabW, L.editorY + 23);
+  ctx.stroke();
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textBaseline = "middle";
+  ctx.fillText("case_file.md", L.editorX + 18, L.editorY + 12);
+  // Right-side breadcrumb
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText("press Tab to accept", L.editorX + L.editorW - 12, L.editorY + 12);
+  ctx.textAlign = "left";
+
+  // Gutter (line numbers)
+  const gutterW = 32;
+  const bodyX = L.editorX + gutterW;
+  const bodyY = L.editorY + 32;
+  ctx.fillStyle = CURSOR_AI.surfaceMute;
+  ctx.fillRect(L.editorX + 1, bodyY - 8, gutterW, L.editorH - 32);
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+
+  // Body text
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
+  const totalChars = paragraph.length;
+  const visibleChars = Math.floor(
+    totalChars * Math.max(0, Math.min(1, typingProgress01)),
+  );
+  const visible = paragraph.slice(0, visibleChars);
+  const lines = wrapText(ctx, visible, L.editorW - gutterW - 24);
+
+  // Render visible lines + line numbers
+  let yLine = bodyY + 6;
+  let lastLineW = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] as string;
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(String(i + 1), L.editorX + gutterW - 6, yLine);
+    ctx.textAlign = "left";
+    ctx.fillStyle = CURSOR_AI.ink;
+    ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
+    ctx.fillText(line, bodyX + 8, yLine);
+    lastLineW = ctx.measureText(line).width;
+    yLine += 16;
+    if (yLine > L.editorY + L.editorH - 6) break;
+  }
+
+  // Caret position — end of last rendered line
+  const caretX = bodyX + 8 + lastLineW + 1;
+  const caretY = yLine - 16;
+  if (showCaret) {
+    const blink = Math.floor(performance.now() / 500) % 2 === 0;
+    if (blink) {
+      ctx.fillStyle = CURSOR_AI.accent;
+      ctx.fillRect(caretX, caretY - 10, 2, 14);
+    }
+  }
+  ctx.textBaseline = "alphabetic";
+  return { caretX, caretY };
+}
+
+// ---------------------------------------------------------------------
+// Suggestion popover — Cursor inline-completions style
+// ---------------------------------------------------------------------
+export interface SuggestionRowRect extends Rect {
+  readonly color: PickColor;
+  readonly word: string;
+  readonly index: number;
+}
+
+export function getSuggestionRowRects(
+  ctx: CanvasRenderingContext2D,
+  options: { blue: string; purple: string; orange: string },
+): readonly SuggestionRowRect[] {
+  const L = SENTENCE_LAYOUT;
+  const colors: PickColor[] = ["blue", "purple", "orange"];
+  const labels = [options.blue, options.purple, options.orange];
+  ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
+  const widths = labels.map((l) => ctx.measureText(l).width);
+  const popW = Math.max(L.popoverW, Math.max(...widths) + 80);
+  const rows: SuggestionRowRect[] = [];
+  for (let i = 0; i < colors.length; i++) {
+    rows.push({
+      x: L.popoverX,
+      y: L.popoverY + i * L.popoverRowH,
+      w: popW,
+      h: L.popoverRowH,
+      color: colors[i] as PickColor,
+      word: labels[i] as string,
+      index: i,
+    });
+  }
+  return rows;
+}
+
+export function drawSuggestionPopover(
+  ctx: CanvasRenderingContext2D,
+  rows: readonly SuggestionRowRect[],
+  hover: PickColor | null,
+  secondsLeft01: number,
+): void {
+  if (rows.length === 0) return;
+  const first = rows[0] as SuggestionRowRect;
+  const last = rows[rows.length - 1] as SuggestionRowRect;
+  const popW = first.w;
+  const popH = last.y + last.h - first.y + 24;
+  // Soft popover card
+  drawAiCard(ctx, first.x, first.y, popW, popH, { radius: 8 });
+  // Each row
+  for (const r of rows) {
+    const isHover = hover === r.color;
+    if (isHover) {
+      ctx.fillStyle = COLOR_BY_PICK[r.color];
+      ctx.globalAlpha = 0.08;
+      ctx.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h);
+      ctx.globalAlpha = 1;
+    }
+    // Leading arrow icon in row color
+    ctx.fillStyle = COLOR_BY_PICK[r.color];
+    ctx.font = "700 12px 'Cursor Mono', ui-monospace, monospace";
+    ctx.textBaseline = "middle";
+    ctx.fillText("→", r.x + 12, r.y + r.h / 2 + 1);
+    // Word
+    ctx.fillStyle = CURSOR_AI.ink;
+    ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
+    ctx.fillText(r.word, r.x + 30, r.y + r.h / 2 + 1);
+    // Hint badge on the right
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+    ctx.textAlign = "right";
+    const badge = r.color === "blue" ? "Tab" : String(r.index + 1);
+    const aux =
+      r.color === "blue"
+        ? "recommended"
+        : r.color === "purple"
+          ? "alt"
+          : "honest mistake";
+    ctx.fillText(aux, r.x + r.w - 50, r.y + r.h / 2 + 1);
+    // Number / Tab badge pill on the very right
+    ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
+    const badgeW = 34;
+    const badgeX = r.x + r.w - badgeW - 8;
+    const badgeY = r.y + (r.h - 14) / 2;
+    ctx.fillStyle = CURSOR_AI.surfaceMute;
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, 14, 4);
+    ctx.fill();
+    ctx.strokeStyle = CURSOR_AI.border;
+    ctx.stroke();
+    ctx.fillStyle = CURSOR_AI.inkMute;
+    ctx.textAlign = "center";
+    ctx.fillText(badge, badgeX + badgeW / 2, badgeY + 8);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+  }
+  // Idle timer line at the bottom of the popover
+  drawAiProgressLine(
+    ctx,
+    first.x + 8,
+    first.y + popH - 10,
+    popW - 16,
+    secondsLeft01,
+    { tone: secondsLeft01 < 0.25 ? "alert" : "default" },
+  );
+}
+
+// ---------------------------------------------------------------------
+// Intro / result cards
+// ---------------------------------------------------------------------
+export function drawIntroCard(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  progress01: number,
+): void {
+  ctx.save();
+  ctx.fillStyle = CURSOR_AI.scrim;
+  ctx.fillRect(0, 0, W, H);
+  const w = 380;
+  const h = 160;
+  const x = (W - w) / 2;
+  const y = (H - h) / 2;
+  drawAiCard(ctx, x, y, w, h, { radius: 14 });
+  drawAiAvatar(ctx, x + 32, y + 36, { size: 28 });
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "700 14px 'Cursor Gothic', sans-serif";
+  ctx.fillText("Tab — autocomplete the case file", x + 60, y + 30);
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "12px 'Cursor Gothic', sans-serif";
+  ctx.fillText("4 sentences · 3 suggestions each", x + 60, y + 48);
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.fillText(
+    "Press Tab for the recommended suggestion.",
+    x + 24,
+    y + 80,
+  );
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.fillText("Or pick row 1 / 2 / 3 with the keys or by clicking.", x + 24, y + 98);
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.fillText("Idle 2.5s and the typewriter picks the orange option.", x + 24, y + 116);
+  drawAiProgressLine(ctx, x + 24, y + h - 22, w - 48, progress01);
+  ctx.restore();
+}
+
+/**
+ * Render the four-ending share card embedded inside the AI surface.
+ * Keeps the kitsch art for "cursed" / "improv" / "typewriter" — only
+ * the surrounding chrome is product-grade.
+ */
+export function drawShareCard(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  ending: EndingKind,
+  paragraph: string,
+  score: number,
+): void {
+  ctx.save();
+  ctx.fillStyle = CURSOR_AI.scrim;
+  ctx.fillRect(0, 0, W, H);
+  const w = 440;
+  const h = 244;
+  const x = (W - w) / 2;
+  const y = (H - h) / 2;
+  drawAiCard(ctx, x, y, w, h, { radius: 14 });
+
+  // Top header strip — ending stamp
+  ctx.fillStyle = CURSOR_AI.surfaceMute;
+  ctx.fillRect(x + 1, y + 1, w - 2, 28);
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText("RESULT", x + 14, y + 18);
+  const endingLabel: Record<EndingKind, string> = {
+    "by-the-book": "BY THE BOOK DETECTIVE",
+    "cursed-case-file": "CURSED CASE FILE",
+    improv: "IMPROV DETECTIVE",
+    "typewriter-wrote-it": "THE TYPEWRITER WROTE IT FOR YOU",
+  };
+  ctx.fillStyle =
+    ending === "by-the-book"
+      ? CURSOR_AI.green
+      : ending === "cursed-case-file"
+        ? CURSOR_AI.accent
+        : ending === "improv"
+          ? CURSOR_AI.blue
+          : CURSOR_AI.inkMute;
+  ctx.font = "700 11px 'Cursor Gothic', sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(endingLabel[ending], x + w - 14, y + 18);
+  ctx.textAlign = "left";
+
+  // Paragraph body
+  drawParagraph(ctx, paragraph, x + 22, y + 50, w - 44, 16);
+
+  // Footer score row
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText("score", x + 22, y + h - 30);
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "700 22px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText(String(score), x + 22, y + h - 12);
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textAlign = "right";
+  ctx.fillText("click anywhere to close", x + w - 22, y + h - 14);
+  ctx.textAlign = "left";
+
+  ctx.restore();
+}
+
+function drawParagraph(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  lineH: number,
+): void {
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
+  const lines = wrapText(ctx, text, width);
+  let yy = y;
+  for (const line of lines) {
+    ctx.fillText(line, x, yy);
+    yy += lineH;
+    if (yy > y + 160) break;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Tutorial diagram + paragraph assembly (carry-over)
+// ---------------------------------------------------------------------
+export function drawSentenceTutorialDiagram(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  _w: number,
+  h: number,
+): void {
+  ctx.save();
+  const cy = y + h / 2;
+  ctx.fillStyle = CURSOR_AI.surface;
+  ctx.fillRect(x, cy - 12, 80, 22);
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.strokeRect(x, cy - 12, 80, 22);
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textBaseline = "middle";
+  ctx.fillText("the date", x + 6, cy);
+  ctx.fillStyle = CURSOR_AI.ghost;
+  ctx.fillText("…", x + 56, cy);
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText("press Tab", x + 100, cy);
+  ctx.fillStyle = CURSOR_AI.surfaceMute;
+  ctx.fillRect(x + 156, cy - 8, 24, 16);
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.strokeRect(x + 156, cy - 8, 24, 16);
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("Tab", x + 168, cy + 1);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}
+
+/** Build the full assembled paragraph from picked options. */
+export function assembleParagraph(
+  slots: readonly SentenceSlot[],
+  picks: readonly { color: PickColor | "idle" }[],
+  pickedNamePrefix: readonly string[],
+): string {
+  const out: string[] = [];
+  for (let i = 0; i < slots.length; i++) {
+    const slot = slots[i] as SentenceSlot;
+    const pick = picks[i];
+    const prefix = pickedNamePrefix[i] ?? slot.prefix;
+    let chosen = slot.options.orange;
+    if (pick) {
+      switch (pick.color) {
+        case "blue":
+          chosen = slot.options.blue;
+          break;
+        case "purple":
+          chosen = slot.options.purple;
+          break;
+        case "orange":
+        case "idle":
+          chosen = slot.options.orange;
+          break;
+      }
+    }
+    out.push(`${prefix}${chosen}${slot.suffix}`);
+  }
+  return out.join(" ");
+}
+
+/** Pure helper exported for tests. */
+export function inSuggestionRect(
+  rows: readonly SuggestionRowRect[],
+  x: number,
+  y: number,
+): SuggestionRowRect | null {
+  for (const r of rows) if (inRect(x, y, r)) return r;
+  return null;
+}

@@ -36,9 +36,9 @@ import {
 } from "./audio/audio";
 import { formatGameScoresDetail } from "./game/score";
 import { GameState, assertNever, type RunnerMode } from "./game/gameState";
-import { EnvelopeSession } from "./minigames/envelope/envelopeSession";
-import { ReagentSession } from "./minigames/reagent/reagentSession";
-import { LampSession } from "./minigames/lamp/lampSession";
+import { SentenceSession } from "./minigames/sentence/sentenceSession";
+import { ErrandSession } from "./minigames/errand/errandSession";
+import { TamperSession } from "./minigames/tamper/tamperSession";
 import { deriveRunnerClueSet } from "./minigames/runner/clueTokens";
 import { RunnerSession } from "./minigames/runner/session";
 import { swapMonitorScreenMap } from "./minigames/runner/monitorSurface";
@@ -143,8 +143,13 @@ function showWebGLError(container: HTMLElement): void {
   container.appendChild(card);
 }
 
-function bootGameInner(simplified: boolean): void {
+  function bootGameInner(simplified: boolean): void {
   const { scene, renderer } = createSceneBundle(root);
+  // Expose a tiny debug probe used by the headless playtest to locate
+  // each launchable prop on screen. Cheap to keep in production — only
+  // runs when a tester pokes window.__bdProbe() in DevTools.
+  // (The implementation needs cameraRig + diorama + renderer in scope, so
+  // we install it after those are constructed below.)
 
   const cameraRig = new CameraRig(
     root.clientWidth / Math.max(root.clientHeight, 1),
@@ -155,6 +160,89 @@ function bootGameInner(simplified: boolean): void {
   const GAME_CAMERA_LOOKAT = new THREE.Vector3(-0.2, 0.3, -0.4);
 
   const diorama = createDesktopDiorama();
+
+  // Headless-playtest debug probe: returns the on-screen pixel coords of
+  // each launchable prop as projected by the current camera. Stays harmless
+  // in production — only fires when DevTools (or an automated test) calls
+  // `window.__bdProbe()`.
+  // Headless-playtest ray probe: returns the top-3 hoverable hits at the
+  // given client (x, y) so a tester can debug "why did this prop swallow
+  // my click?" cases.
+  (
+    window as unknown as { __bdRayProbe?: (x: number, y: number) => unknown }
+  ).__bdRayProbe = (
+    x: number,
+    y: number,
+  ): Array<{ tag: string; distance: number }> => {
+    const r = renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((x - r.left) / r.width) * 2 - 1,
+      -((y - r.top) / r.height) * 2 + 1,
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, cameraRig.camera);
+    const hits = ray.intersectObjects(
+      diorama.hoverables as THREE.Object3D[],
+      false,
+    );
+    return hits.slice(0, 3).map((h) => ({
+      tag: String(h.object.userData.tag ?? "?"),
+      distance: Number(h.distance.toFixed(3)),
+    }));
+  };
+
+  (window as unknown as { __bdProbe?: () => unknown }).__bdProbe = (): Record<
+    string,
+    { x: number; y: number }
+  > => {
+    const camera = cameraRig.camera;
+    const r = renderer.domElement.getBoundingClientRect();
+    const v = new THREE.Vector3();
+    const project = (obj: THREE.Object3D): { x: number; y: number } => {
+      obj.updateMatrixWorld(true);
+      obj.getWorldPosition(v);
+      v.project(camera);
+      return {
+        x: Math.round(((v.x + 1) / 2) * r.width + r.left),
+        y: Math.round(((-v.y + 1) / 2) * r.height + r.top),
+      };
+    };
+    const out: Record<string, { x: number; y: number }> = {
+      monitor: project(diorama.monitorScreen),
+      envelope: project(diorama.evidenceEnvelopeRoot),
+      reagent: project(diorama.reagentTray),
+      lamp: project(diorama.lamp),
+    };
+    // Project the centroid of every hoverable that carries one of the
+    // launcher tags so the headless playtest can find a definitive
+    // on-screen pixel for each clickable prop. Use bounding-box center
+    // since the group origin may not match the visible mesh center.
+    const box = new THREE.Box3();
+    const center = new THREE.Vector3();
+    for (const obj of diorama.hoverables) {
+      const tag = obj.userData.tag as string | undefined;
+      if (
+        tag !== "lamp" &&
+        tag !== "evidence-envelope" &&
+        tag !== "reagent-tray" &&
+        tag !== "monitor" &&
+        tag !== "monitor-screen"
+      )
+        continue;
+      obj.updateMatrixWorld(true);
+      box.setFromObject(obj);
+      box.getCenter(center);
+      const camera = cameraRig.camera;
+      const r = renderer.domElement.getBoundingClientRect();
+      center.project(camera);
+      const x = Math.round(((center.x + 1) / 2) * r.width + r.left);
+      const y = Math.round(((-center.y + 1) / 2) * r.height + r.top);
+      const key = `hit_${tag}`;
+      // First-found wins (some tags repeat: monitor bezel + screen).
+      if (!out[key]) out[key] = { x, y };
+    }
+    return out;
+  };
   diorama.root.visible = false; // hidden during the page-peel intro
   scene.add(diorama.root);
 
@@ -310,9 +398,9 @@ function bootGameInner(simplified: boolean): void {
   let runnerEndlessDeathTimer = 0;
 
   type DeskMini =
-    | { kind: "envelope"; session: EnvelopeSession }
-    | { kind: "reagent"; session: ReagentSession }
-    | { kind: "lamp"; session: LampSession };
+    | { kind: "sentence"; session: SentenceSession }
+    | { kind: "errand"; session: ErrandSession }
+    | { kind: "tamper"; session: TamperSession };
 
   let deskMinigame: DeskMini | null = null;
   let deskMiniCamReturn: {
@@ -341,21 +429,21 @@ function bootGameInner(simplified: boolean): void {
     deskMinigame = null;
   }
 
-  function getDeskZoomTarget(kind: "envelope" | "reagent" | "lamp"): {
+  function getDeskZoomTarget(kind: "sentence" | "errand" | "tamper"): {
     camPos: THREE.Vector3;
     lookAt: THREE.Vector3;
   } {
     let obj: THREE.Object3D = diorama.evidenceEnvelopeRoot;
-    if (kind === "reagent") obj = diorama.reagentTray;
-    if (kind === "lamp") obj = diorama.lamp;
+    if (kind === "errand") obj = diorama.reagentTray;
+    if (kind === "tamper") obj = diorama.lamp;
     obj.updateMatrixWorld(true);
     deskZoomBox.setFromObject(obj);
     deskZoomBox.getCenter(deskZoomCenter);
     const lookAt = deskZoomCenter.clone();
     const offset =
-      kind === "lamp"
+      kind === "tamper"
         ? new THREE.Vector3(1.05, 0.52, 1.08)
-        : kind === "reagent"
+        : kind === "errand"
           ? new THREE.Vector3(0.88, 0.44, 0.98)
           : new THREE.Vector3(0.72, 0.4, 0.92);
     const camPos = lookAt.clone().add(offset);
@@ -410,6 +498,8 @@ function bootGameInner(simplified: boolean): void {
     const ret = deskMiniCamReturn;
     deskMiniCamReturn = null;
     disposeDeskMiniOnly();
+    // Bring the HUD back into view as we return to the desk.
+    hud.element.style.opacity = "1";
     if (ret) {
       void cameraRig.scriptedTo(ret.pos, ret.look, 420);
     }
@@ -427,13 +517,16 @@ function bootGameInner(simplified: boolean): void {
   }
 
   async function startDeskMini(
-    kind: "envelope" | "reagent" | "lamp",
+    kind: "sentence" | "errand" | "tamper",
     _now: number,
   ): Promise<void> {
     if (deskMinigame) return;
     exitInspectZoom(200);
     mascotController.setFrozen(true);
     disposeRunnerVisuals();
+    // Tuck the HUD evidence row away while the mini owns the screen.
+    hud.element.style.opacity = "0";
+    hud.element.style.transition = "opacity 220ms ease";
 
     deskMiniCamReturn = {
       pos: cameraRig.camera.position.clone(),
@@ -441,9 +534,9 @@ function bootGameInner(simplified: boolean): void {
     };
     cameraRig.copyLookAtInto(deskMiniCamReturn.look);
 
-    if (kind === "envelope") diorama.flags.envelopeOpen = true;
-    if (kind === "reagent") diorama.flags.reagentActive = true;
-    if (kind === "lamp") diorama.flags.lampActive = true;
+    if (kind === "sentence") diorama.flags.envelopeOpen = true;
+    if (kind === "errand") diorama.flags.reagentActive = true;
+    if (kind === "tamper") diorama.flags.lampActive = true;
 
     const { camPos, lookAt } = getDeskZoomTarget(kind);
     await cameraRig.scriptedTo(camPos, lookAt, 520);
@@ -461,33 +554,34 @@ function bootGameInner(simplified: boolean): void {
     };
     const words = picked.def.gameClueWords;
 
-    if (kind === "envelope") {
-      const session = new EnvelopeSession({
+    if (kind === "sentence") {
+      const session = new SentenceSession({
         overlayCtx: runnerOverlay.ctx,
         getOverlayViewport: getVp,
-        targetWord: words.sticky,
+        clueWord: words.sentence,
+        anomalyId: picked.def.id,
         onExit,
       });
       session.attachPointer(runnerOverlay.canvas);
-      deskMinigame = { kind: "envelope", session };
-    } else if (kind === "reagent") {
-      const session = new ReagentSession({
+      deskMinigame = { kind: "sentence", session };
+    } else if (kind === "errand") {
+      const session = new ErrandSession({
         overlayCtx: runnerOverlay.ctx,
         getOverlayViewport: getVp,
-        clueToken: words.clock,
+        clueWord: words.errand,
         onExit,
       });
       session.attachPointer(runnerOverlay.canvas);
-      deskMinigame = { kind: "reagent", session };
+      deskMinigame = { kind: "errand", session };
     } else {
-      const session = new LampSession({
+      const session = new TamperSession({
         overlayCtx: runnerOverlay.ctx,
         getOverlayViewport: getVp,
-        clueWord: words.photo,
+        clueWord: words.tamper,
         onExit,
       });
       session.attachPointer(runnerOverlay.canvas);
-      deskMinigame = { kind: "lamp", session };
+      deskMinigame = { kind: "tamper", session };
     }
     await runnerOverlay.fadeIn(220);
   }
@@ -616,9 +710,10 @@ function bootGameInner(simplified: boolean): void {
         return;
       const now = performance.now();
       if (state.phase.kind !== "investigating") return;
-      if (tag === "evidence-envelope") void startDeskMini("envelope", now);
-      else if (tag === "reagent-tray") void startDeskMini("reagent", now);
-      else void startDeskMini("lamp", now);
+      console.info(`[bug-detective] desk-mini click tag=${tag}`);
+      if (tag === "evidence-envelope") void startDeskMini("sentence", now);
+      else if (tag === "reagent-tray") void startDeskMini("errand", now);
+      else void startDeskMini("tamper", now);
     },
     { passive: true },
   );
@@ -904,7 +999,7 @@ function bootGameInner(simplified: boolean): void {
     hud.setStatusText("which one is the bug?");
     if (state.phase.kind !== "answering") return;
     const nb = state.phase.notebook;
-    const ev = [nb.runner, nb.sticky, nb.clock, nb.photo]
+    const ev = [nb.runner, nb.sentence, nb.errand, nb.tamper]
       .map((p) => p?.clueToken.toUpperCase())
       .filter(Boolean)
       .join(" · ");
@@ -1272,12 +1367,12 @@ function bootGameInner(simplified: boolean): void {
       const out = deskMinigame.session.getOutcome();
       if (out) {
         const kind = deskMinigame.kind;
-        const slot =
-          kind === "envelope"
-            ? "sticky"
-            : kind === "reagent"
-              ? "clock"
-              : "photo";
+        const slot: "sentence" | "errand" | "tamper" =
+          kind === "sentence"
+            ? "sentence"
+            : kind === "errand"
+              ? "errand"
+              : "tamper";
         state.pinNotebookPage(slot, {
           clueToken: out.clueToken,
           gameScore: out.score,

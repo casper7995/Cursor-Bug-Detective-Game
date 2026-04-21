@@ -3,10 +3,10 @@ import type { NotebookSlot, NotebookState } from "./notebook";
 export const WRONG_ANSWER_FLOOR = 0;
 
 const W: Record<NotebookSlot, number> = {
-  runner: 0.3,
-  sticky: 0.25,
-  clock: 0.2,
-  photo: 0.25,
+  runner: 0.25,
+  sentence: 0.25,
+  errand: 0.25,
+  tamper: 0.25,
 };
 
 export interface GameScoreBreakdown {
@@ -25,9 +25,9 @@ export interface ScoreInputs {
 function perGameScores(notebook: NotebookState): Record<NotebookSlot, number> {
   return {
     runner: notebook.runner?.gameScore ?? 0,
-    sticky: notebook.sticky?.gameScore ?? 0,
-    clock: notebook.clock?.gameScore ?? 0,
-    photo: notebook.photo?.gameScore ?? 0,
+    sentence: notebook.sentence?.gameScore ?? 0,
+    errand: notebook.errand?.gameScore ?? 0,
+    tamper: notebook.tamper?.gameScore ?? 0,
   };
 }
 
@@ -71,16 +71,16 @@ export function computeScore(i: ScoreInputs): {
   };
 }
 
-/** Compact labels for leaderboard / debug (RUN, INK, DIAL, ZOOM). */
+/** Compact labels for leaderboard / debug (RUN, WORD, DASH, EYE). */
 export const GAME_SCORE_LABEL: Record<NotebookSlot, string> = {
   runner: "RUN",
-  sticky: "INK",
-  clock: "DIAL",
-  photo: "ZOOM",
+  sentence: "WORD",
+  errand: "DASH",
+  tamper: "EYE",
 };
 
 export function formatGameScoresDetail(b: GameScoreBreakdown): string {
-  const slots: NotebookSlot[] = ["runner", "sticky", "clock", "photo"];
+  const slots: NotebookSlot[] = ["runner", "sentence", "errand", "tamper"];
   return slots
     .map((k) => `${GAME_SCORE_LABEL[k]} ${Math.round(b.perGame[k])}`)
     .join(" · ");

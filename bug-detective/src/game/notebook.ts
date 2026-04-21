@@ -1,4 +1,4 @@
-export type NotebookSlot = "runner" | "sticky" | "clock" | "photo";
+export type NotebookSlot = "runner" | "sentence" | "errand" | "tamper";
 
 export interface NotebookPage {
   readonly clueToken: string;

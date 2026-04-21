@@ -8,9 +8,9 @@ export type RunnerMode = "daily" | "endless";
 function notebookComplete(nb: NotebookState): boolean {
   return (
     nb.runner !== undefined &&
-    nb.sticky !== undefined &&
-    nb.clock !== undefined &&
-    nb.photo !== undefined
+    nb.sentence !== undefined &&
+    nb.errand !== undefined &&
+    nb.tamper !== undefined
   );
 }
 

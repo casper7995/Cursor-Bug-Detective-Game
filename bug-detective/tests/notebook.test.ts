@@ -12,18 +12,18 @@ describe("notebook gating", () => {
       gameScore: 100,
       solvedAtMs: t0,
     });
-    g.pinNotebookPage("sticky", {
+    g.pinNotebookPage("sentence", {
       clueToken: "B",
       gameScore: 100,
       solvedAtMs: t0,
     });
-    g.pinNotebookPage("clock", {
+    g.pinNotebookPage("errand", {
       clueToken: "C",
       gameScore: 100,
       solvedAtMs: t0,
     });
     expect(g.enterAnswering(t0 + 200)).toBe(false);
-    g.pinNotebookPage("photo", {
+    g.pinNotebookPage("tamper", {
       clueToken: "D",
       gameScore: 100,
       solvedAtMs: t0,

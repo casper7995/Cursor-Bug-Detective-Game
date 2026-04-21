@@ -235,8 +235,16 @@ export class TutorialGate {
       innerCloseRect.h,
     );
     ctx.fillStyle = CURSOR.textHi;
-    ctx.font = "700 12px sans-serif";
-    ctx.fillText("\u2715", innerCloseRect.x + 9, innerCloseRect.y + 17);
+    ctx.font = "700 14px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      "\u00d7",
+      innerCloseRect.x + innerCloseRect.w / 2,
+      innerCloseRect.y + innerCloseRect.h / 2 + 1,
+    );
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
 
     ctx.fillStyle = "rgba(237,236,236,0.7)";
     ctx.font = "10px sans-serif";
@@ -251,130 +259,4 @@ export class TutorialGate {
   }
 }
 
-/** Envelope mini diagram: symbol slot equals letter chip. */
-export function drawEnvelopeTutorialDiagram(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  _w: number,
-  h: number,
-): void {
-  ctx.save();
-  ctx.textAlign = "left";
-  const cy = y + h / 2;
-  ctx.fillStyle = CURSOR.textHi;
-  ctx.font = "700 18px sans-serif";
-  ctx.fillText("\u2605", x + 4, cy + 6);
-  ctx.fillStyle = CURSOR.text;
-  ctx.font = "14px sans-serif";
-  ctx.fillText("=", x + 32, cy + 5);
-  ctx.strokeStyle = "rgba(245,78,0,0.55)";
-  ctx.strokeRect(x + 50, cy - 13, 30, 24);
-  ctx.fillStyle = "rgba(245,78,0,0.95)";
-  ctx.font = "700 14px monospace";
-  ctx.fillText("A", x + 60, cy + 5);
-  ctx.strokeStyle = "rgba(255,255,255,0.4)";
-  ctx.beginPath();
-  ctx.moveTo(x + 96, cy);
-  ctx.lineTo(x + 138, cy);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x + 138, cy);
-  ctx.lineTo(x + 132, cy - 4);
-  ctx.moveTo(x + 138, cy);
-  ctx.lineTo(x + 132, cy + 4);
-  ctx.stroke();
-  ctx.fillStyle = "rgba(26,24,18,0.95)";
-  ctx.beginPath();
-  ctx.arc(x + 156, cy, 12, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = CURSOR.gold;
-  ctx.stroke();
-  ctx.fillStyle = "#fff";
-  ctx.font = "700 12px monospace";
-  ctx.textAlign = "center";
-  ctx.fillText("A", x + 156, cy + 4);
-  ctx.textAlign = "left";
-  ctx.restore();
-}
-
-/** Reagent mini: target swatch arrow into mix well. */
-export function drawReagentTutorialDiagram(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  _w: number,
-  h: number,
-): void {
-  ctx.save();
-  ctx.textAlign = "left";
-  const cy = y + h / 2;
-  ctx.fillStyle = "#6a8a5e";
-  ctx.fillRect(x, cy - 12, 36, 22);
-  ctx.strokeStyle = "rgba(255,255,255,0.5)";
-  ctx.strokeRect(x, cy - 12, 36, 22);
-  ctx.fillStyle = "rgba(237,236,236,0.85)";
-  ctx.font = "9px sans-serif";
-  ctx.fillText("target", x + 2, cy + 22);
-  ctx.strokeStyle = "rgba(255,255,255,0.4)";
-  ctx.beginPath();
-  ctx.moveTo(x + 46, cy);
-  ctx.lineTo(x + 86, cy);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x + 86, cy);
-  ctx.lineTo(x + 80, cy - 4);
-  ctx.moveTo(x + 86, cy);
-  ctx.lineTo(x + 80, cy + 4);
-  ctx.stroke();
-  ctx.fillStyle = "#5d7a55";
-  ctx.beginPath();
-  ctx.arc(x + 110, cy, 14, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = CURSOR.gold;
-  ctx.stroke();
-  ctx.fillStyle = "rgba(237,236,236,0.85)";
-  ctx.font = "9px sans-serif";
-  ctx.fillText("well", x + 100, cy + 22);
-  ctx.restore();
-}
-
-/** Lamp mini: filter chip resolves jittery letters into a clean word. */
-export function drawLampTutorialDiagram(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  _w: number,
-  h: number,
-): void {
-  ctx.save();
-  ctx.textAlign = "left";
-  const cy = y + h / 2;
-  ctx.fillStyle = "rgba(245,78,0,0.32)";
-  ctx.fillRect(x, cy - 12, 38, 22);
-  ctx.strokeStyle = CURSOR.gold;
-  ctx.strokeRect(x, cy - 12, 38, 22);
-  ctx.fillStyle = "#fff";
-  ctx.font = "10px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("UV", x + 19, cy + 4);
-  ctx.textAlign = "left";
-  ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.font = "700 13px monospace";
-  ctx.fillText("W~R~D", x + 50, cy + 5);
-  ctx.strokeStyle = "rgba(255,255,255,0.4)";
-  ctx.beginPath();
-  ctx.moveTo(x + 110, cy);
-  ctx.lineTo(x + 142, cy);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x + 142, cy);
-  ctx.lineTo(x + 136, cy - 4);
-  ctx.moveTo(x + 142, cy);
-  ctx.lineTo(x + 136, cy + 4);
-  ctx.stroke();
-  ctx.fillStyle = "#fff";
-  ctx.font = "700 13px monospace";
-  ctx.fillText("WORD", x + 152, cy + 5);
-  ctx.restore();
-}
+/* Old envelope/reagent/lamp diagrams removed; new minis define their own. */

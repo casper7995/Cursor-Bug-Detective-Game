@@ -7,7 +7,7 @@ import { RUNNER_DRAW } from "../runner/sim";
 export const DESK_MARGIN = 24;
 
 /** Dark overlay behind the mini-game card. */
-export const DESK_SCRIM = "rgba(6,5,4,0.58)";
+export const DESK_SCRIM = "rgba(6,5,4,0.86)";
 
 export interface DeskFullRect {
   readonly x: number;
@@ -44,6 +44,38 @@ export function hitDeskCloseButton(gameX: number, gameY: number): boolean {
   return (
     gameX >= r.x && gameX <= r.x + r.w && gameY >= r.y && gameY <= r.y + r.h
   );
+}
+
+/**
+ * Cursor-AI variant of the desk-mini chrome: ghost circular `?` + `×`
+ * buttons (border-only, no orange fill) to match the new product UI.
+ * Hit rects are unchanged so existing `hitDeskCloseButton` /
+ * `hitDeskHelpButton` calls keep working.
+ */
+export function drawDeskChromeAi(ctx: CanvasRenderingContext2D): void {
+  const hb = { x: W - 82, y: 10, w: 30, h: 26 };
+  const cb = getDeskCloseButtonRect();
+  ctx.save();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#dfdcd3";
+  ctx.fillStyle = "rgba(253,253,250,0.9)";
+  ctx.beginPath();
+  ctx.roundRect(hb.x, hb.y, hb.w, hb.h, 13);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.roundRect(cb.x, cb.y, cb.w, cb.h, 13);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#5a554a";
+  ctx.font = "600 13px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("?", hb.x + hb.w / 2, hb.y + hb.h / 2 + 1);
+  ctx.fillText("\u00d7", cb.x + cb.w / 2, cb.y + cb.h / 2 + 1);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
 }
 
 /** Map pointer to internal mini-game canvas coordinates. */

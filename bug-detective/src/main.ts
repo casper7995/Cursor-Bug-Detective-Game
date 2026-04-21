@@ -154,6 +154,9 @@ function bootGameInner(simplified: boolean): void {
   const cameraRig = new CameraRig(
     root.clientWidth / Math.max(root.clientHeight, 1),
   );
+  // Camera must live in the scene graph so RenderPass(scene, camera) traverses
+  // camera children (e.g. the intro page-peel mesh parented under the camera).
+  scene.add(cameraRig.camera);
 
   // Game-time camera pose (used during investigation phase).
   const GAME_CAMERA_POS = new THREE.Vector3(3.2, 2.4, 5.2);
@@ -259,9 +262,9 @@ function bootGameInner(simplified: boolean): void {
   scene.add(mascot.group);
 
   // ---- Page-peel intro setup ------------------------------------------
-  // The page plane sits at z = 0, centered. We position the camera close
-  // to it on +Z so the plane fills the frustum exactly. Plane size derived
-  // from camera FOV + distance + viewport aspect.
+  // Fullscreen peel is parented to the camera so it stays viewport-locked
+  // while the intro camera dollies; a world-fixed plane would slide off-screen
+  // past the desk props.
   const INTRO_CAMERA_Z = 1.2;
   const fovTanHalf = Math.tan((cameraRig.camera.fov * Math.PI) / 180 / 2);
   const introPlaneHeight = INTRO_CAMERA_Z * fovTanHalf * 2;
@@ -273,7 +276,8 @@ function bootGameInner(simplified: boolean): void {
     height: introPlaneHeight,
     center: new THREE.Vector3(0, 0, 0),
   });
-  scene.add(pagePeel.mesh);
+  pagePeel.mesh.position.set(0, 0, -INTRO_CAMERA_Z);
+  cameraRig.camera.add(pagePeel.mesh);
 
   cameraRig.setStatic(
     new THREE.Vector3(0, 0, INTRO_CAMERA_Z),
@@ -283,9 +287,9 @@ function bootGameInner(simplified: boolean): void {
   // Post-processing: bloom on the lamp + vignette around the corners.
   const postFx = createPostFx(renderer, scene, cameraRig.camera);
 
-  // Mascot sits in front of the plane during the intro, just above the
-  // "ground" of the page (slightly toward bottom of viewport).
-  mascot.group.position.set(0, -introPlaneHeight * 0.1, 0.05);
+  // Mascot sits in front of the page during the intro (world space); the peel
+  // lives in camera space so this is only used if the mascot is shown early.
+  mascot.group.position.set(0, -introPlaneHeight * 0.1, INTRO_CAMERA_Z - 0.25);
 
   const mascotController = new MascotController(mascot.group, {
     onLand: () => sfxMascotLand(),
@@ -1084,19 +1088,25 @@ function bootGameInner(simplified: boolean): void {
   //   3. Camera dollies from intro pose to gameplay pose CONCURRENTLY.
   //   4. Diorama becomes visible mid-dolly; mascot feet stay on the desk
   //      surface while scale ramps (no "buried in the desk" frame).
-  //   5. Cursor tracker switches target to desk; landing bounce + HUD.
+  //   5. Cursor tracker switches target to desk; hop-on + walk-in + HUD.
   //   6. State transitions to investigating (untimed round).
   const MIN_CASE_READ_MS = 3200; // minimum time on case file before peel can start
   const PEEL_BEGIN_MS = 200; // delay between mascot reaction and peel start
   const DOLLY_START_DELAY_MS = 420; // let the peel read before camera moves
   const DOLLY_DURATION_MS = 2200; // total camera dolly time (ease-in-out cubic)
   const REVEAL_AT_PROGRESS = 0.32; // show desk a bit earlier vs peel
+  /** Spawn near the lying case file, clear of the mug at (2.4, 0.6). */
+  const INTRO_MASCOT_SPAWN_X = 0.35;
+  const INTRO_MASCOT_SPAWN_Z = -1.42;
+  const INTRO_HOP_MS = 380;
+  const INTRO_HOP_PEAK_Y = 0.072;
 
   type IntroStep =
     | "waiting" // case file visible; wait for read time + confirm
     | "reacting" // mascot tilts/jumps before peel
     | "peeling" // peel + dolly running concurrently
-    | "landing" // mascot scales up + lands on desk
+    | "landingHop" // brief jump-on before walk to home
+    | "landing" // mascot walks to default desk spot
     | "done";
 
   let introStep: IntroStep = "waiting";
@@ -1107,6 +1117,7 @@ function bootGameInner(simplified: boolean): void {
   let introAckPointer = false;
   let caseFileCtaShown = false;
   let mascotIntroSpawnedOnDesk = false;
+  let introHopBaseY = 0;
   const introLandingFeet = new THREE.Vector3();
   const caseFileCta = document.createElement("div");
   caseFileCta.id = "bd-casefile-cta";
@@ -1170,39 +1181,62 @@ function bootGameInner(simplified: boolean): void {
         if (dioramaRevealed && !mascotIntroSpawnedOnDesk) {
           mascotIntroSpawnedOnDesk = true;
           mascot.group.scale.setScalar(MASCOT_GAME_SCALE);
+          const landY =
+            diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE;
           mascot.group.position.set(
-            2.6,
-            diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE,
-            0.6,
+            INTRO_MASCOT_SPAWN_X,
+            landY,
+            INTRO_MASCOT_SPAWN_Z,
           );
           mascotController.resetAt(mascot.group.position.clone(), 0);
           mascot.group.visible = true;
-          mascotController.setFrozen(false);
+          mascotController.setFrozen(true);
           cursorTracker.setTarget(diorama.desk);
           cursorTracker.setYOffset(MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE);
           syncCursorDeskNav(diorama);
         }
-        // Once both peel and dolly are done, move to landing (walk-in).
+        // Once both peel and dolly are done, move to hop then walk-in.
         if (pagePeel.done && dollyStarted && !cameraRig.isDollying()) {
           if (!mascotIntroSpawnedOnDesk) {
             diorama.root.visible = true;
             dioramaRevealed = true;
             mascotIntroSpawnedOnDesk = true;
             mascot.group.scale.setScalar(MASCOT_GAME_SCALE);
+            const landY =
+              diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE;
             mascot.group.position.set(
-              2.6,
-              diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE,
-              0.6,
+              INTRO_MASCOT_SPAWN_X,
+              landY,
+              INTRO_MASCOT_SPAWN_Z,
             );
             mascotController.resetAt(mascot.group.position.clone(), 0);
             mascot.group.visible = true;
-            mascotController.setFrozen(false);
+            mascotController.setFrozen(true);
           }
           cursorTracker.setTarget(diorama.desk);
           cursorTracker.setYOffset(MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE);
           syncCursorDeskNav(diorama);
           cursorTracker.attach(renderer.domElement);
           cursorTracker.refreshLayout();
+          introHopBaseY = mascot.group.position.y;
+          setIntroStep("landingHop", now);
+        }
+        break;
+      }
+      case "landingHop": {
+        if (now - introStepStartedAt >= INTRO_HOP_MS) {
+          mascot.group.position.y = introHopBaseY;
+          mascot.setTilt(0);
+          mascot.setStride(0, 0);
+          sfxMascotLand();
+          const landY = diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE;
+          introLandingFeet.set(0.4, landY, 0.4);
+          const hopYaw = Math.atan2(
+            introLandingFeet.x - mascot.group.position.x,
+            introLandingFeet.z - mascot.group.position.z,
+          );
+          mascotController.resetAt(mascot.group.position.clone(), hopYaw);
+          mascotController.setFrozen(false);
           setIntroStep("landing", now);
         }
         break;
@@ -1290,6 +1324,15 @@ function bootGameInner(simplified: boolean): void {
           mascot.group.position.lerp(tmpFeet, a);
         }
       }
+      mascot.setStride(0, 0);
+    } else if (state.phase.kind === "intro" && introStep === "landingHop") {
+      const u = Math.min(
+        1,
+        (now - introStepStartedAt) / INTRO_HOP_MS,
+      );
+      const arc = Math.sin(u * Math.PI);
+      mascot.group.position.y = introHopBaseY + arc * INTRO_HOP_PEAK_Y;
+      mascot.setTilt(-arc * 0.32);
       mascot.setStride(0, 0);
     } else if (state.phase.kind === "intro" && introStep === "landing") {
       const landY = diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE;
@@ -1489,7 +1532,10 @@ function bootGameInner(simplified: boolean): void {
       mascot.setStride(0, 0);
     }
 
-    if (state.phase.kind === "intro" || state.phase.kind === "investigating") {
+    if (
+      state.phase.kind === "investigating" ||
+      (state.phase.kind === "intro" && introStep !== "landingHop")
+    ) {
       mascot.faceCamera(cameraRig.camera);
     }
     pagePeel.update(dtSec);

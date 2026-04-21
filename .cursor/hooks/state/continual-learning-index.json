@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "transcripts": {
+    "63b6e438-a118-4238-9219-9e81558458fd/63b6e438-a118-4238-9219-9e81558458fd.jsonl": {
+      "mtimeMs": 1776778786000,
+      "lastProcessedAt": "2026-04-21T13:40:21Z"
+    },
+    "ef0d16a4-2646-4568-a9cf-162c9ef0b020/ef0d16a4-2646-4568-a9cf-162c9ef0b020.jsonl": {
+      "mtimeMs": 1776778755000,
+      "lastProcessedAt": "2026-04-21T13:40:21Z"
+    },
+    "35c1b520-904b-4d03-ab36-8aec9f1d04ba/35c1b520-904b-4d03-ab36-8aec9f1d04ba.jsonl": {
+      "mtimeMs": 1776615950000,
+      "lastProcessedAt": "2026-04-21T13:40:21Z"
+    },
+    "341b2f8d-d6f2-4ba9-876b-92e57e548bad/341b2f8d-d6f2-4ba9-876b-92e57e548bad.jsonl": {
+      "mtimeMs": 1776510302000,
+      "lastProcessedAt": "2026-04-21T13:40:21Z"
+    }
+  }
+}

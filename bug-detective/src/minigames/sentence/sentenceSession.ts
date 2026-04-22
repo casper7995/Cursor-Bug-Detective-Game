@@ -433,9 +433,8 @@ export class SentenceSession {
     const total = SENTENCE_SLOTS_PER_TEMPLATE;
     const cur = this.currentSentenceIdx();
     const baseX = SENTENCE_LAYOUT.editorX + SENTENCE_LAYOUT.editorW + 6;
-    void baseX;
     for (let i = 0; i < total; i++) {
-      const x = 280 + i * 14;
+      const x = baseX + i * 14;
       const y = 26;
       const pick = this.picks[i];
       let color: string = CURSOR_AI.border;

@@ -24,6 +24,8 @@ const DEFAULT_CFG: RunnerSimConfig = {
   dailyGoalDistance: 2600,
 };
 
+const TIER_RIBBON_MS = 1200;
+
 export interface RunnerSessionOptions {
   readonly baseSeed: number;
   readonly mode: RunnerMode;
@@ -62,6 +64,11 @@ export class RunnerSession {
   private lastTierRibbonFloor = 0;
   private tierRibbon: { tier: number; ageMs: number } | null = null;
   private readonly seenClueTokens = new Set<string>();
+  private readonly onClueTokenSeenBound = (token: string): void => {
+    const before = this.seenClueTokens.size;
+    this.seenClueTokens.add(token);
+    if (this.seenClueTokens.size > before) sfxRunnerCluePing();
+  };
 
   constructor(opts: RunnerSessionOptions) {
     const {
@@ -196,17 +203,11 @@ export class RunnerSession {
         tier: this.tierRibbon.tier,
         ageMs: this.tierRibbon.ageMs + dtSec * 1000,
       };
-      if (this.tierRibbon.ageMs >= 1200) this.tierRibbon = null;
+      if (this.tierRibbon.ageMs >= TIER_RIBBON_MS) this.tierRibbon = null;
     }
 
     const modeLabel =
       this.mode === "daily" ? "code run — daily" : "code run — endless";
-
-    const onClue = (token: string): void => {
-      const before = this.seenClueTokens.size;
-      this.seenClueTokens.add(token);
-      if (this.seenClueTokens.size > before) sfxRunnerCluePing();
-    };
 
     const baseDraw = {
       scroll: this.sim.scroll,
@@ -218,13 +219,13 @@ export class RunnerSession {
       maxClimbM: this.sim.maxClimbM,
       boost01: this.sim.boost01,
       clueSet: this.clueSet,
-      onClueTokenSeen: onClue,
+      onClueTokenSeen: this.onClueTokenSeenBound,
       anomalyId: this.anomalyId,
       clueTooltipHint: this.clueTooltipHint,
     };
     const tierRibbon =
       this.tierRibbon &&
-      this.tierRibbon.ageMs < 1200 &&
+      this.tierRibbon.ageMs < TIER_RIBBON_MS &&
       this.tierRibbon.tier > 0
         ? this.tierRibbon
         : undefined;

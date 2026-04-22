@@ -99,7 +99,7 @@ export function setAmbientContext(ctx: AmbientContext): void {
   if (ctx === ambientContext) return;
   ambientContext = ctx;
   if (muted || !ambientStarted) return;
-  const target = AMBIENT_TARGET[ctx] ?? 1;
+  const target = AMBIENT_TARGET[ctx];
   const now = AC.currentTime;
   ambientDuck.gain.cancelScheduledValues(now);
   ambientDuck.gain.setValueAtTime(ambientDuck.gain.value, now);
@@ -388,8 +388,35 @@ export function sfxRunnerFloorChime(tier: number): void {
 // Sentence (Tab autocomplete)
 // ---------------------------------------------------------------------
 
+let typewriterTickBuffer: AudioBuffer | null = null;
+
+function getTypewriterTickBuffer(): AudioBuffer {
+  if (!typewriterTickBuffer) {
+    const frames = Math.max(1, Math.floor(AC.sampleRate * 0.012));
+    typewriterTickBuffer = AC.createBuffer(1, frames, AC.sampleRate);
+    const data = typewriterTickBuffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return typewriterTickBuffer;
+}
+
+/** Short typewriter tick — reuses one small buffer (called often in type phase). */
 export function sfxSentenceTypeTick(): void {
-  noise(0.012, 0.014, 2000);
+  if (muted) return;
+  const src = AC.createBufferSource();
+  src.buffer = getTypewriterTickBuffer();
+  const filter = AC.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.value = 2000;
+  const g = AC.createGain();
+  const now = AC.currentTime;
+  g.gain.setValueAtTime(0.014, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 0.012);
+  src.connect(filter);
+  filter.connect(g);
+  g.connect(master);
+  src.start(now);
+  src.stop(now + 0.02);
 }
 
 export function sfxSentenceSuggestionOpen(): void {

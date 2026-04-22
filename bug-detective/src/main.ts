@@ -24,6 +24,7 @@ import { renderLeaderboardPanel } from "./ui/leaderboard";
 import { createCountdown } from "./ui/countdown";
 import { createPostFx } from "./three/postFx";
 import {
+  type AmbientContext,
   setAmbientContext,
   sfxClueFound,
   sfxCorrect,
@@ -1513,28 +1514,27 @@ function bootGameInner(simplified: boolean): void {
   const startTime = performance.now();
   let lastFrame = startTime;
 
+  function ambientContextForFrame(): AmbientContext {
+    if (state.phase.kind === "intro") return "desk";
+    if (state.phase.kind === "runner") return "runner";
+    if (state.phase.kind === "investigating") {
+      return deskMinigame ? deskMinigame.kind : "investigating";
+    }
+    return "desk";
+  }
+
+  let lastAppliedAmbientContext: AmbientContext | null = null;
+
   function frame(now: number): void {
     const dtMs = Math.min(50, now - lastFrame);
     const dtSec = dtMs / 1000;
     lastFrame = now;
     const elapsed = (now - startTime) / 1000;
 
-    if (state.phase.kind === "intro") {
-      setAmbientContext("desk");
-    } else if (state.phase.kind === "runner") {
-      setAmbientContext("runner");
-    } else if (state.phase.kind === "investigating" && deskMinigame) {
-      setAmbientContext(
-        deskMinigame.kind === "sentence"
-          ? "sentence"
-          : deskMinigame.kind === "errand"
-            ? "errand"
-            : "tamper",
-      );
-    } else if (state.phase.kind === "investigating") {
-      setAmbientContext("investigating");
-    } else {
-      setAmbientContext("desk");
+    const nextAmbient = ambientContextForFrame();
+    if (nextAmbient !== lastAppliedAmbientContext) {
+      lastAppliedAmbientContext = nextAmbient;
+      setAmbientContext(nextAmbient);
     }
 
     // Desk minis attach keydown on `window` (bubble). InputManager uses capture

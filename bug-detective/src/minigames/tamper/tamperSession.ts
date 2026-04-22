@@ -151,6 +151,24 @@ export class TamperSession {
   attachPointer(root: HTMLElement): void {
     if (this.pointerBound) return;
     this.pointerBound = true;
+    const overlayRect = (): DOMRect => this.overlayCtx.canvas.getBoundingClientRect();
+
+    const handleGatePointer = (p: { x: number; y: number }): boolean => {
+      if (!this.gate.isBlocking()) return false;
+      return this.gate.handlePointer(p.x, p.y, W, H) !== null;
+    };
+    const routeTutorialPointer = (clientX: number, clientY: number): void => {
+      const rect = overlayRect();
+      if (
+        clientX < rect.left ||
+        clientX > rect.right ||
+        clientY < rect.top ||
+        clientY > rect.bottom
+      ) {
+        return;
+      }
+      handleGatePointer(this.gameFromClient(clientX, clientY));
+    };
 
     const move = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
@@ -177,8 +195,7 @@ export class TamperSession {
         this.gate.reopen();
         return;
       }
-      if (this.gate.isBlocking()) {
-        this.gate.handlePointer(p.x, p.y, W, H);
+      if (handleGatePointer(p)) {
         return;
       }
       if (this.phase.kind === "result") {
@@ -218,8 +235,29 @@ export class TamperSession {
         return;
       }
     };
+    const onDocPointerDown = (e: PointerEvent): void => {
+      routeTutorialPointer(e.clientX, e.clientY);
+    };
+    const onDocMouseDown = (e: MouseEvent): void => {
+      routeTutorialPointer(e.clientX, e.clientY);
+    };
+    const onDocClick = (e: MouseEvent): void => {
+      routeTutorialPointer(e.clientX, e.clientY);
+    };
+    const onDocTouchStart = (e: TouchEvent): void => {
+      const t = e.changedTouches[0] ?? e.touches[0];
+      if (!t) return;
+      routeTutorialPointer(t.clientX, t.clientY);
+    };
     root.addEventListener("pointermove", move, { passive: true });
     root.addEventListener("pointerdown", down);
+    document.addEventListener("pointerdown", onDocPointerDown, true);
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("click", onDocClick, true);
+    document.addEventListener("touchstart", onDocTouchStart, {
+      capture: true,
+      passive: true,
+    });
     const key = (e: KeyboardEvent): void => {
       if (e.key !== "Escape") return;
       if (this.gate.isBlocking()) {
@@ -232,6 +270,10 @@ export class TamperSession {
     (this as unknown as { _cleanup?: () => void })._cleanup = (): void => {
       root.removeEventListener("pointermove", move);
       root.removeEventListener("pointerdown", down);
+      document.removeEventListener("pointerdown", onDocPointerDown, true);
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      document.removeEventListener("click", onDocClick, true);
+      document.removeEventListener("touchstart", onDocTouchStart, true);
       window.removeEventListener("keydown", key);
     };
   }

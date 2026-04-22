@@ -153,6 +153,17 @@ export class ErrandSession {
   attachPointer(root: HTMLElement): void {
     if (this.pointerBound) return;
     this.pointerBound = true;
+    const stopTutorialPropagation = (consumed: boolean): void => {
+      if (!consumed) return;
+      this.pointerBound = this.pointerBound;
+    };
+    const routeTutorialPointer = (clientX: number, clientY: number): void => {
+      if (!this.gate.isBlocking()) return;
+      const p = this.gameFromClient(clientX, clientY);
+      this.pointerX = p.x;
+      this.pointerY = p.y;
+      stopTutorialPropagation(this.gate.handlePointer(p.x, p.y, W, H) !== null);
+    };
     const move = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
       this.pointerX = p.x;
@@ -178,7 +189,11 @@ export class ErrandSession {
         return;
       }
       if (this.gate.isBlocking()) {
-        this.gate.handlePointer(p.x, p.y, W, H);
+        const action = this.gate.handlePointer(p.x, p.y, W, H);
+        if (action !== null) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
         return;
       }
       if (this.phase.kind === "result") {
@@ -270,12 +285,37 @@ export class ErrandSession {
       sfxErrandDispatch();
       e.preventDefault();
     };
+    const onDocPointerDown = (e: PointerEvent): void => {
+      routeTutorialPointer(e.clientX, e.clientY);
+    };
+    const onDocMouseDown = (e: MouseEvent): void => {
+      routeTutorialPointer(e.clientX, e.clientY);
+    };
+    const onDocClick = (e: MouseEvent): void => {
+      routeTutorialPointer(e.clientX, e.clientY);
+    };
+    const onDocTouchStart = (e: TouchEvent): void => {
+      const t = e.changedTouches[0] ?? e.touches[0];
+      if (!t) return;
+      routeTutorialPointer(t.clientX, t.clientY);
+    };
+    document.addEventListener("pointerdown", onDocPointerDown, true);
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("click", onDocClick, true);
+    document.addEventListener("touchstart", onDocTouchStart, {
+      capture: true,
+      passive: true,
+    });
     window.addEventListener("keydown", key, true);
     (this as unknown as { _cleanup?: () => void })._cleanup = (): void => {
       root.removeEventListener("pointermove", move);
       root.removeEventListener("pointerdown", down);
       root.removeEventListener("pointerup", finishGrab);
       root.removeEventListener("pointercancel", finishGrab);
+      document.removeEventListener("pointerdown", onDocPointerDown, true);
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      document.removeEventListener("click", onDocClick, true);
+      document.removeEventListener("touchstart", onDocTouchStart, true);
       window.removeEventListener("keydown", key, true);
       if (this.transientFooterClear) {
         clearTimeout(this.transientFooterClear);

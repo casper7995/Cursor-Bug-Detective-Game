@@ -143,6 +143,14 @@ export class SentenceSession {
   attachPointer(root: HTMLElement): void {
     if (this.pointerBound) return;
     this.pointerBound = true;
+    const routeTutorialPointer = (
+      clientX: number,
+      clientY: number,
+    ): boolean => {
+      if (!this.gate.isBlocking()) return false;
+      const p = this.gameFromClient(clientX, clientY);
+      return this.gate.handlePointer(p.x, p.y, W, H) !== null;
+    };
     const move = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
       if (this.phase.kind !== "pick") return;
@@ -186,6 +194,28 @@ export class SentenceSession {
     };
     root.addEventListener("pointermove", move, { passive: true });
     root.addEventListener("pointerdown", down);
+    const onDocPointerDown = (e: PointerEvent): void => {
+      if (!routeTutorialPointer(e.clientX, e.clientY)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onDocMouseDown = (e: MouseEvent): void => {
+      if (!routeTutorialPointer(e.clientX, e.clientY)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onDocClick = (e: MouseEvent): void => {
+      if (!routeTutorialPointer(e.clientX, e.clientY)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onDocTouchStart = (e: TouchEvent): void => {
+      const t = e.changedTouches[0] ?? e.touches[0];
+      if (!t) return;
+      if (!routeTutorialPointer(t.clientX, t.clientY)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
     const key = (e: KeyboardEvent): void => {
       if (e.key === "Escape") {
         if (this.gate.isBlocking()) {
@@ -220,11 +250,22 @@ export class SentenceSession {
         return;
       }
     };
-    window.addEventListener("keydown", key);
+    document.addEventListener("pointerdown", onDocPointerDown, true);
+    document.addEventListener("mousedown", onDocMouseDown, true);
+    document.addEventListener("click", onDocClick, true);
+    document.addEventListener("touchstart", onDocTouchStart, {
+      capture: true,
+      passive: true,
+    });
+    window.addEventListener("keydown", key, true);
     (this as unknown as { _cleanup?: () => void })._cleanup = (): void => {
       root.removeEventListener("pointermove", move);
       root.removeEventListener("pointerdown", down);
-      window.removeEventListener("keydown", key);
+      document.removeEventListener("pointerdown", onDocPointerDown, true);
+      document.removeEventListener("mousedown", onDocMouseDown, true);
+      document.removeEventListener("click", onDocClick, true);
+      document.removeEventListener("touchstart", onDocTouchStart, true);
+      window.removeEventListener("keydown", key, true);
     };
   }
 

@@ -21,6 +21,8 @@ export interface Hud {
   /** Primary action — only enabled with four evidence pages. */
   onMakeTheCall(handler: (() => void) | null): void;
   setStatusText(text: string | null): void;
+  /** Secondary line under status — exploration / evidence progress (not hover tooltips). */
+  setExplorationHint(text: string | null): void;
   setHover(tag: string | null, hint?: string | undefined): void;
   /** Lower-third flavor line during click-to-inspect on props. */
   setInspectCaption(text: string | null): void;
@@ -30,6 +32,8 @@ export interface Hud {
 
 const STYLE_STATUS =
   "position:absolute;left:50%;transform:translateX(-50%);top:14px;color:#efe7d7;font:600 14px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,0.7);letter-spacing:0.04em;";
+const STYLE_EXPLORATION =
+  "position:absolute;left:50%;transform:translateX(-50%);top:42px;max-width:min(92vw,560px);text-align:center;color:rgba(239,231,215,0.78);font:500 12px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,0.65);line-height:1.35;";
 const STYLE_TOOLTIP =
   "position:absolute;pointer-events:none;background:rgba(26,24,18,0.94);color:#edecec;border:1px solid rgba(245,78,0,0.35);border-radius:14px;padding:6px 12px;font:12px ui-sans-serif,sans-serif;transform:translate(-50%,calc(-100% - 14px));white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.5);transition:opacity 80ms;";
 const STYLE_LOUPE =
@@ -109,6 +113,11 @@ export function createHud(
   statusEl.style.cssText = STYLE_STATUS;
   wrapper.appendChild(statusEl);
 
+  const explorationEl = document.createElement("div");
+  explorationEl.style.cssText = STYLE_EXPLORATION;
+  explorationEl.style.opacity = "0";
+  wrapper.appendChild(explorationEl);
+
   const tooltipEl = document.createElement("div");
   tooltipEl.style.cssText = STYLE_TOOLTIP;
   tooltipEl.style.opacity = "0";
@@ -185,6 +194,38 @@ export function createHud(
     timerEl.style.display = "none";
   }
 
+  function syncExplorationFromNotebook(nb: NotebookState): void {
+    const slots = ["runner", "sentence", "errand", "tamper"] as const;
+    let n = 0;
+    for (const s of slots) {
+      if (nb[s]) n++;
+    }
+    if (n === 0) {
+      explorationEl.textContent =
+        "Evidence 0/4 — hover desk props; open monitor, envelope, reagent tray, and lamp for cipher words.";
+      explorationEl.style.opacity = "1";
+      return;
+    }
+    if (n === 4) {
+      explorationEl.textContent =
+        "Evidence 4/4 — all cipher clues collected. Press Enter or click Make the call.";
+      explorationEl.style.opacity = "1";
+      return;
+    }
+    const labels: Record<(typeof slots)[number], string> = {
+      runner: "monitor",
+      sentence: "envelope",
+      errand: "reagent tray",
+      tamper: "lamp",
+    };
+    const missing = slots
+      .filter((s) => !nb[s])
+      .map((s) => labels[s])
+      .join(", ");
+    explorationEl.textContent = `Evidence ${n}/4 — still need clues from: ${missing}.`;
+    explorationEl.style.opacity = "1";
+  }
+
   function setNotebook(nb: NotebookState): void {
     const full =
       nb.runner && nb.sentence && nb.errand && nb.tamper ? true : false;
@@ -223,6 +264,7 @@ export function createHud(
       makeCallBtn.style.color = "rgba(237,236,236,0.45)";
       makeCallBtn.classList.remove("bd-call-ready");
     }
+    syncExplorationFromNotebook(nb);
   }
 
   function onMakeTheCall(handler: (() => void) | null): void {
@@ -231,6 +273,15 @@ export function createHud(
 
   function setStatusText(text: string | null): void {
     statusEl.textContent = text ?? "";
+  }
+  function setExplorationHint(text: string | null): void {
+    if (text === null || text === "") {
+      explorationEl.textContent = "";
+      explorationEl.style.opacity = "0";
+      return;
+    }
+    explorationEl.textContent = text;
+    explorationEl.style.opacity = "1";
   }
   function setInspectCaption(text: string | null): void {
     if (text) {
@@ -305,6 +356,7 @@ export function createHud(
     setNotebook,
     onMakeTheCall,
     setStatusText,
+    setExplorationHint,
     setHover,
     setInspectCaption,
     update,

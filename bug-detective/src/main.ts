@@ -50,6 +50,7 @@ import { showTitleSplash } from "./ui/titleSplash";
 import { showHowToPlay } from "./ui/howToPlay";
 import { createSettingsPanel } from "./ui/settingsPanel";
 import { isSkipIntro } from "./ui/skipIntroPref";
+import { tryMountRunnerTutorialGate } from "./ui/runnerTutorialGate";
 import { recordRound, showStreakOutro } from "./ui/streakOutro";
 
 // ---------------------------------------------------------------------
@@ -186,12 +187,201 @@ function bootGameInner(simplified: boolean): void {
     ray.setFromCamera(ndc, cameraRig.camera);
     const hits = ray.intersectObjects(
       diorama.hoverables as THREE.Object3D[],
-      false,
+      true,
     );
-    return hits.slice(0, 3).map((h) => ({
+    // Keep a short list for DevTools; deeper stacks are exposed via
+    // `__bdResolveAllHovers` for automated hover mapping.
+    return hits.slice(0, 200).map((h) => ({
       tag: String(h.object.userData.tag ?? "?"),
       distance: Number(h.distance.toFixed(3)),
     }));
+  };
+
+  /** Grid-scan the WebGL canvas for the first pixel whose top ray hit matches each tag (robust across browsers / camera poses). */
+  (
+    window as unknown as {
+      __bdResolveAllHovers?: () => Record<
+        string,
+        { x: number; y: number } | null
+      >;
+    }
+  ).__bdResolveAllHovers = (): Record<string, { x: number; y: number } | null> => {
+    const checklistTags = [
+      "calendar",
+      "mug",
+      "reagent-tray",
+      "monitor-screen",
+      "case-file",
+      "evidence-envelope",
+      "lamp-shadow",
+      "coffee-steam",
+      "keyboard",
+      "plant",
+      "lamp",
+      "desk",
+    ] as const;
+    const remaining = new Set<string>(checklistTags);
+    const out: Record<string, { x: number; y: number } | null> = {};
+    for (const t of checklistTags) out[t] = null;
+    const r = renderer.domElement.getBoundingClientRect();
+    const hitsAt = (x: number, y: number): readonly { tag: string }[] => {
+      if (x <= r.left + 1 || x >= r.right - 1 || y <= r.top + 1 || y >= r.bottom - 1)
+        return [];
+      const ndc = new THREE.Vector2(
+        ((x - r.left) / r.width) * 2 - 1,
+        -((y - r.top) / r.height) * 2 + 1,
+      );
+      const rc = new THREE.Raycaster();
+      rc.setFromCamera(ndc, cameraRig.camera);
+      const hits = rc.intersectObjects(
+        diorama.hoverables as THREE.Object3D[],
+        true,
+      );
+      return hits.slice(0, 200).map((h) => ({
+        tag: String(h.object.userData.tag ?? "?"),
+      }));
+    };
+    const verify = (pt: { x: number; y: number }, want: string): boolean =>
+      hitsAt(pt.x, pt.y).some((e) => e.tag === want);
+    const refineTop = (
+      x0: number,
+      y0: number,
+      want: string,
+    ): { x: number; y: number } | null => {
+      for (let d = 0; d <= 22; d += 1) {
+        for (let ox = -d; ox <= d; ox++) {
+          for (let oy = -d; oy <= d; oy++) {
+            if (Math.max(Math.abs(ox), Math.abs(oy)) !== d && d > 0) continue;
+            const x = x0 + ox;
+            const y = y0 + oy;
+            if (hitsAt(x, y)[0]?.tag === want) {
+              return { x: Math.round(x), y: Math.round(y) };
+            }
+          }
+        }
+      }
+      return null;
+    };
+    const refineInTop3 = (
+      x0: number,
+      y0: number,
+      want: string,
+    ): { x: number; y: number } | null => {
+      for (let d = 0; d <= 18; d += 1) {
+        for (let ox = -d; ox <= d; ox++) {
+          for (let oy = -d; oy <= d; oy++) {
+            if (Math.max(Math.abs(ox), Math.abs(oy)) !== d && d > 0) continue;
+            const x = x0 + ox;
+            const y = y0 + oy;
+            const h = hitsAt(x, y);
+            if (h.some((e) => e.tag === want)) {
+              return { x: Math.round(x), y: Math.round(y) };
+            }
+          }
+        }
+      }
+      return null;
+    };
+    const step = 2;
+    for (let y = r.top + 2; y < r.bottom - 2 && remaining.size > 0; y += step) {
+      for (let x = r.left + 2; x < r.right - 2 && remaining.size > 0; x += step) {
+        const hits = hitsAt(x, y);
+        for (const want of checklistTags) {
+          if (!remaining.has(want)) continue;
+          if (!hits.some((h) => h.tag === want)) continue;
+          const refined =
+            refineTop(x, y, want) ??
+            refineInTop3(x, y, want) ??
+            { x: Math.round(x), y: Math.round(y) };
+          if (!verify(refined, want)) continue;
+          out[want] = refined;
+          remaining.delete(want);
+        }
+      }
+    }
+    const fineStep = 1;
+    for (const want of checklistTags) {
+      if (!remaining.has(want)) continue;
+      outer: for (let y = r.top + 1; y < r.bottom - 1; y += fineStep) {
+        for (let x = r.left + 1; x < r.right - 1; x += fineStep) {
+          const h = hitsAt(x, y);
+          if (h[0]?.tag === want || h.some((e) => e.tag === want)) {
+            const cand =
+              refineTop(x, y, want) ??
+              refineInTop3(x, y, want) ??
+              { x: Math.round(x), y: Math.round(y) };
+            if (!verify(cand, want)) continue;
+            out[want] = cand;
+            remaining.delete(want);
+            break outer;
+          }
+        }
+      }
+    }
+    return out;
+  };
+
+  /** Spiral search from each prop's projected seed so automated tests hit the intended mesh when centroids overlap (mug vs steam, etc.). */
+  (
+    window as unknown as {
+      __bdHoverResolve?: (
+        tags: readonly string[],
+      ) => Record<string, { x: number; y: number } | null>;
+    }
+  ).__bdHoverResolve = (tags: readonly string[]) => {
+    const probeFn = (
+      window as unknown as {
+        __bdProbe?: () => Record<string, { x: number; y: number }>;
+      }
+    ).__bdProbe;
+    const ray = (
+      window as unknown as {
+        __bdRayProbe?: (
+          x: number,
+          y: number,
+        ) => Array<{ tag: string; distance: number }>;
+      }
+    ).__bdRayProbe;
+    const out: Record<string, { x: number; y: number } | null> = {};
+    if (!probeFn || !ray) {
+      for (const t of tags) out[t] = null;
+      return out;
+    }
+    const pts = probeFn();
+    const r = renderer.domElement.getBoundingClientRect();
+    const find = (tag: string): { x: number; y: number } | null => {
+      const seed = pts[`hit_${tag}`];
+      if (!seed) return null;
+      const tryPt = (x: number, y: number): { x: number; y: number } | null => {
+        if (x <= r.left + 1 || x >= r.right - 1 || y <= r.top + 1 || y >= r.bottom - 1)
+          return null;
+        const top = ray(x, y)[0]?.tag;
+        return top === tag ? { x: Math.round(x), y: Math.round(y) } : null;
+      };
+      for (let ox = -120; ox <= 120; ox += 6) {
+        for (let oy = -120; oy <= 120; oy += 6) {
+          const hit = tryPt(seed.x + ox, seed.y + oy);
+          if (hit) return hit;
+        }
+      }
+      const maxR = Math.min(r.width, r.height) * 0.32;
+      let angle = 0;
+      let radius = 0;
+      const step = 2.2;
+      while (radius <= maxR) {
+        const x = seed.x + Math.cos(angle) * radius;
+        const y = seed.y + Math.sin(angle) * radius;
+        const hit = tryPt(x, y);
+        if (hit) return hit;
+        angle += 0.45;
+        radius += step * 0.07;
+      }
+      return null;
+    };
+    for (const t of tags) {
+      out[t] = find(t);
+    }
+    return out;
   };
 
   (window as unknown as { __bdProbe?: () => unknown }).__bdProbe = (): Record<
@@ -220,18 +410,26 @@ function bootGameInner(simplified: boolean): void {
     // launcher tags so the headless playtest can find a definitive
     // on-screen pixel for each clickable prop. Use bounding-box center
     // since the group origin may not match the visible mesh center.
+    const checklistTags = new Set([
+      "calendar",
+      "mug",
+      "reagent-tray",
+      "monitor-screen",
+      "case-file",
+      "evidence-envelope",
+      "lamp-shadow",
+      "coffee-steam",
+      "keyboard",
+      "plant",
+      "lamp",
+      "desk",
+      "monitor",
+    ]);
     const box = new THREE.Box3();
     const center = new THREE.Vector3();
     for (const obj of diorama.hoverables) {
       const tag = obj.userData.tag as string | undefined;
-      if (
-        tag !== "lamp" &&
-        tag !== "evidence-envelope" &&
-        tag !== "reagent-tray" &&
-        tag !== "monitor" &&
-        tag !== "monitor-screen"
-      )
-        continue;
+      if (!tag || !checklistTags.has(tag)) continue;
       obj.updateMatrixWorld(true);
       box.setFromObject(obj);
       box.getCenter(center);
@@ -605,6 +803,7 @@ function bootGameInner(simplified: boolean): void {
     runnerOverlay?.dispose();
 
     runnerOverlay = createRunnerOverlay(root);
+    void tryMountRunnerTutorialGate(root);
     runnerUpdateMonitorTexture = true;
     runnerEndlessDeathTimer = 0;
 
@@ -1031,6 +1230,7 @@ function bootGameInner(simplified: boolean): void {
     exitInspectZoom(280);
     if (!state.enterAnswering(now)) return;
     sfxSubmit();
+    hud.setExplorationHint(null);
     hud.setStatusText("which one is the bug?");
     if (state.phase.kind !== "answering") return;
     const nb = state.phase.notebook;
@@ -1090,7 +1290,10 @@ function bootGameInner(simplified: boolean): void {
   //      surface while scale ramps (no "buried in the desk" frame).
   //   5. Cursor tracker switches target to desk; hop-on + walk-in + HUD.
   //   6. State transitions to investigating (untimed round).
-  const MIN_CASE_READ_MS = 3200; // minimum time on case file before peel can start
+  const fastIntro = new URLSearchParams(window.location.search).get(
+    "fastIntro",
+  ) === "1";
+  const MIN_CASE_READ_MS = fastIntro ? 0 : 3200; // QA: `?fastIntro=1` skips dwell for automated smoke
   const PEEL_BEGIN_MS = 200; // delay between mascot reaction and peel start
   const DOLLY_START_DELAY_MS = 420; // let the peel read before camera moves
   const DOLLY_DURATION_MS = 2200; // total camera dolly time (ease-in-out cubic)
@@ -1123,8 +1326,11 @@ function bootGameInner(simplified: boolean): void {
   caseFileCta.id = "bd-casefile-cta";
   caseFileCta.setAttribute("role", "status");
   caseFileCta.setAttribute("aria-live", "polite");
-  caseFileCta.textContent =
-    "Press Space, Enter, or click anywhere to lift the page";
+  caseFileCta.innerHTML =
+    "<div>Press Space, Enter, or click anywhere to lift the page</div>" +
+    '<div style="margin-top:8px;font:500 12px \'Cursor Gothic\',ui-sans-serif,sans-serif;opacity:0.82;line-height:1.4;">' +
+    "After the peel you will <strong>hover props</strong> on the desk — the anomaly hides in plain sight. " +
+    "Open the <strong>monitor, envelope, tray, and lamp</strong> to collect four cipher words for the final call.</div>";
   caseFileCta.style.cssText =
     "position:fixed;left:50%;bottom:32px;transform:translateX(-50%);max-width:min(92vw,520px);padding:12px 22px;border-radius:12px;background:rgba(26,24,18,0.88);color:#efe7d7;border:1px solid rgba(245,78,0,0.45);font:600 14px 'Cursor Gothic',ui-sans-serif,sans-serif;letter-spacing:0.03em;text-align:center;opacity:0;pointer-events:none;transition:opacity 650ms ease;z-index:60;box-shadow:0 8px 28px rgba(0,0,0,0.45)";
   root.appendChild(caseFileCta);
@@ -1311,6 +1517,11 @@ function bootGameInner(simplified: boolean): void {
     const dtSec = dtMs / 1000;
     lastFrame = now;
     const elapsed = (now - startTime) / 1000;
+
+    // Desk minis attach keydown on `window` (bubble). InputManager uses capture
+    // on `window` for runner — suppress global bindings so Tab/Enter/etc. reach
+    // sentence / errand / tamper sessions.
+    input.setSuppressGameKeys(deskMinigame !== null);
 
     cameraRig.update(dtMs);
     diorama.step(elapsed, dtSec);
@@ -1514,6 +1725,8 @@ function bootGameInner(simplified: boolean): void {
       if (hover.tag) {
         const hint = friendlyTagName(hover.tag);
         hud.setHover(hover.tag, hint);
+        (window as unknown as { __bdLastHoverTag?: string | null }).__bdLastHoverTag =
+          hover.tag;
         if (lastHoverTag !== hover.tag) {
           if (hover.tag !== null) sfxHover();
           lastHoverTag = hover.tag;
@@ -1521,6 +1734,8 @@ function bootGameInner(simplified: boolean): void {
         mascot.setMagnifierLifted(isAnomalyTarget ? 1 : 0);
       } else {
         hud.setHover(null);
+        (window as unknown as { __bdLastHoverTag?: string | null }).__bdLastHoverTag =
+          null;
         mascot.setMagnifierLifted(0);
         lastHoverTag = null;
       }

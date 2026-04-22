@@ -7,6 +7,12 @@ import {
 } from "../../src/minigames/errand/round";
 import { clueTokenForErrand } from "../../src/minigames/errand/clueTokens";
 import { ERRAND_NUM_DRAWERS } from "../../src/minigames/errand/types";
+import {
+  agentRowHitRect,
+  agentRowRect,
+  taskCardDropRect,
+  taskCardRect,
+} from "../../src/minigames/errand/draw";
 
 describe("errand round", () => {
   it("same seed produces same drawer layout", () => {
@@ -75,6 +81,22 @@ describe("errand assignment", () => {
     expect(canAssignHelper(helpers, 1, 1)).toBe(true);
     // Reassigning the same helper to its own drawer is allowed.
     expect(canAssignHelper(helpers, 0, 0)).toBe(true);
+  });
+});
+
+describe("errand hit targets", () => {
+  it("agent row hit rect is taller than the drawn row (easier pickup)", () => {
+    const drawn = agentRowRect(0);
+    const hit = agentRowHitRect(0);
+    expect(hit.h).toBeGreaterThan(drawn.h);
+    expect(hit.y).toBeLessThan(drawn.y);
+  });
+
+  it("task card drop rect is larger than the visible card (easier drop)", () => {
+    const card = taskCardRect(0);
+    const drop = taskCardDropRect(0);
+    expect(drop.w).toBeGreaterThan(card.w);
+    expect(drop.h).toBeGreaterThan(card.h);
   });
 });
 

@@ -89,11 +89,17 @@ export class ErrandSession {
   private alertedTrapHandled = new Set<HelperIndex>();
   /** Cached abort-modal hit rects, captured during draw. */
   private abortHits: AbortHits | null = null;
+  /** Overlay element (canvas) — used for pointer capture during drag. */
+  private pointerRoot: HTMLElement | null = null;
+  /** Brief footer hint after an invalid drop. */
+  private transientFooter: string | null = null;
+  private transientFooterClear: ReturnType<typeof setTimeout> | null = null;
   private readonly gate = new TutorialGate({
     title: "Cursor Agents — dispatch queue",
     tagline: "Drag agents onto task cards. Read the icons.",
     howToLines: [
       "Each agent runs one task at a time.",
+      "Drag from an agent row, or press 1–5 to assign the next free agent to that task.",
       "Cup / key tend to deliver clues. ⚠ tasks ping mid-run.",
       "On a tripwire: Abort to play it safe, or Push run for a 50/50.",
     ],
@@ -141,6 +147,7 @@ export class ErrandSession {
   attachPointer(root: HTMLElement): void {
     if (this.pointerBound) return;
     this.pointerBound = true;
+    this.pointerRoot = root;
     const move = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
       this.pointerX = p.x;
@@ -186,45 +193,113 @@ export class ErrandSession {
           const helper = this.helpers[idx];
           if (helper && helper.state === "waiting") {
             this.grabbedHelper = idx as HelperIndex;
+            try {
+              root.setPointerCapture(e.pointerId);
+            } catch {
+              /* ignore — host may not support capture on this target */
+            }
           }
         }
       }
     };
-    const up = (e: PointerEvent): void => {
+    const finishGrab = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
       this.pointerX = p.x;
       this.pointerY = p.y;
-      if (this.grabbedHelper === null) return;
-      // Drop on a task card?
-      const taskIdx = taskCardAt(this.round.drawers, p.x, p.y);
-      if (taskIdx !== null) {
-        if (canAssignHelper(this.helpers, this.grabbedHelper as number, taskIdx)) {
-          const helper = this.helpers[this.grabbedHelper] as Helper;
-          helper.drawerAssigned = taskIdx as DrawerIndex;
-          helper.state = "filling";
-          helper.fillProgress = 0;
+      if (this.grabbedHelper !== null) {
+        try {
+          root.releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
         }
+        // Drop on a task card?
+        const taskIdx = taskCardAt(this.round.drawers, p.x, p.y);
+        if (taskIdx !== null) {
+          if (
+            canAssignHelper(this.helpers, this.grabbedHelper as number, taskIdx)
+          ) {
+            const helper = this.helpers[this.grabbedHelper] as Helper;
+            helper.drawerAssigned = taskIdx as DrawerIndex;
+            helper.state = "filling";
+            helper.fillProgress = 0;
+          } else {
+            this.flashTransientFooter("That task already has an agent.");
+          }
+        }
+        this.grabbedHelper = null;
       }
-      this.grabbedHelper = null;
     };
     root.addEventListener("pointermove", move, { passive: true });
     root.addEventListener("pointerdown", down);
-    root.addEventListener("pointerup", up);
+    root.addEventListener("pointerup", finishGrab);
+    root.addEventListener("pointercancel", finishGrab);
     const key = (e: KeyboardEvent): void => {
-      if (e.key !== "Escape") return;
-      if (this.gate.isBlocking()) {
-        this.gate.dismissFromKey();
+      if (e.key === "Escape") {
+        if (this.gate.isBlocking()) {
+          this.gate.dismissFromKey();
+          return;
+        }
+        this.onExit();
         return;
       }
-      this.onExit();
+      if (this.gate.isBlocking() || this.outcome) return;
+      if (this.phase.kind !== "dispatch") return;
+      const m = /^Digit([1-5])$/.exec(e.code) ?? /^Numpad([1-5])$/.exec(e.code);
+      if (!m) return;
+      const taskIdx = Number.parseInt(m[1]!, 10) - 1;
+      const free = this.helpers.findIndex((h) => h.state === "waiting");
+      if (free < 0) return;
+      if (!canAssignHelper(this.helpers, free, taskIdx)) {
+        this.flashTransientFooter("That task already has an agent.");
+        e.preventDefault();
+        return;
+      }
+      const helper = this.helpers[free] as Helper;
+      helper.drawerAssigned = taskIdx as DrawerIndex;
+      helper.state = "filling";
+      helper.fillProgress = 0;
+      e.preventDefault();
     };
-    window.addEventListener("keydown", key);
+    window.addEventListener("keydown", key, true);
     (this as unknown as { _cleanup?: () => void })._cleanup = (): void => {
       root.removeEventListener("pointermove", move);
       root.removeEventListener("pointerdown", down);
-      root.removeEventListener("pointerup", up);
-      window.removeEventListener("keydown", key);
+      root.removeEventListener("pointerup", finishGrab);
+      root.removeEventListener("pointercancel", finishGrab);
+      window.removeEventListener("keydown", key, true);
+      if (this.transientFooterClear) {
+        clearTimeout(this.transientFooterClear);
+        this.transientFooterClear = null;
+      }
+      this.pointerRoot = null;
     };
+  }
+
+  private flashTransientFooter(msg: string): void {
+    this.transientFooter = msg;
+    if (this.transientFooterClear) clearTimeout(this.transientFooterClear);
+    this.transientFooterClear = setTimeout(() => {
+      this.transientFooter = null;
+      this.transientFooterClear = null;
+    }, 900);
+  }
+
+  /** While dragging, highlight the task under the pointer if this agent can take it. */
+  private dropHighlightTaskIdx(): number | null {
+    if (this.phase.kind !== "dispatch" || this.grabbedHelper === null) return null;
+    const hi = this.grabbedHelper as number;
+    const under = taskCardAt(
+      this.round.drawers,
+      this.pointerX,
+      this.pointerY,
+    );
+    if (
+      under !== null &&
+      canAssignHelper(this.helpers, hi, under)
+    ) {
+      return under;
+    }
+    return null;
   }
 
   private allHelpersAssigned(): boolean {
@@ -404,7 +479,12 @@ export class ErrandSession {
     ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
     ctx.fillText("· dispatch queue", 110, 26);
 
-    drawTasksCard(ctx, this.round.drawers, this.helpers);
+    drawTasksCard(
+      ctx,
+      this.round.drawers,
+      this.helpers,
+      this.dropHighlightTaskIdx(),
+    );
     drawAgentsCard(
       ctx,
       this.helpers,
@@ -468,9 +548,10 @@ export class ErrandSession {
   }
 
   private phaseFooterText(): string | null {
+    if (this.transientFooter) return this.transientFooter;
     switch (this.phase.kind) {
       case "dispatch":
-        return `drag agents onto task cards · auto-dispatch in ${Math.max(
+        return `drag agents onto tasks (or keys 1–5) · auto-dispatch in ${Math.max(
           0,
           Math.ceil(DISPATCH_TIMEOUT_S - this.phase.t),
         )}s`;

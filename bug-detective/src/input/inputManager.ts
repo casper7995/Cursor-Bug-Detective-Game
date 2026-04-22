@@ -18,6 +18,13 @@ function invertBindings(bindings: Record<ActionName, string[]>): CodeToActions {
 }
 
 export class InputManager {
+  /**
+   * When true, desk minigames own keyboard input (Tab autocomplete, etc.).
+   * Skips binding Tab/Enter/Space/arrows to global runner / submit actions so
+   * capture-phase handlers here do not steal keys before session listeners.
+   */
+  private suppressGameKeys = false;
+
   /** Only keys we preventDefault when bound — unbound Tab/Space still behave normally. */
   private static readonly NAV_CODES = new Set<string>([
     "Tab",
@@ -56,6 +63,11 @@ export class InputManager {
     for (const [k, v] of next) this.codeToActions.set(k, v);
   }
 
+  /** While a desk mini (sentence / errand / tamper) is fullscreen, set true. */
+  setSuppressGameKeys(suppress: boolean): void {
+    this.suppressGameKeys = suppress;
+  }
+
   /** Call at end of each frame after reading input. */
   endFrame(): void {
     this.justPressed.clear();
@@ -77,6 +89,7 @@ export class InputManager {
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (e.repeat) return;
+    if (this.suppressGameKeys) return;
     this.codesDown.add(e.code);
     const acts = this.codeToActions.get(e.code);
     if (acts) {
@@ -86,6 +99,7 @@ export class InputManager {
   };
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
+    if (this.suppressGameKeys) return;
     this.codesDown.delete(e.code);
   };
 }

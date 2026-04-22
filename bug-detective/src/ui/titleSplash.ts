@@ -48,6 +48,7 @@ export function showTitleSplash(container: HTMLElement): TitleSplash {
       <h1 class="bd-title__h1">Cursor Detective</h1>
       <p class="bd-title__cta">Click to continue</p>
       <p class="bd-title__introcue">Then move your mouse — a case file lifts away to your desk.</p>
+      <p class="bd-title__roadmap">You will explore the desk for one hidden anomaly, gather <strong>four</strong> cipher clues from the monitor, envelope, reagent tray, and lamp, then <strong>make the call</strong> when every clue slot is filled.</p>
       <p class="bd-title__hint">Vibe Jam 2026</p>
     </div>
   `;
@@ -314,10 +315,24 @@ function ensureStyle(): void {
       font-size: 15px;
       line-height: 1.45;
       opacity: 0.72;
-      margin: 0 0 20px;
+      margin: 0 0 14px;
       max-width: 420px;
       margin-left: auto;
       margin-right: auto;
+    }
+    .bd-title__roadmap {
+      font-size: 13px;
+      line-height: 1.5;
+      opacity: 0.58;
+      margin: 0 0 20px;
+      max-width: 460px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .bd-title__roadmap strong {
+      font-weight: 600;
+      color: #e8ecf7;
+      opacity: 0.95;
     }
     .bd-title__cta {
       font-size: 16px;

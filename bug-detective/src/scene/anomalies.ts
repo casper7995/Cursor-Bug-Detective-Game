@@ -63,10 +63,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "calendar-tomorrow",
     targetTag: "calendar",
     gameClueWords: {
-      runner: "calendar",
-      sentence: "TOMORROW",
-      errand: "AHEAD",
-      tamper: "DATE",
+      runner: "AHEAD",
+      sentence: "DAWN",
+      errand: "PLUS",
+      tamper: "LOOP",
     },
     tooltipHint: "calendar — date looks off",
     revealText: "The calendar shows tomorrow's date — one day too far ahead.",
@@ -76,6 +76,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Calendar is upside down",
       "Calendar shows yesterday",
       "Calendar shows the year 2099",
+      "Calendar is repeating the same day",
+      "Calendar skipped a month",
     ],
     apply: (o) => {
       const tomorrow = new Date();
@@ -105,10 +107,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "mug-name",
     targetTag: "mug",
     gameClueWords: {
-      runner: "mug",
-      sentence: "NAME",
-      errand: "YOURS",
-      tamper: "LABEL",
+      runner: "INK",
+      sentence: "OWNED",
+      errand: "MIRROR",
+      tamper: "MARKED",
     },
     tooltipHint: "mug — label feels familiar",
     revealText: "The mug has YOUR name printed on it. Someone left it for you.",
@@ -118,6 +120,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Mug is the wrong color",
       "Mug is upside down",
       "Mug has no handle",
+      "Mug has the boss's name",
+      "Mug is from a parallel desk",
     ],
     apply: (o) => {
       const tex = makeMugLabelTexture("YOU");
@@ -128,10 +132,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "clock-ccw",
     targetTag: "reagent-tray",
     gameClueWords: {
-      runner: "clock",
-      sentence: "BACKWARDS",
-      errand: "REVERSE",
-      tamper: "TIME",
+      runner: "SPIRAL",
+      sentence: "UNDO",
+      errand: "EBB",
+      tamper: "RECOIL",
     },
     tooltipHint: "reagent tray — swirl runs wrong",
     revealText:
@@ -142,6 +146,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Tray is empty",
       "Tray is made of glass",
       "Tray is mirrored on the desk",
+      "Tray drains in the wrong direction",
+      "Tray shows yesterday's samples",
     ],
     apply: (o) => {
       o.flags.clockReverse = true;
@@ -151,10 +157,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "monitor-reflection",
     targetTag: "monitor-screen",
     gameClueWords: {
-      runner: "screen",
-      sentence: "GLASS",
-      errand: "ROOM",
-      tamper: "GHOST",
+      runner: "ECHO",
+      sentence: "ELSE",
+      errand: "WINDOW",
+      tamper: "DOUBLE",
     },
     tooltipHint: "monitor — reflection looks off",
     revealText:
@@ -165,6 +171,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Monitor is unplugged",
       "Monitor is upside down",
       "Monitor screen is cracked",
+      "Monitor mirror is off by a frame",
+      "Monitor is running yesterday's feed",
     ],
     apply: (o) => {
       o.monitorReflection.visible = true;
@@ -174,10 +182,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "photo-self",
     targetTag: "case-file",
     gameClueWords: {
-      runner: "photo",
-      sentence: "FAMILIAR",
-      errand: "BEFORE",
-      tamper: "SELF",
+      runner: "MIRROR",
+      sentence: "TWIN",
+      errand: "GAZE",
+      tamper: "INSIDE",
     },
     tooltipHint: "case file — that face is familiar",
     revealText: "The case file shows your own face — looking back at you.",
@@ -187,6 +195,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Case file is the wrong case",
       "Case file is sealed shut",
       "Case file is written in another language",
+      "Case file has the detective's prints on it",
+      "Case file is identical to last week's",
     ],
     apply: (o) => {
       const tex = makePhotoTexture("self");
@@ -197,10 +207,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "sticky-warning",
     targetTag: "evidence-envelope",
     gameClueWords: {
-      runner: "note",
-      sentence: "WARNING",
-      errand: "BEHIND",
-      tamper: "TEXT",
+      runner: "PAPER",
+      sentence: "HUSH",
+      errand: "SHOULDER",
+      tamper: "BREATH",
     },
     tooltipHint: "evidence envelope — new message",
     revealText:
@@ -211,6 +221,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Envelope is the wrong color",
       "Envelope is sealed shut",
       "Envelope is in a different language",
+      "Envelope has footsteps fading in red pen",
+      "Envelope quietly ticks like a watch",
     ],
     apply: (o) => {
       const tex = makeEvidenceEnvelopeTexture("they're behind you");
@@ -221,10 +233,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "pen-floating",
     targetTag: "case-file",
     gameClueWords: {
-      runner: "case",
-      sentence: "FLOAT",
-      errand: "DESK",
-      tamper: "FILE",
+      runner: "HOVER",
+      sentence: "LIFT",
+      errand: "AIRGAP",
+      tamper: "VOID",
     },
     tooltipHint: "case file — what's holding it up?",
     revealText:
@@ -235,6 +247,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Case file is torn in half",
       "Case file is the wrong color",
       "Case file is soaked through",
+      "Case file sits a finger above the desk",
+      "Case file is propped on something invisible",
     ],
     apply: (o) => {
       o.caseFileSheet.userData.floatActive = true;
@@ -244,10 +258,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "lamp-shadow-wrong",
     targetTag: "lamp-shadow",
     gameClueWords: {
-      runner: "shadow",
-      sentence: "LAMP",
-      errand: "WRONG",
-      tamper: "LIGHT",
+      runner: "TOWARD",
+      sentence: "BEACON",
+      errand: "INVERT",
+      tamper: "REACH",
     },
     tooltipHint: "shadow — wrong direction",
     revealText: "The shadow points TOWARD the light, not away from it.",
@@ -257,6 +271,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Shadow is missing entirely",
       "Shadow is the wrong color",
       "Shadow has a different shape",
+      "Shadow leans into the light",
+      "Shadow belongs to another object",
     ],
     apply: (o) => {
       const lx = o.lamp.position.x;
@@ -273,10 +289,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "steam-down",
     targetTag: "coffee-steam",
     gameClueWords: {
-      runner: "steam",
-      sentence: "DOWN",
-      errand: "CUP",
-      tamper: "HEAT",
+      runner: "SINK",
+      sentence: "CHILL",
+      errand: "POUR",
+      tamper: "GRAVITY",
     },
     tooltipHint: "steam — drifting the wrong way",
     revealText: "The coffee steam is drifting downward instead of rising.",
@@ -286,6 +302,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Coffee is overflowing",
       "Coffee has ice in it",
       "Coffee has no steam at all",
+      "Coffee is cold instead of hot",
+      "Coffee refuses to rise",
     ],
     apply: (o) => {
       o.flags.steamDownward = true;
@@ -295,10 +313,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "blank-book",
     targetTag: "case-file",
     gameClueWords: {
-      runner: "case",
-      sentence: "BLANK",
-      errand: "PAGE",
-      tamper: "FILE",
+      runner: "SILENT",
+      sentence: "HOLLOW",
+      errand: "UNSAID",
+      tamper: "ERASED",
     },
     tooltipHint: "case file — strangely silent",
     revealText:
@@ -309,6 +327,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Case file is folded shut",
       "Case file is upside down",
       "Case file has torn corners",
+      "Case file has every line whited-out",
+      "Case file is missing its text block",
     ],
     apply: (o) => {
       const tex = makeCaseFileBlankDeskTexture(1024, 662);
@@ -319,10 +339,10 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "keyboard-extra-key",
     targetTag: "keyboard",
     gameClueWords: {
-      runner: "keyboard",
-      sentence: "EXTRA",
-      errand: "KEY",
-      tamper: "RED",
+      runner: "ODD",
+      sentence: "CRIMSON",
+      errand: "COUNT",
+      tamper: "INTRUDER",
     },
     tooltipHint: "keyboard — one key too many",
     revealText: "There's a giant red key on the keyboard that doesn't belong.",
@@ -332,6 +352,8 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       "Keyboard has no spacebar",
       "Keyboard layout is mirrored",
       "Keyboard is wireless but plugged in",
+      "Keyboard has a macro pad attached",
+      "Keyboard has a painted key",
     ],
     apply: (o) => {
       const extraKey = new THREE.Mesh(
@@ -348,19 +370,21 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     id: "plant-glitching",
     targetTag: "plant",
     gameClueWords: {
-      runner: "plant",
-      sentence: "GLITCH",
-      errand: "LEAF",
-      tamper: "POT",
+      runner: "STUTTER",
+      sentence: "GREEN",
+      errand: "FRAME",
+      tamper: "JITTER",
     },
     tooltipHint: "plant — leaves twitching",
     revealText: "The plant's leaves twitch and snap as if rendered wrong.",
     correctChoice: "Plant is glitching",
     distractorPool: [
       "Plant is wilting",
-      "Plant is in the wrong pot",
       "Plant has no leaves",
       "Plant is the wrong color",
+      "Plant keeps skipping when you look",
+      "Plant looks pixelated up close",
+      "Plant is in the corner by itself",
     ],
     apply: (o) => {
       // Set the flag; the diorama's step() applies jitter on the main

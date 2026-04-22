@@ -23,6 +23,12 @@ export function createSceneBundle(container: HTMLElement): SceneBundle {
   scene.background = new THREE.Color(0x14141c);
   scene.fog = new THREE.Fog(0x14141c, 28, 90);
 
+  // QA / automated smoke: `?forceNoWebGL=1` throws the same error path as a
+  // real WebGL failure so the WebGL fallback card can be exercised in CI.
+  if (new URLSearchParams(window.location.search).get("forceNoWebGL") === "1") {
+    throw new WebGLUnsupportedError();
+  }
+
   // Wrap renderer construction so we can show a friendly fallback on
   // browsers without WebGL (very old Safari, locked-down enterprise).
   let renderer: THREE.WebGLRenderer;

@@ -15,6 +15,10 @@ import type { Drawer, Helper, HintIcon } from "./types";
 // ---------------------------------------------------------------------
 // Layout (512 × 320 internal canvas)
 // ---------------------------------------------------------------------
+/** Extra hit padding so pickup/drop matches fat-finger UX (drawing unchanged). */
+const AGENT_ROW_HIT_PAD_Y = 6;
+const TASK_CARD_DROP_PAD = 8;
+
 export const ERRAND_LAYOUT = {
   /** Top "Tasks" card. */
   tasksX: 18,
@@ -139,10 +143,32 @@ export function drawHintIcon(
 // ---------------------------------------------------------------------
 // Tasks card (top): 5 task cards in a row
 // ---------------------------------------------------------------------
+export function agentRowHitRect(idx: number): Rect {
+  const r = agentRowRect(idx);
+  return {
+    x: r.x,
+    y: r.y - AGENT_ROW_HIT_PAD_Y,
+    w: r.w,
+    h: r.h + AGENT_ROW_HIT_PAD_Y * 2,
+  };
+}
+
+export function taskCardDropRect(idx: number): Rect {
+  const r = taskCardRect(idx);
+  return {
+    x: r.x - TASK_CARD_DROP_PAD,
+    y: r.y - TASK_CARD_DROP_PAD,
+    w: r.w + TASK_CARD_DROP_PAD * 2,
+    h: r.h + TASK_CARD_DROP_PAD * 2,
+  };
+}
+
 export function drawTasksCard(
   ctx: CanvasRenderingContext2D,
   drawers: readonly Drawer[],
   helpers: readonly Helper[],
+  /** During drag: index of task (0..4) that would accept the current grab. */
+  dropHighlightTaskIdx: number | null = null,
 ): void {
   const L = ERRAND_LAYOUT;
   drawAiCard(ctx, L.tasksX, L.tasksY, L.tasksW, L.tasksH);
@@ -164,7 +190,7 @@ export function drawTasksCard(
     const d = drawers[i] as Drawer;
     const r = taskCardRect(i);
     const helper = helpers.find((h) => h.drawerAssigned === d.index) ?? null;
-    drawTaskCard(ctx, d, r, helper);
+    drawTaskCard(ctx, d, r, helper, dropHighlightTaskIdx === i);
   }
 }
 
@@ -173,18 +199,21 @@ function drawTaskCard(
   drawer: Drawer,
   r: Rect,
   helper: Helper | null,
+  isDropTarget: boolean,
 ): void {
   const isActive = helper?.state === "filling" || helper?.state === "alert";
   const isAlerted = helper?.state === "alert";
   drawAiCard(ctx, r.x, r.y, r.w, r.h, {
     radius: 8,
     fill: isActive ? CURSOR_AI.surface : CURSOR_AI.surface,
-    stroke: isAlerted
-      ? CURSOR_AI.accent
-      : isActive
-        ? CURSOR_AI.borderStrong
-        : CURSOR_AI.border,
-    shadow: false,
+    stroke: isDropTarget
+      ? CURSOR_AI.blue
+      : isAlerted
+        ? CURSOR_AI.accent
+        : isActive
+          ? CURSOR_AI.borderStrong
+          : CURSOR_AI.border,
+    shadow: isDropTarget,
   });
   // Index chip top-left
   ctx.fillStyle = CURSOR_AI.inkSubtle;
@@ -495,7 +524,7 @@ export function agentRowAt(
   y: number,
 ): number | null {
   for (let i = 0; i < helpers.length; i++) {
-    const r = agentRowRect(i);
+    const r = agentRowHitRect(i);
     if (inRect(x, y, r)) return i;
   }
   return null;
@@ -507,7 +536,7 @@ export function taskCardAt(
   y: number,
 ): number | null {
   for (let i = 0; i < drawers.length; i++) {
-    const r = taskCardRect(i);
+    const r = taskCardDropRect(i);
     if (inRect(x, y, r)) return i;
   }
   return null;

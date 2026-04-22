@@ -47,12 +47,12 @@ import {
 const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
 
-const INTRO_DURATION_S = 2.0;
-const DISPATCH_TIMEOUT_S = 8.0;
-const WATCH_CAP_S = 25.0;
+const INTRO_DURATION_S = 1.35;
+const DISPATCH_TIMEOUT_S = 6.0;
+const WATCH_CAP_S = 18.0;
 const RETURN_DURATION_S = 1.6;
-const RESULT_AUTOCLOSE_S = 4.0;
-const ABORT_WINDOW_S = 2.0;
+const RESULT_AUTOCLOSE_S = 3.2;
+const ABORT_WINDOW_S = 2.4;
 
 export interface ErrandSessionOpts {
   readonly overlayCtx: CanvasRenderingContext2D;
@@ -107,7 +107,7 @@ export class ErrandSession {
       "Each agent runs one task at a time.",
       "Drag from an agent row, or press 1–5 to assign the next free agent to that task.",
       "Cup / key tend to deliver clues. ⚠ tasks ping mid-run.",
-      "On a tripwire: Abort to play it safe, or Push run for a 50/50.",
+      "On a tripwire: Abort keeps the agent safe, Push gambles for a clue.",
     ],
     drawDiagram: drawErrandTutorialDiagram,
     storageKey: "bd:miniTutorial:errand",
@@ -569,7 +569,7 @@ export class ErrandSession {
         return `drag agents onto tasks (or keys 1–5) · auto-dispatch in ${Math.max(
           0,
           Math.ceil(DISPATCH_TIMEOUT_S - this.phase.t),
-        )}s`;
+        )}s if you stall`;
       case "watch":
         return "agents running · ⚠ tasks may ping for review";
       case "return":

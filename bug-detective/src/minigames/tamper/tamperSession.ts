@@ -42,11 +42,11 @@ import {
 const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
 
-const INTRO_DURATION_S = 2.5;
-const CALL_DURATION_S = 3.5;
-const POINT_DURATION_S = 2.0;
+const INTRO_DURATION_S = 1.6;
+const CALL_DURATION_S = 4.2;
+const POINT_DURATION_S = 2.4;
 const VERDICT_FLASH_S = 0.6;
-const RESULT_AUTOCLOSE_S = 4.0;
+const RESULT_AUTOCLOSE_S = 3.2;
 
 export interface TamperSessionOpts {
   readonly overlayCtx: CanvasRenderingContext2D;
@@ -98,7 +98,7 @@ export class TamperSession {
     howToLines: [
       "Bugbot calls 6 lines and gives a confidence score.",
       "Approve when you agree, Reject when you disagree.",
-      "Suggest fix → and tap the real tampered row to catch a lie.",
+      "Suggest fix opens spot-pick mode — tap the real tampered row to catch a lie.",
     ],
     drawDiagram: drawTamperTutorialDiagram,
     storageKey: "bd:miniTutorial:tamper",

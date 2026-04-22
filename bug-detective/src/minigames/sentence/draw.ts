@@ -285,7 +285,7 @@ export function drawIntroCard(
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.fillText("Or pick row 1 / 2 / 3 with the keys or by clicking.", x + 24, y + 98);
   ctx.fillStyle = CURSOR_AI.inkSubtle;
-  ctx.fillText("Idle 2.5s and the typewriter picks the orange option.", x + 24, y + 116);
+  ctx.fillText("Wait 4s and the typewriter commits the orange line.", x + 24, y + 116);
   drawAiProgressLine(ctx, x + 24, y + h - 22, w - 48, progress01);
   ctx.restore();
 }

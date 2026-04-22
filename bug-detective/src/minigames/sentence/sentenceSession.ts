@@ -42,10 +42,10 @@ import {
 const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
 
-const INTRO_DURATION_S = 1.5;
-const TYPE_PER_SENTENCE_S = 1.4;
-const PICK_TIMEOUT_S = 2.5;
-const RESULT_AUTOCLOSE_S = 5.0;
+const INTRO_DURATION_S = 0.95;
+const TYPE_PER_SENTENCE_S = 1.15;
+const PICK_TIMEOUT_S = 3.0;
+const RESULT_AUTOCLOSE_S = 3.4;
 
 export interface SentenceSessionOpts {
   readonly overlayCtx: CanvasRenderingContext2D;
@@ -105,7 +105,7 @@ export class SentenceSession {
     howToLines: [
       "Tab or Enter accepts the recommended (blue) suggestion.",
       "Press 1 / 2 / 3 — or click — to pick a different row.",
-      "Idle 2.5s and the typewriter picks the orange option for you.",
+      "Wait 3 seconds and the typewriter settles on the orange option.",
     ],
     drawDiagram: drawSentenceTutorialDiagram,
     storageKey: "bd:miniTutorial:sentence",

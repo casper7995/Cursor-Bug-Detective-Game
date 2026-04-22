@@ -356,10 +356,10 @@ export function drawIntroCard(
   ctx.fillText(`scene · ${scene.displayName}`, x + 60, y + 50);
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
-  ctx.fillText("Bugbot reviews 6 lines. Sometimes it's wrong.", x + 24, y + 82);
+  ctx.fillText("Bugbot reviews 6 calls. Read the confidence, then trust yourself.", x + 24, y + 82);
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.fillText(
-    "Approve, Reject, or Suggest fix and pick the real tamper.",
+    "Approve or Reject fast. Suggest fix only when you're ready to point at the lie.",
     x + 24,
     y + 100,
   );

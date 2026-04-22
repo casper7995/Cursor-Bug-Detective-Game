@@ -5,7 +5,10 @@ import { CameraRig } from "./three/cameraRig";
 import { createMascotMesh } from "./cursor/mascotMesh";
 import { MascotController } from "./cursor/mascotController";
 import { createDesktopDiorama } from "./scene/desktopDiorama";
-import { applyPropFlavor, isFlavorTag } from "./scene/propInteractions";
+import { applyPropFlavor } from "./scene/propInteractions";
+import {
+  routeDeskInteractionTag,
+} from "./scene/deskInteractionRouting";
 import { CursorTracker } from "./intro/cursorTracker";
 import { createPagePeel, type PagePeel } from "./intro/pagePeel";
 import { showCaseFileModal } from "./ui/caseFileModal";
@@ -865,71 +868,70 @@ function bootGameInner(simplified: boolean): void {
     await cameraRig.scriptedTo(targetCam, p, 600);
   }
 
-  const monitorLaunchRay = new THREE.Raycaster();
-  const monitorLaunchNdc = new THREE.Vector2();
+  const deskInteractionRay = new THREE.Raycaster();
+  const deskInteractionNdc = new THREE.Vector2();
 
-  function maybeExitInspectFromPointer(
-    _clientX: number,
-    _clientY: number,
-  ): void {
-    if (!inspectZoomActive) return;
-    exitInspectZoom(200);
+  function pickDeskInteractionHit(
+    clientX: number,
+    clientY: number,
+  ): THREE.Intersection | null {
+    const rect = renderer.domElement.getBoundingClientRect();
+    deskInteractionNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    deskInteractionNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    deskInteractionRay.setFromCamera(deskInteractionNdc, cameraRig.camera);
+    const hits = deskInteractionRay.intersectObjects(
+      diorama.hoverables as THREE.Object3D[],
+      false,
+    );
+    return hits[0] ?? null;
   }
 
-  renderer.domElement.addEventListener(
-    "pointerdown",
-    (e: PointerEvent) => {
-      maybeExitInspectFromPointer(e.clientX, e.clientY);
-      if (deskMinigame) return;
-      const rect = renderer.domElement.getBoundingClientRect();
-      monitorLaunchNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      monitorLaunchNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      monitorLaunchRay.setFromCamera(monitorLaunchNdc, cameraRig.camera);
-      const hits = monitorLaunchRay.intersectObjects(
-        diorama.hoverables as THREE.Object3D[],
-        false,
-      );
-      const tag = hits[0]?.object.userData.tag;
-      if (tag !== "monitor" && tag !== "monitor-screen") return;
-      const now = performance.now();
-      const p = state.phase;
-      if (p.kind !== "investigating") return;
-      const mode: RunnerMode = p.monitorDailyClear ? "endless" : "daily";
-      if (!state.enterRunner(now, mode)) return;
-      startRunnerSession(mode, now);
-    },
-    { passive: true },
-  );
+  function handleDeskPointerDown(e: PointerEvent): void {
+    if (deskMinigame || runnerSession) return;
+    if (state.phase.kind !== "investigating") return;
+    if (inspectZoomActive) {
+      exitInspectZoom(200);
+      return;
+    }
+    if (flavorInspectReturn) {
+      endFlavorInspectNow();
+      return;
+    }
+    const hit = pickDeskInteractionHit(e.clientX, e.clientY);
+    if (!hit?.object) return;
+    const tag = hit.object.userData.tag;
+    if (typeof tag !== "string") return;
+    const route = routeDeskInteractionTag(tag, {
+      monitorDailyClear: state.phase.monitorDailyClear,
+      anomalyTargetTag: picked.def.targetTag,
+    });
+    const now = performance.now();
 
-  renderer.domElement.addEventListener(
-    "pointerdown",
-    (e: PointerEvent) => {
-      maybeExitInspectFromPointer(e.clientX, e.clientY);
-      if (deskMinigame) return;
-      const rect = renderer.domElement.getBoundingClientRect();
-      monitorLaunchNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      monitorLaunchNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      monitorLaunchRay.setFromCamera(monitorLaunchNdc, cameraRig.camera);
-      const hits = monitorLaunchRay.intersectObjects(
-        diorama.hoverables as THREE.Object3D[],
-        false,
-      );
-      const tag = hits[0]?.object.userData.tag;
-      if (
-        tag !== "evidence-envelope" &&
-        tag !== "reagent-tray" &&
-        tag !== "lamp"
-      )
+    switch (route.kind) {
+      case "runner":
+        if (!state.enterRunner(now, route.mode)) return;
+        startRunnerSession(route.mode, now);
         return;
-      const now = performance.now();
-      if (state.phase.kind !== "investigating") return;
-      console.info(`[bug-detective] desk-mini click tag=${tag}`);
-      if (tag === "evidence-envelope") void startDeskMini("sentence", now);
-      else if (tag === "reagent-tray") void startDeskMini("errand", now);
-      else void startDeskMini("tamper", now);
-    },
-    { passive: true },
-  );
+      case "desk-mini":
+        console.info(`[bug-detective] desk-mini click tag=${tag}`);
+        void startDeskMini(route.mini, now);
+        return;
+      case "case-file":
+        void showCaseFileModal(root);
+        return;
+      case "flavor":
+        startFlavorInspect(hit.object);
+        return;
+      case "none":
+        return;
+      default:
+        assertNever(route);
+    }
+  }
+
+  renderer.domElement.addEventListener("pointerdown", handleDeskPointerDown, {
+    passive: true,
+  });
   let lastHoverTag: string | null = null;
   let lastBlink: 0 | 1 = 1;
 
@@ -1012,46 +1014,6 @@ function bootGameInner(simplified: boolean): void {
       endFlavorInspectNow();
     }, 1200);
   }
-
-  renderer.domElement.addEventListener(
-    "pointerdown",
-    (e: PointerEvent) => {
-      maybeExitInspectFromPointer(e.clientX, e.clientY);
-      if (flavorInspectReturn) {
-        endFlavorInspectNow();
-        return;
-      }
-      if (deskMinigame || runnerSession) return;
-      if (state.phase.kind !== "investigating") return;
-      const rect = renderer.domElement.getBoundingClientRect();
-      monitorLaunchNdc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      monitorLaunchNdc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      monitorLaunchRay.setFromCamera(monitorLaunchNdc, cameraRig.camera);
-      const hits = monitorLaunchRay.intersectObjects(
-        diorama.hoverables as THREE.Object3D[],
-        false,
-      );
-      const first = hits[0];
-      if (!first?.object) return;
-      const tag = first.object.userData.tag;
-      if (typeof tag !== "string") return;
-      if (tag === "monitor" || tag === "monitor-screen") return;
-      if (
-        tag === "evidence-envelope" ||
-        tag === "reagent-tray" ||
-        tag === "lamp"
-      )
-        return;
-      if (tag === "case-file") {
-        void showCaseFileModal(root);
-        return;
-      }
-      if (tag === picked.def.targetTag) return;
-      if (!isFlavorTag(tag)) return;
-      startFlavorInspect(first.object);
-    },
-    { passive: true },
-  );
 
   function exitInspectZoom(durationMs: number): void {
     if (!inspectZoomActive) return;

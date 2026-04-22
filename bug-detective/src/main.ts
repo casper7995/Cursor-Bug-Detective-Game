@@ -24,6 +24,8 @@ import { renderLeaderboardPanel } from "./ui/leaderboard";
 import { createCountdown } from "./ui/countdown";
 import { createPostFx } from "./three/postFx";
 import {
+  type AmbientContext,
+  setAmbientContext,
   sfxClueFound,
   sfxCorrect,
   sfxHover,
@@ -599,6 +601,12 @@ function bootGameInner(simplified: boolean): void {
   /** Endless runner: auto-restart countdown after game over (seconds). */
   let runnerEndlessDeathTimer = 0;
 
+  function removeRunnerTutorialOverlays(): void {
+    document.querySelectorAll("#bd-runner-tutorial").forEach((el) => {
+      el.remove();
+    });
+  }
+
   type DeskMini =
     | { kind: "sentence"; session: SentenceSession }
     | { kind: "errand"; session: ErrandSession }
@@ -669,6 +677,7 @@ function bootGameInner(simplified: boolean): void {
     diorama.flags.envelopeOpen = false;
     diorama.flags.reagentActive = false;
     diorama.flags.lampActive = false;
+    removeRunnerTutorialOverlays();
     runnerOverlay?.dispose();
     runnerOverlay = null;
     runnerUpdateMonitorTexture = true;
@@ -801,6 +810,7 @@ function bootGameInner(simplified: boolean): void {
     runnerSurfaceRestore?.();
     runnerSession?.dispose();
     runnerOverlay?.dispose();
+    removeRunnerTutorialOverlays();
 
     runnerOverlay = createRunnerOverlay(root);
     void tryMountRunnerTutorialGate(root);
@@ -1512,11 +1522,28 @@ function bootGameInner(simplified: boolean): void {
   const startTime = performance.now();
   let lastFrame = startTime;
 
+  function ambientContextForFrame(): AmbientContext {
+    if (state.phase.kind === "intro") return "desk";
+    if (state.phase.kind === "runner") return "runner";
+    if (state.phase.kind === "investigating") {
+      return deskMinigame ? deskMinigame.kind : "investigating";
+    }
+    return "desk";
+  }
+
+  let lastAppliedAmbientContext: AmbientContext | null = null;
+
   function frame(now: number): void {
     const dtMs = Math.min(50, now - lastFrame);
     const dtSec = dtMs / 1000;
     lastFrame = now;
     const elapsed = (now - startTime) / 1000;
+
+    const nextAmbient = ambientContextForFrame();
+    if (nextAmbient !== lastAppliedAmbientContext) {
+      lastAppliedAmbientContext = nextAmbient;
+      setAmbientContext(nextAmbient);
+    }
 
     // Desk minis attach keydown on `window` (bubble). InputManager uses capture
     // on `window` for runner — suppress global bindings so Tab/Enter/etc. reach

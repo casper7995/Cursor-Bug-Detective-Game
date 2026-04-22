@@ -1,5 +1,12 @@
 import type { AnomalyId } from "../../scene/anomalies";
-import { sfxWrong } from "../../audio/audio";
+import {
+  sfxRunnerBoostPulse,
+  sfxRunnerCluePing,
+  sfxRunnerFloorChime,
+  sfxRunnerJump,
+  sfxRunnerLand,
+  sfxWrong,
+} from "../../audio/audio";
 import { drawRunnerFrame } from "./draw";
 import type { RunnerClueSet } from "./clueTokens";
 import {
@@ -16,6 +23,8 @@ const DEFAULT_CFG: RunnerSimConfig = {
   canvasH: RUNNER_DRAW.canvasH,
   dailyGoalDistance: 2600,
 };
+
+const TIER_RIBBON_MS = 1200;
 
 export interface RunnerSessionOptions {
   readonly baseSeed: number;
@@ -55,6 +64,11 @@ export class RunnerSession {
   private lastTierRibbonFloor = 0;
   private tierRibbon: { tier: number; ageMs: number } | null = null;
   private readonly seenClueTokens = new Set<string>();
+  private readonly onClueTokenSeenBound = (token: string): void => {
+    const before = this.seenClueTokens.size;
+    this.seenClueTokens.add(token);
+    if (this.seenClueTokens.size > before) sfxRunnerCluePing();
+  };
 
   constructor(opts: RunnerSessionOptions) {
     const {
@@ -158,7 +172,17 @@ export class RunnerSession {
     if (this.outcome) return;
 
     if (!this.gameOver) {
+      const wasGrounded = this.sim.grounded;
+      const boostBefore = this.sim.boost01;
       this.sim = stepRunnerSim(this.sim, dtSec, wantJump, wantBoost, this.cfg);
+      // Jump applies JUMP_V0 then gravity in the same step, so vy is never
+      // exactly JUMP_V0 after step — detect an actual impulse (upward vy).
+      if (wantJump && wasGrounded && this.sim.playerVy < 0) {
+        sfxRunnerJump();
+      }
+      if (!wasGrounded && this.sim.grounded) sfxRunnerLand();
+      if (wantBoost && boostBefore > this.sim.boost01 + 0.002)
+        sfxRunnerBoostPulse();
       if (this.sim.failed) {
         this.gameOver = true;
         this.failureAnimMs = 0;
@@ -171,6 +195,7 @@ export class RunnerSession {
         if (floorM > this.lastTierRibbonFloor) {
           this.lastTierRibbonFloor = floorM;
           this.tierRibbon = { tier: floorM, ageMs: 0 };
+          sfxRunnerFloorChime(floorM);
         }
       }
     } else {
@@ -182,15 +207,11 @@ export class RunnerSession {
         tier: this.tierRibbon.tier,
         ageMs: this.tierRibbon.ageMs + dtSec * 1000,
       };
-      if (this.tierRibbon.ageMs >= 1200) this.tierRibbon = null;
+      if (this.tierRibbon.ageMs >= TIER_RIBBON_MS) this.tierRibbon = null;
     }
 
     const modeLabel =
       this.mode === "daily" ? "code run — daily" : "code run — endless";
-
-    const onClue = (token: string): void => {
-      this.seenClueTokens.add(token);
-    };
 
     const baseDraw = {
       scroll: this.sim.scroll,
@@ -202,13 +223,13 @@ export class RunnerSession {
       maxClimbM: this.sim.maxClimbM,
       boost01: this.sim.boost01,
       clueSet: this.clueSet,
-      onClueTokenSeen: onClue,
+      onClueTokenSeen: this.onClueTokenSeenBound,
       anomalyId: this.anomalyId,
       clueTooltipHint: this.clueTooltipHint,
     };
     const tierRibbon =
       this.tierRibbon &&
-      this.tierRibbon.ageMs < 1200 &&
+      this.tierRibbon.ageMs < TIER_RIBBON_MS &&
       this.tierRibbon.tier > 0
         ? this.tierRibbon
         : undefined;

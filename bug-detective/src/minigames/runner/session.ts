@@ -1,5 +1,12 @@
 import type { AnomalyId } from "../../scene/anomalies";
-import { sfxWrong } from "../../audio/audio";
+import {
+  sfxRunnerBoostPulse,
+  sfxRunnerCluePing,
+  sfxRunnerFloorChime,
+  sfxRunnerJump,
+  sfxRunnerLand,
+  sfxWrong,
+} from "../../audio/audio";
 import { drawRunnerFrame } from "./draw";
 import type { RunnerClueSet } from "./clueTokens";
 import {
@@ -158,7 +165,13 @@ export class RunnerSession {
     if (this.outcome) return;
 
     if (!this.gameOver) {
+      const wasGrounded = this.sim.grounded;
+      const boostBefore = this.sim.boost01;
       this.sim = stepRunnerSim(this.sim, dtSec, wantJump, wantBoost, this.cfg);
+      if (wasGrounded && wantJump) sfxRunnerJump();
+      if (!wasGrounded && this.sim.grounded) sfxRunnerLand();
+      if (wantBoost && boostBefore > this.sim.boost01 + 0.002)
+        sfxRunnerBoostPulse();
       if (this.sim.failed) {
         this.gameOver = true;
         this.failureAnimMs = 0;
@@ -171,6 +184,7 @@ export class RunnerSession {
         if (floorM > this.lastTierRibbonFloor) {
           this.lastTierRibbonFloor = floorM;
           this.tierRibbon = { tier: floorM, ageMs: 0 };
+          sfxRunnerFloorChime(floorM);
         }
       }
     } else {
@@ -189,7 +203,9 @@ export class RunnerSession {
       this.mode === "daily" ? "code run — daily" : "code run — endless";
 
     const onClue = (token: string): void => {
+      const before = this.seenClueTokens.size;
       this.seenClueTokens.add(token);
+      if (this.seenClueTokens.size > before) sfxRunnerCluePing();
     };
 
     const baseDraw = {

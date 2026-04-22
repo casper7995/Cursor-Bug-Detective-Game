@@ -33,6 +33,11 @@ import {
   TAMPER_CALLS_PER_ROUND,
 } from "./types";
 import { clueTokenForTamper } from "./clueTokens";
+import {
+  sfxTamperPanelHover,
+  sfxTamperSpotMode,
+  sfxTamperVerdict,
+} from "../../audio/audio";
 
 const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
@@ -156,7 +161,10 @@ export class TamperSession {
       if (inRect(p.x, p.y, hits.approve)) hover = "approve";
       else if (inRect(p.x, p.y, hits.reject)) hover = "reject";
       else if (inRect(p.x, p.y, hits.suggestFix)) hover = "suggestFix";
-      if (this.phase.hover !== hover) this.phase.hover = hover;
+      if (this.phase.hover !== hover) {
+        if (hover !== null) sfxTamperPanelHover();
+        this.phase.hover = hover;
+      }
     };
     const down = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
@@ -189,6 +197,7 @@ export class TamperSession {
           return;
         }
         if (inRect(p.x, p.y, hits.suggestFix)) {
+          sfxTamperSpotMode();
           this.phase = {
             kind: "disagree-point",
             callIndex: this.phase.callIndex,
@@ -238,6 +247,7 @@ export class TamperSession {
     if (!call) return;
     this.verdicts.push(v);
     const r = scoreCall(call, v, this.round.tamperedSpotId);
+    sfxTamperVerdict(r);
     this.phase = { kind: "verdict", callIndex, t: 0, result: r };
   }
 

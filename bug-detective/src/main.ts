@@ -24,6 +24,7 @@ import { renderLeaderboardPanel } from "./ui/leaderboard";
 import { createCountdown } from "./ui/countdown";
 import { createPostFx } from "./three/postFx";
 import {
+  setAmbientContext,
   sfxClueFound,
   sfxCorrect,
   sfxHover,
@@ -1517,6 +1518,24 @@ function bootGameInner(simplified: boolean): void {
     const dtSec = dtMs / 1000;
     lastFrame = now;
     const elapsed = (now - startTime) / 1000;
+
+    if (state.phase.kind === "intro") {
+      setAmbientContext("desk");
+    } else if (state.phase.kind === "runner") {
+      setAmbientContext("runner");
+    } else if (state.phase.kind === "investigating" && deskMinigame) {
+      setAmbientContext(
+        deskMinigame.kind === "sentence"
+          ? "sentence"
+          : deskMinigame.kind === "errand"
+            ? "errand"
+            : "tamper",
+      );
+    } else if (state.phase.kind === "investigating") {
+      setAmbientContext("investigating");
+    } else {
+      setAmbientContext("desk");
+    }
 
     // Desk minis attach keydown on `window` (bubble). InputManager uses capture
     // on `window` for runner — suppress global bindings so Tab/Enter/etc. reach

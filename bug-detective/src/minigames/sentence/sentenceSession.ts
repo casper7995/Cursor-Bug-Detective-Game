@@ -32,6 +32,12 @@ import {
   SENTENCE_SLOTS_PER_TEMPLATE,
 } from "./types";
 import { clueTokenForSentence } from "./clueTokens";
+import {
+  sfxSentencePick,
+  sfxSentencePickHover,
+  sfxSentenceSuggestionOpen,
+  sfxSentenceTypeTick,
+} from "../../audio/audio";
 
 const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
@@ -91,6 +97,8 @@ export class SentenceSession {
   private phase: Phase = { kind: "intro", t: 0 };
   private outcome: MiniGameOutcome | null = null;
   private pointerBound = false;
+  private lastTypewriterTick = -1;
+  private lastPickHover: PickColor | null = null;
   private readonly gate = new TutorialGate({
     title: "Tab — autocomplete the case file",
     tagline: "Press Tab for the recommended suggestion.",
@@ -142,7 +150,12 @@ export class SentenceSession {
       if (!slot) return;
       const rows = getSuggestionRowRects(this.renderCtx, slot.options);
       const hit = inSuggestionRect(rows, p.x, p.y);
-      this.phase.hover = hit ? hit.color : null;
+      const nextHover = hit ? hit.color : null;
+      if (nextHover !== null && nextHover !== this.lastPickHover) {
+        sfxSentencePickHover();
+      }
+      this.lastPickHover = nextHover;
+      this.phase.hover = nextHover;
     };
     const down = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
@@ -217,6 +230,7 @@ export class SentenceSession {
 
   private commitPick(color: PickColor): void {
     if (this.phase.kind !== "pick") return;
+    sfxSentencePick(color);
     const sentenceIdx = this.phase.sentenceIdx;
     this.picks.push({ sentenceIdx, color });
     this.maybeInjectNameForNext();
@@ -258,6 +272,7 @@ export class SentenceSession {
       this.phase = { kind: "result", t: 0 };
       return;
     }
+    this.lastTypewriterTick = -1;
     this.phase = { kind: "type", sentenceIdx: next, t: 0 };
   }
 
@@ -283,6 +298,7 @@ export class SentenceSession {
       case "intro": {
         this.phase = { kind: "intro", t: this.phase.t + dtSec };
         if (this.phase.t >= INTRO_DURATION_S) {
+          this.lastTypewriterTick = -1;
           this.phase = { kind: "type", sentenceIdx: 0, t: 0 };
         }
         break;
@@ -293,7 +309,15 @@ export class SentenceSession {
           sentenceIdx: this.phase.sentenceIdx,
           t: this.phase.t + dtSec,
         };
+        const tick = Math.floor(this.phase.t / 0.055);
+        if (tick > this.lastTypewriterTick) {
+          this.lastTypewriterTick = tick;
+          sfxSentenceTypeTick();
+        }
         if (this.phase.t >= TYPE_PER_SENTENCE_S) {
+          this.lastTypewriterTick = -1;
+          this.lastPickHover = null;
+          sfxSentenceSuggestionOpen();
           this.phase = {
             kind: "pick",
             sentenceIdx: this.phase.sentenceIdx,

@@ -36,6 +36,13 @@ import {
   taskCardAt,
 } from "./draw";
 import { clueTokenForErrand } from "./clueTokens";
+import {
+  sfxErrandAlertChoice,
+  sfxErrandDispatch,
+  sfxErrandGrab,
+  sfxErrandReject,
+  sfxErrandTrapPing,
+} from "../../audio/audio";
 
 const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
@@ -89,11 +96,10 @@ export class ErrandSession {
   private alertedTrapHandled = new Set<HelperIndex>();
   /** Cached abort-modal hit rects, captured during draw. */
   private abortHits: AbortHits | null = null;
-  /** Overlay element (canvas) — used for pointer capture during drag. */
-  private pointerRoot: HTMLElement | null = null;
   /** Brief footer hint after an invalid drop. */
   private transientFooter: string | null = null;
   private transientFooterClear: ReturnType<typeof setTimeout> | null = null;
+  private trapPinged = new Set<HelperIndex>();
   private readonly gate = new TutorialGate({
     title: "Cursor Agents — dispatch queue",
     tagline: "Drag agents onto task cards. Read the icons.",
@@ -147,7 +153,6 @@ export class ErrandSession {
   attachPointer(root: HTMLElement): void {
     if (this.pointerBound) return;
     this.pointerBound = true;
-    this.pointerRoot = root;
     const move = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
       this.pointerX = p.x;
@@ -192,6 +197,7 @@ export class ErrandSession {
         if (idx !== null) {
           const helper = this.helpers[idx];
           if (helper && helper.state === "waiting") {
+            sfxErrandGrab();
             this.grabbedHelper = idx as HelperIndex;
             try {
               root.setPointerCapture(e.pointerId);
@@ -222,7 +228,9 @@ export class ErrandSession {
             helper.drawerAssigned = taskIdx as DrawerIndex;
             helper.state = "filling";
             helper.fillProgress = 0;
+            sfxErrandDispatch();
           } else {
+            sfxErrandReject();
             this.flashTransientFooter("That task already has an agent.");
           }
         }
@@ -250,6 +258,7 @@ export class ErrandSession {
       const free = this.helpers.findIndex((h) => h.state === "waiting");
       if (free < 0) return;
       if (!canAssignHelper(this.helpers, free, taskIdx)) {
+        sfxErrandReject();
         this.flashTransientFooter("That task already has an agent.");
         e.preventDefault();
         return;
@@ -258,6 +267,7 @@ export class ErrandSession {
       helper.drawerAssigned = taskIdx as DrawerIndex;
       helper.state = "filling";
       helper.fillProgress = 0;
+      sfxErrandDispatch();
       e.preventDefault();
     };
     window.addEventListener("keydown", key, true);
@@ -271,7 +281,6 @@ export class ErrandSession {
         clearTimeout(this.transientFooterClear);
         this.transientFooterClear = null;
       }
-      this.pointerRoot = null;
     };
   }
 
@@ -327,9 +336,11 @@ export class ErrandSession {
       helper.drawerAssigned as number
     ] as Drawer;
     if (choice === "abort") {
+      sfxErrandAlertChoice("abort");
       helper.state = "returning";
       helper.result = null;
     } else {
+      sfxErrandAlertChoice("push");
       if (drawer.trapPushIsClue) {
         helper.state = "returning";
         helper.result = "clue";
@@ -381,6 +392,10 @@ export class ErrandSession {
             !this.alertedTrapHandled.has(helper.index) &&
             helper.fillProgress >= drawer.trapAlertAt01
           ) {
+            if (!this.trapPinged.has(helper.index)) {
+              this.trapPinged.add(helper.index);
+              sfxErrandTrapPing();
+            }
             helper.state = "alert";
             this.phase = {
               kind: "alert",

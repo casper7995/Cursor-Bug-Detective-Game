@@ -62,6 +62,7 @@ function resumeAudio(): void {
   if (!ambientStarted && !muted) {
     startAmbient();
     ambientStarted = true;
+    applyAmbientDuckGain();
   }
 }
 
@@ -83,6 +84,7 @@ export function setMuted(v: boolean): void {
   } else if (!ambientStarted) {
     startAmbient();
     ambientStarted = true;
+    applyAmbientDuckGain();
   }
 }
 
@@ -212,8 +214,6 @@ function startAmbient(): void {
   };
 
   ambientNodes = { stopAll };
-
-  applyAmbientDuckGain();
 }
 
 function stopAmbient(): void {

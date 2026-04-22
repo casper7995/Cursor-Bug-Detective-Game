@@ -59,7 +59,8 @@ const PLAYER_H = 52;
 export const PLAYER_SCREEN_X = 96;
 const GRAVITY = 3200;
 /** Slightly stronger jump — easier gaps and vertical steps (was -720). */
-const JUMP_V0 = -800;
+export const RUNNER_JUMP_V0 = -800;
+const JUMP_V0 = RUNNER_JUMP_V0;
 
 /** Exported for tests / tooling — keep in sync with stepRunnerSim. */
 export const RUNNER_SPEED_BASE = 220;

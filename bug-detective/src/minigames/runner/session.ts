@@ -13,6 +13,7 @@ import {
   createRunnerSimWithSeed,
   type RunnerSimConfig,
   type RunnerSimState,
+  RUNNER_JUMP_V0,
   stepRunnerSim,
   RUNNER_DRAW,
 } from "./sim";
@@ -175,7 +176,13 @@ export class RunnerSession {
       const wasGrounded = this.sim.grounded;
       const boostBefore = this.sim.boost01;
       this.sim = stepRunnerSim(this.sim, dtSec, wantJump, wantBoost, this.cfg);
-      if (wasGrounded && wantJump) sfxRunnerJump();
+      if (
+        wantJump &&
+        wasGrounded &&
+        this.sim.playerVy === RUNNER_JUMP_V0
+      ) {
+        sfxRunnerJump();
+      }
       if (!wasGrounded && this.sim.grounded) sfxRunnerLand();
       if (wantBoost && boostBefore > this.sim.boost01 + 0.002)
         sfxRunnerBoostPulse();

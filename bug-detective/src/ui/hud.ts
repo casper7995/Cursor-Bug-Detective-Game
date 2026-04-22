@@ -202,13 +202,13 @@ export function createHud(
     }
     if (n === 0) {
       explorationEl.textContent =
-        "Evidence 0/4 — hover desk props; open monitor, envelope, reagent tray, and lamp for cipher words.";
+        "Objective: hover the desk, spot what feels wrong, and open the monitor, envelope, reagent tray, and lamp for four cipher clues.";
       explorationEl.style.opacity = "1";
       return;
     }
     if (n === 4) {
       explorationEl.textContent =
-        "Evidence 4/4 — all cipher clues collected. Press Enter or click Make the call.";
+        "Objective complete: all four cipher clues are pinned. Press Enter or click Make the call.";
       explorationEl.style.opacity = "1";
       return;
     }
@@ -222,7 +222,7 @@ export function createHud(
       .filter((s) => !nb[s])
       .map((s) => labels[s])
       .join(", ");
-    explorationEl.textContent = `Evidence ${n}/4 — still need clues from: ${missing}.`;
+    explorationEl.textContent = `Evidence ${n}/4 — keep investigating. Still missing: ${missing}.`;
     explorationEl.style.opacity = "1";
   }
 

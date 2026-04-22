@@ -45,11 +45,11 @@ export function showTitleSplash(container: HTMLElement): TitleSplash {
   overlay.innerHTML = `
     <div class="bd-title__inner">
       <canvas class="bd-title__stage" aria-hidden="true"></canvas>
-      <h1 class="bd-title__h1">Cursor Detective</h1>
-      <p class="bd-title__cta">Click to continue</p>
-      <p class="bd-title__introcue">Then move your mouse — a case file lifts away to your desk.</p>
-      <p class="bd-title__roadmap">You will explore the desk for one hidden anomaly, gather <strong>four</strong> cipher clues from the monitor, envelope, reagent tray, and lamp, then <strong>make the call</strong> when every clue slot is filled.</p>
-      <p class="bd-title__hint">Vibe Jam 2026</p>
+      <h1 class="bd-title__h1">Bug Detective</h1>
+      <p class="bd-title__introcue">One desk. One wrong prop. Four clue sources before the final call.</p>
+      <p class="bd-title__roadmap">Lift the case file, scan the desk, clear the <strong>monitor, envelope, reagent tray, and lamp</strong>, then use those cipher words to <strong>make the call</strong>.</p>
+      <p class="bd-title__cta">Click to lift the case file</p>
+      <p class="bd-title__hint">Vibe Jam 2026 · desktop detective puzzle</p>
     </div>
   `;
   container.appendChild(overlay);
@@ -309,13 +309,14 @@ function ensureStyle(): void {
     .bd-title__h1 {
       font-size: clamp(36px, 7vw, 64px);
       letter-spacing: -0.02em;
-      margin: 8px 0 28px;
+      margin: 8px 0 18px;
     }
     .bd-title__introcue {
       font-size: 15px;
+      font-weight: 600;
       line-height: 1.45;
-      opacity: 0.72;
-      margin: 0 0 14px;
+      opacity: 0.84;
+      margin: 0 0 12px;
       max-width: 420px;
       margin-left: auto;
       margin-right: auto;
@@ -323,8 +324,8 @@ function ensureStyle(): void {
     .bd-title__roadmap {
       font-size: 13px;
       line-height: 1.5;
-      opacity: 0.58;
-      margin: 0 0 20px;
+      opacity: 0.68;
+      margin: 0 0 22px;
       max-width: 460px;
       margin-left: auto;
       margin-right: auto;

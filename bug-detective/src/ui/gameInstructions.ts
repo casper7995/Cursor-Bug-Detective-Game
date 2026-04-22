@@ -3,19 +3,19 @@
  */
 
 export const CASE_FILE_TAGLINE =
-  "Confidential · read below, then lift the page when you're ready";
+  "Confidential · scan the desk, collect four clues, then make the call";
 
 /** Drawn on the procedural case-file texture (short lines; canvas layout in pagePeel). */
 export const CASE_FILE_BODY_LINES: readonly string[] = [
   "HOW TO PLAY",
-  "• Hover desk props — one is wrong today; your tooltip flags it.",
-  "• Open the monitor, envelope, reagent tray, and lamp. Each opens a",
-  "  mini-game; solve it to lock a clue word in Evidence.",
-  "• Gather all four clues, then tap Make the call and pick the anomaly.",
-  "• Esc (always) or click exits inspect zoom; X closes desk minis.",
+  "• First: hover the desk. One prop is wrong today.",
+  "• Then open the monitor, envelope, reagent tray, and lamp.",
+  "• Each station gives one clue word. Lock all four into Evidence.",
+  "• When Evidence reads 4/4, hit Make the call and name the anomaly.",
+  "• Esc backs out of inspect zoom; X closes a desk mini.",
   "",
-  "This sheet is only the case jacket. Underneath: your desk, your tools,",
-  "and today's bug. Lifting the page is stepping through into the room.",
+  "This page is only the jacket. Under it: your desk, your tools,",
+  "and one bug hiding in plain sight.",
 ];
 
 /** Richer steps for the optional DOM modal (?howto=1 or settings). */
@@ -25,23 +25,23 @@ export const HOWTO_MODAL_STEPS: readonly {
   icon: string;
 }[] = [
   {
-    title: "Find the bug",
-    body: "Hover desk props. One is wrong today — your tooltip will flag it.",
+    title: "Read the desk first",
+    body: "Hover props and trust your eyes. One detail on the desk is wrong today.",
     icon: "🔎",
   },
   {
     title: "Gather four clues",
-    body: "Click the monitor, envelope, reagent tray, and lamp. Each opens a fullscreen mini-puzzle — solve it to lock a clue word.",
+    body: "Open the monitor, envelope, reagent tray, and lamp. Each one pays out a clue word when you solve its mini-puzzle.",
     icon: "📎",
   },
   {
     title: "Make the call",
-    body: "Open the answer panel (bottom-right) and pick which anomaly you saw.",
+    body: "Once Evidence is full, open the answer panel and pick the anomaly you actually saw on the desk.",
     icon: "✓",
   },
   {
     title: "Controls",
-    body: "Click any prop to inspect. Press Esc anytime to back out of hover zoom; click also exits. Desk minis: X to close (Esc exits the mini).",
+    body: "Click to open stations or inspect flavor props. Esc exits zoom. Desk minis can be closed with X or Esc.",
     icon: "⌨",
   },
 ];

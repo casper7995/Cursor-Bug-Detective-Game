@@ -39,6 +39,9 @@ export async function showHowToPlay(
 
     inner.innerHTML = `
       <h2 id="bd-howto-title" class="bd-howto__h2">How to play</h2>
+      <p class="bd-howto__lede">
+        One prop on the desk is wrong today. Use the four clue stations to prove which one.
+      </p>
       <ol class="bd-howto__steps">
         ${HOWTO_MODAL_STEPS.map(
           (s, i) => `
@@ -140,6 +143,12 @@ function ensureStyle(): void {
       display: flex;
       flex-direction: column;
       gap: 14px;
+    }
+    .bd-howto__lede {
+      margin: 0 0 14px;
+      font-size: 14px;
+      line-height: 1.45;
+      color: rgba(232, 234, 239, 0.84);
     }
     .bd-howto__step {
       display: flex;

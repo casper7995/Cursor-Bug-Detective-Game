@@ -261,12 +261,14 @@ export class TamperSession {
     const key = (e: KeyboardEvent): void => {
       if (e.key !== "Escape") return;
       if (this.gate.isBlocking()) {
+        e.preventDefault();
+        e.stopPropagation();
         this.gate.dismissFromKey();
         return;
       }
       this.onExit();
     };
-    window.addEventListener("keydown", key);
+    window.addEventListener("keydown", key, true);
     (this as unknown as { _cleanup?: () => void })._cleanup = (): void => {
       root.removeEventListener("pointermove", move);
       root.removeEventListener("pointerdown", down);
@@ -274,7 +276,7 @@ export class TamperSession {
       document.removeEventListener("mousedown", onDocMouseDown, true);
       document.removeEventListener("click", onDocClick, true);
       document.removeEventListener("touchstart", onDocTouchStart, true);
-      window.removeEventListener("keydown", key);
+      window.removeEventListener("keydown", key, true);
     };
   }
 

@@ -13,6 +13,7 @@ export interface GameScoreBreakdown {
   readonly weightedSum: number;
   readonly timePenalty: number;
   readonly perGame: Record<NotebookSlot, number>;
+  readonly baseScore: number;
 }
 
 export interface ScoreInputs {
@@ -21,6 +22,8 @@ export interface ScoreInputs {
   readonly elapsedMs: number;
   readonly notebook: NotebookState;
 }
+
+export const BASE_CASE_SCORE = 1000;
 
 function perGameScores(notebook: NotebookState): Record<NotebookSlot, number> {
   return {
@@ -47,6 +50,7 @@ export function computeScore(i: ScoreInputs): {
         weightedSum: 0,
         timePenalty: 0,
         perGame,
+        baseScore: BASE_CASE_SCORE,
       },
     };
   }
@@ -59,7 +63,10 @@ export function computeScore(i: ScoreInputs): {
 
   const elapsedSec = i.elapsedMs / 1000;
   const timePenalty = Math.floor(elapsedSec / 60) * 25;
-  const finalScore = Math.max(0, Math.round(gameScoreSum + 1000 - timePenalty));
+  const finalScore = Math.max(
+    0,
+    Math.round(gameScoreSum + BASE_CASE_SCORE - timePenalty),
+  );
 
   return {
     score: finalScore,
@@ -67,6 +74,7 @@ export function computeScore(i: ScoreInputs): {
       weightedSum: gameScoreSum,
       timePenalty,
       perGame,
+      baseScore: BASE_CASE_SCORE,
     },
   };
 }
@@ -84,4 +92,31 @@ export function formatGameScoresDetail(b: GameScoreBreakdown): string {
   return slots
     .map((k) => `${GAME_SCORE_LABEL[k]} ${Math.round(b.perGame[k])}`)
     .join(" · ");
+}
+
+function deriveFinalScoreFromBreakdown(b: GameScoreBreakdown): number {
+  return Math.max(
+    0,
+    Math.round(b.baseScore + b.weightedSum - b.timePenalty),
+  );
+}
+
+export function formatGameScoreBreakdownLines(
+  b: GameScoreBreakdown,
+  finalScore = deriveFinalScoreFromBreakdown(b),
+): string[] {
+  return [
+    formatGameScoresDetail(b),
+    `Weighted clue score ${Math.round(b.weightedSum)}`,
+    `Base case bonus ${b.baseScore}`,
+    `Time penalty -${Math.round(b.timePenalty)}`,
+    `Final score ${Math.max(0, Math.round(finalScore))}`,
+  ];
+}
+
+export function formatScoreBreakdownSummary(
+  b: GameScoreBreakdown,
+  finalScore = deriveFinalScoreFromBreakdown(b),
+): string {
+  return `${b.baseScore} base + ${Math.round(b.weightedSum)} evidence - ${Math.round(b.timePenalty)} time = ${Math.max(0, Math.round(finalScore))}`;
 }

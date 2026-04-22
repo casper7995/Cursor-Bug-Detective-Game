@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { WRONG_ANSWER_FLOOR, computeScore } from "../src/game/score";
+import {
+  WRONG_ANSWER_FLOOR,
+  computeScore,
+  formatScoreBreakdownSummary,
+} from "../src/game/score";
 import type { NotebookState } from "../src/game/notebook";
 
 function nb(partial: NotebookState): NotebookState {
@@ -60,5 +64,21 @@ describe("computeScore", () => {
     // Equal 0.25 weights → (300+400+500+600)/4 = 450; final = 450 + 1000.
     expect(breakdown.weightedSum).toBeCloseTo(450, 5);
     expect(score).toBe(1450);
+  });
+
+  it("formats a readable breakdown summary", () => {
+    const { breakdown } = computeScore({
+      correct: true,
+      elapsedMs: 120_000,
+      notebook: {
+        runner: { clueToken: "a", gameScore: 300, solvedAtMs: 1 },
+        sentence: { clueToken: "b", gameScore: 400, solvedAtMs: 1 },
+        errand: { clueToken: "c", gameScore: 500, solvedAtMs: 1 },
+        tamper: { clueToken: "d", gameScore: 600, solvedAtMs: 1 },
+      },
+    });
+    expect(formatScoreBreakdownSummary(breakdown, 1400)).toBe(
+      "1000 base + 450 evidence - 50 time = 1400",
+    );
   });
 });

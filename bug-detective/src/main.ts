@@ -1062,7 +1062,13 @@ function bootGameInner(simplified: boolean): void {
       const streak = recordRound(phase.correct);
       const showOutro = phase.correct && streak >= 3 && streak % 3 === 0;
       const proceed = (): void => {
-        showResults(phase.score, phase.correct, 4, phase.elapsedMs);
+        showResults(
+          phase.score,
+          phase.correct,
+          4,
+          phase.elapsedMs,
+          phase.breakdown,
+        );
       };
       if (showOutro) {
         void showStreakOutro(document.body, streak).then(proceed);
@@ -1098,6 +1104,7 @@ function bootGameInner(simplified: boolean): void {
     cluesUsed: number;
     elapsedMs: number;
     rank: number | null;
+    breakdown: import("./game/score").GameScoreBreakdown | null;
   } | null = null;
 
   resultsPanel.onShare(async () => {
@@ -1145,16 +1152,25 @@ function bootGameInner(simplified: boolean): void {
     correct: boolean,
     cluesUsed: number,
     elapsedMs: number,
+    breakdown: import("./game/score").GameScoreBreakdown | null,
   ): void {
-    lastResults = { score, cluesUsed, elapsedMs, rank: null };
-    resultsPanel.show({
+    lastResults = {
+      score,
+      cluesUsed,
+      elapsedMs,
+      rank: null,
+      breakdown,
+    };
+    const resultsView = {
       correct,
       score,
       cluesUsed,
       elapsedMs,
       revealText: picked.def.revealText,
       rank: null,
-    });
+      ...(correct && breakdown ? { breakdown } : {}),
+    };
+    resultsPanel.show(resultsView);
     // Refresh the leaderboard slot async (worker round-trip).
     void fetchLeaderboard(targetDate).then((entries) => {
       // Find current player's rank in the freshly-fetched list. Match on

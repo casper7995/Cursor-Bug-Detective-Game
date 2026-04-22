@@ -1,4 +1,8 @@
 import { formatTime } from "../game/timer";
+import {
+  formatGameScoreBreakdownLines,
+  type GameScoreBreakdown,
+} from "../game/score";
 
 export interface ResultsView {
   readonly correct: boolean;
@@ -6,6 +10,7 @@ export interface ResultsView {
   readonly cluesUsed: number;
   readonly elapsedMs: number;
   readonly revealText: string;
+  readonly breakdown?: GameScoreBreakdown;
   /** Optional rank from leaderboard worker. */
   readonly rank: number | null;
 }
@@ -37,6 +42,12 @@ const STYLE_STAT_LABEL =
   "display:block;font-size:11px;color:#8696b6;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;";
 const STYLE_STAT_VALUE =
   "display:block;font-size:18px;color:#e8efff;font-weight:600;";
+const STYLE_BREAKDOWN_WRAP =
+  "margin:0 0 16px;padding:12px 14px;background:#11151c;border:1px solid rgba(232,239,255,0.08);border-radius:12px;";
+const STYLE_BREAKDOWN_TITLE =
+  "display:block;font:600 11px ui-sans-serif,system-ui,sans-serif;text-transform:uppercase;letter-spacing:0.06em;color:#8696b6;margin-bottom:8px;";
+const STYLE_BREAKDOWN_LINE =
+  "display:block;font:500 13px ui-monospace,monospace;color:#e8efff;line-height:1.5;";
 const STYLE_BTN_ROW = "display:flex;gap:10px;justify-content:flex-end;";
 const STYLE_BTN =
   "padding:11px 18px;border-radius:10px;border:1px solid rgba(232,239,255,0.18);background:#252a36;color:#e8efff;font:600 14px ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background 80ms;";
@@ -70,6 +81,19 @@ export function createResultsPanel(container: HTMLElement): ResultsPanel {
   stats.appendChild(statScore.box);
   stats.appendChild(statClues.box);
   stats.appendChild(statTime.box);
+
+  const breakdownWrap = document.createElement("div");
+  breakdownWrap.style.cssText = STYLE_BREAKDOWN_WRAP;
+  breakdownWrap.style.display = "none";
+  panel.appendChild(breakdownWrap);
+
+  const breakdownTitle = document.createElement("span");
+  breakdownTitle.style.cssText = STYLE_BREAKDOWN_TITLE;
+  breakdownTitle.textContent = "Score breakdown";
+  breakdownWrap.appendChild(breakdownTitle);
+
+  const breakdownLines = document.createElement("div");
+  breakdownWrap.appendChild(breakdownLines);
 
   const lbSlot = document.createElement("div");
   panel.appendChild(lbSlot);
@@ -106,6 +130,26 @@ export function createResultsPanel(container: HTMLElement): ResultsPanel {
     statScore.value.textContent = String(view.score);
     statClues.value.textContent = String(view.cluesUsed);
     statTime.value.textContent = formatTime(view.elapsedMs);
+    breakdownLines.innerHTML = "";
+    if (view.correct && view.breakdown) {
+      for (const line of formatGameScoreBreakdownLines(
+        view.breakdown,
+        view.score,
+      )) {
+        const row = document.createElement("span");
+        row.style.cssText = STYLE_BREAKDOWN_LINE;
+        row.textContent = line;
+        breakdownLines.appendChild(row);
+      }
+      breakdownWrap.style.display = "block";
+    } else {
+      const row = document.createElement("span");
+      row.style.cssText = STYLE_BREAKDOWN_LINE;
+      row.textContent =
+        "Wrong call drops the final score to zero. Gather all four clues and trust the desk.";
+      breakdownLines.appendChild(row);
+      breakdownWrap.style.display = "block";
+    }
     overlay.style.display = "flex";
   }
 

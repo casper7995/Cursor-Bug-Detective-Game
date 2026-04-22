@@ -603,6 +603,7 @@ function bootGameInner(simplified: boolean): void {
   } | null = null;
   /** Endless runner: auto-restart countdown after game over (seconds). */
   let runnerEndlessDeathTimer = 0;
+  const RUNNER_ENDLESS_RESTART_DELAY_S = 2.1;
 
   function removeRunnerTutorialOverlays(): void {
     document.querySelectorAll("#bd-runner-tutorial").forEach((el) => {
@@ -854,8 +855,8 @@ function bootGameInner(simplified: boolean): void {
     runnerSurfaceRestore = swap.restore;
     hud.setStatusText(
       mode === "daily"
-        ? "code run — Tab to jump · hold Right · Esc exit"
-        : "endless run — Tab to jump · hold Right · Esc exit",
+        ? "daily code run — Tab jumps · hold Right through wide gaps · Esc exits"
+        : "endless code run — climb for height · Tab jumps · hold Right · Esc exits",
     );
 
     window.setTimeout(() => {
@@ -1554,7 +1555,7 @@ function bootGameInner(simplified: boolean): void {
         } else if (runnerSession.isGameOver()) {
           if (mode === "endless") {
             runnerEndlessDeathTimer += dtSec;
-            if (runnerEndlessDeathTimer >= 1.5) {
+            if (runnerEndlessDeathTimer >= RUNNER_ENDLESS_RESTART_DELAY_S) {
               runnerSession.restartSameMode();
               runnerEndlessDeathTimer = 0;
             }
@@ -1569,7 +1570,9 @@ function bootGameInner(simplified: boolean): void {
             }
           }
           const progress =
-            mode === "endless" ? Math.min(1, runnerEndlessDeathTimer / 1.5) : 0;
+            mode === "endless"
+              ? Math.min(1, runnerEndlessDeathTimer / RUNNER_ENDLESS_RESTART_DELAY_S)
+              : 0;
           runnerSession.step(dtSec, false, false, {
             restartProgress01: progress,
           });
@@ -1600,17 +1603,19 @@ function bootGameInner(simplified: boolean): void {
               sfxClueFound();
               if (phase) hud.setNotebook(phase.notebook);
               hud.setStatusText(
-                `monitor evidence · ${picked.def.gameClueWords.runner.toUpperCase()}`,
+                `runner clue locked · ${picked.def.gameClueWords.runner.toUpperCase()} · daily clear unlocks endless`,
               );
             } else if (captured.kind === "daily_fail") {
               state.returnToInvestigatingFromRunner({});
-              hud.setStatusText("find the bug — hover to investigate");
+              hud.setStatusText(
+                "runner failed — sweep the desk again or click monitor to retry the clue run",
+              );
             } else {
               state.returnToInvestigatingFromRunner({
                 monitorDailyClear: true,
               });
               hud.setStatusText(
-                `endless over — best ${captured.score} · click monitor to replay`,
+                `endless complete — best ${captured.score}m · click monitor to climb again`,
               );
               void postScore(
                 {
@@ -1627,7 +1632,7 @@ function bootGameInner(simplified: boolean): void {
               ).then((res) => {
                 if (!res) return;
                 hud.setStatusText(
-                  `endless over — rank ${res.rank} · click monitor to replay`,
+                  `endless complete — rank ${res.rank} · click monitor to climb again`,
                 );
               });
             }

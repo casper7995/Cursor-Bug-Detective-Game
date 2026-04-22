@@ -20,7 +20,7 @@ export const CODE_SNIPPETS: readonly string[] = [
   "expect(detective.solve(case)).toBe('arrested');",
   "logger.debug('pointerdown', { x, y, target });",
   "const result = anomalies.filter(a => a.live);",
-  "// TODO: replace with deterministic seeding",
+  "const seed = dailyHash(utcDate);",
   "type Anomaly = { id: string; severity: number };",
 ];
 

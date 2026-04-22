@@ -39,6 +39,7 @@ const SNIPPET_BASELINE_OFFSET = 10;
 /** Top HUD bar height; clue strip sits directly under it (same y offset). */
 const RUNNER_HUD_TOP_PX = 36;
 const CLUE_STRIP_H = 22;
+const DAILY_GOAL_M = 2600;
 
 export interface DrawRunnerOpts {
   scroll: number;
@@ -410,7 +411,7 @@ export function drawGameOverCard(
   ctx.font = "13px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
   ctx.fillStyle = "rgba(237,236,236,0.65)";
   if (mode === "endless") {
-    ctx.fillText("Restarting… Esc to exit", w / 2, y0 + 148);
+    ctx.fillText("Auto-retrying… Esc to leave the monitor", w / 2, y0 + 148);
     const barW = cw - 48;
     const bx = (w - barW) / 2;
     const by = y0 + 158;
@@ -419,7 +420,7 @@ export function drawGameOverCard(
     ctx.fillStyle = CURSOR_ORANGE;
     ctx.fillRect(bx, by, barW * restartProgress01, 6);
   } else {
-    ctx.fillText("R retry · Esc exit", w / 2, y0 + 154);
+    ctx.fillText("R retry · Esc back to the desk", w / 2, y0 + 154);
   }
   ctx.textAlign = "left";
   ctx.restore();
@@ -595,9 +596,13 @@ export function drawRunnerFrame(
   ctx.font = FONT_HUD_SM;
   const boostColor = boost01 >= 0.5 ? CURSOR_ORANGE : CURSOR_GOLD;
   ctx.fillStyle = boostColor;
-  const rightParts = [`m ${Math.floor(maxClimbM)}`];
+  const rightParts = [`height ${Math.floor(maxClimbM)}m`];
+  if (modeLabel.includes("daily")) {
+    const goalPct = Math.min(100, Math.round((maxClimbM / DAILY_GOAL_M) * 100));
+    rightParts.push(`goal ${goalPct}%`);
+  }
   if (boost01 > 0.02) {
-    rightParts.push(`hold → ${Math.floor(boost01 * 100)}%`);
+    rightParts.push(`boost ${Math.floor(boost01 * 100)}%`);
   }
   const rightText = rightParts.join(" · ");
   ctx.fillText(rightText, W - 12 - ctx.measureText(rightText).width, 22);

@@ -25,6 +25,7 @@ const DEFAULT_CFG: RunnerSimConfig = {
 };
 
 const TIER_RIBBON_MS = 1200;
+export const RUNNER_ENDLESS_AUTORESTART_MS = 2200;
 
 export interface RunnerSessionOptions {
   readonly baseSeed: number;
@@ -129,6 +130,15 @@ export class RunnerSession {
 
   getSeenClueList(): readonly string[] {
     return [...this.seenClueTokens].sort();
+  }
+
+  getRunProgress01(): number {
+    if (this.mode !== "daily") return 0;
+    return Math.min(1, this.sim.scroll / this.cfg.dailyGoalDistance);
+  }
+
+  getBoostPercent(): number {
+    return Math.round(this.sim.boost01 * 100);
   }
 
   /** New course, same mode; clears game over. */

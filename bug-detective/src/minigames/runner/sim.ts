@@ -63,14 +63,14 @@ export const RUNNER_JUMP_V0 = -800;
 const JUMP_V0 = RUNNER_JUMP_V0;
 
 /** Exported for tests / tooling — keep in sync with stepRunnerSim. */
-export const RUNNER_SPEED_BASE = 220;
-export const RUNNER_SPEED_BOOST_MAX = 520;
+export const RUNNER_SPEED_BASE = 228;
+export const RUNNER_SPEED_BOOST_MAX = 540;
 const SPEED_BASE = RUNNER_SPEED_BASE;
 const SPEED_BOOST_MAX = RUNNER_SPEED_BOOST_MAX;
-const BOOST_CHARGE_PER_LANDING = 0.35;
-const BOOST_DRAIN_PER_SEC = 0.22;
+const BOOST_CHARGE_PER_LANDING = 0.38;
+const BOOST_DRAIN_PER_SEC = 0.2;
 /** Fall this far below last ground surface (px) → void death (~0.32s after walk-off). */
-export const VOID_DEPTH_PX = 160;
+export const VOID_DEPTH_PX = 176;
 /** Fewer world pixels per HUD “meter” — same climb reads as higher / more rewarding. */
 const CLIMB_PX_PER_M = 2;
 
@@ -80,9 +80,9 @@ const MIN_GAP = 32;
 export const LAYOUT_FLOOR_Y = 292;
 
 /** Ms after first touch before plank stops supporting the player. */
-export const PLANK_LIFE_MS = 4500;
+export const PLANK_LIFE_MS = 4800;
 /** Base ms before an untouched plank stops supporting (tier shortens this). */
-export const PRISTINE_LIFE_BASE_MS = 6500;
+export const PRISTINE_LIFE_BASE_MS = 7000;
 /** Keep culled planks a little longer so fade-out can finish. */
 const PLANK_CULL_GRACE_MS = 200;
 

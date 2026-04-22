@@ -95,15 +95,19 @@ export function toggleMute(): boolean {
   return muted;
 }
 
-export function setAmbientContext(ctx: AmbientContext): void {
-  if (ctx === ambientContext) return;
-  ambientContext = ctx;
+function applyAmbientDuckGain(): void {
   if (muted || !ambientStarted) return;
-  const target = AMBIENT_TARGET[ctx];
+  const target = AMBIENT_TARGET[ambientContext];
   const now = AC.currentTime;
   ambientDuck.gain.cancelScheduledValues(now);
   ambientDuck.gain.setValueAtTime(ambientDuck.gain.value, now);
   ambientDuck.gain.linearRampToValueAtTime(target, now + 0.35);
+}
+
+export function setAmbientContext(ctx: AmbientContext): void {
+  if (ctx === ambientContext) return;
+  ambientContext = ctx;
+  applyAmbientDuckGain();
 }
 
 // ---------------------------------------------------------------------
@@ -209,7 +213,7 @@ function startAmbient(): void {
 
   ambientNodes = { stopAll };
 
-  setAmbientContext(ambientContext);
+  applyAmbientDuckGain();
 }
 
 function stopAmbient(): void {

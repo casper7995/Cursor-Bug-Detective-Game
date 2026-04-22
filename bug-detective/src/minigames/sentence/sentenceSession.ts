@@ -228,7 +228,7 @@ export class SentenceSession {
     };
   }
 
-  private commitPick(color: PickColor): void {
+  private commitPick(color: PickColor | "idle"): void {
     if (this.phase.kind !== "pick") return;
     sfxSentencePick(color);
     const sentenceIdx = this.phase.sentenceIdx;
@@ -239,10 +239,7 @@ export class SentenceSession {
 
   private commitIdle(): void {
     if (this.phase.kind !== "pick") return;
-    const sentenceIdx = this.phase.sentenceIdx;
-    this.picks.push({ sentenceIdx, color: "idle" });
-    this.maybeInjectNameForNext();
-    this.advanceAfterPick();
+    this.commitPick("idle");
   }
 
   private maybeInjectNameForNext(): void {

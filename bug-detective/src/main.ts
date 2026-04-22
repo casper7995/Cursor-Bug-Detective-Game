@@ -601,6 +601,12 @@ function bootGameInner(simplified: boolean): void {
   /** Endless runner: auto-restart countdown after game over (seconds). */
   let runnerEndlessDeathTimer = 0;
 
+  function removeRunnerTutorialOverlays(): void {
+    document.querySelectorAll("#bd-runner-tutorial").forEach((el) => {
+      el.remove();
+    });
+  }
+
   type DeskMini =
     | { kind: "sentence"; session: SentenceSession }
     | { kind: "errand"; session: ErrandSession }
@@ -671,6 +677,7 @@ function bootGameInner(simplified: boolean): void {
     diorama.flags.envelopeOpen = false;
     diorama.flags.reagentActive = false;
     diorama.flags.lampActive = false;
+    removeRunnerTutorialOverlays();
     runnerOverlay?.dispose();
     runnerOverlay = null;
     runnerUpdateMonitorTexture = true;
@@ -803,6 +810,7 @@ function bootGameInner(simplified: boolean): void {
     runnerSurfaceRestore?.();
     runnerSession?.dispose();
     runnerOverlay?.dispose();
+    removeRunnerTutorialOverlays();
 
     runnerOverlay = createRunnerOverlay(root);
     void tryMountRunnerTutorialGate(root);

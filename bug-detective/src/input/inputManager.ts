@@ -99,7 +99,9 @@ export class InputManager {
   };
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
-    if (this.suppressGameKeys) return;
+    // Always clear physical key state so keys held before a desk mini opens
+    // cannot stay "down" forever when keyup is suppressed for game actions.
     this.codesDown.delete(e.code);
+    if (this.suppressGameKeys) return;
   };
 }

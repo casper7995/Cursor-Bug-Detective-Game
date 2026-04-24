@@ -39,6 +39,7 @@ export type Phase =
       startedAt: number;
       notebook: NotebookState;
       elapsedMs: number;
+      monitorDailyClear: boolean;
     }
   | {
       kind: "results";
@@ -47,6 +48,7 @@ export type Phase =
       notebook: NotebookState;
       elapsedMs: number;
       breakdown: GameScoreBreakdown;
+      monitorDailyClear: boolean;
     };
 
 export class GameState {
@@ -79,7 +81,6 @@ export class GameState {
   enterRunner(now: number, mode: RunnerMode): boolean {
     if (this.phase.kind !== "investigating") return false;
     const p = this.phase;
-    if (mode === "daily" && p.monitorDailyClear) return false;
     if (mode === "endless" && !p.monitorDailyClear) return false;
     this.phase = {
       kind: "runner",
@@ -112,12 +113,14 @@ export class GameState {
   enterAnswering(now: number): boolean {
     if (this.phase.kind !== "investigating") return false;
     if (!notebookComplete(this.phase.notebook)) return false;
-    const elapsedMs = Math.max(0, now - this.phase.startedAt);
+    const inv = this.phase;
+    const elapsedMs = Math.max(0, now - inv.startedAt);
     this.phase = {
       kind: "answering",
-      startedAt: this.phase.startedAt,
-      notebook: this.phase.notebook,
+      startedAt: inv.startedAt,
+      notebook: inv.notebook,
       elapsedMs,
+      monitorDailyClear: inv.monitorDailyClear,
     };
     return true;
   }
@@ -125,20 +128,35 @@ export class GameState {
   /** Player picked a choice. Compute score and transition to results. */
   submit(choiceIndex: number, correctIndex: number): void {
     if (this.phase.kind !== "answering") return;
+    const ans = this.phase;
     const correct = choiceIndex === correctIndex;
     const { score, breakdown } = computeScore({
       correct,
-      elapsedMs: this.phase.elapsedMs,
-      notebook: this.phase.notebook,
+      elapsedMs: ans.elapsedMs,
+      notebook: ans.notebook,
     });
     this.phase = {
       kind: "results",
       correct,
       score,
-      notebook: this.phase.notebook,
-      elapsedMs: this.phase.elapsedMs,
+      notebook: ans.notebook,
+      elapsedMs: ans.elapsedMs,
       breakdown,
+      monitorDailyClear: ans.monitorDailyClear,
     };
+  }
+
+  /** Leave results overlay and keep the same case + notebook (replay minis). */
+  resumeInvestigatingFromResults(now: number): boolean {
+    if (this.phase.kind !== "results") return false;
+    const p = this.phase;
+    this.phase = {
+      kind: "investigating",
+      startedAt: now,
+      notebook: p.notebook,
+      monitorDailyClear: p.monitorDailyClear,
+    };
+    return true;
   }
 
   restart(): void {

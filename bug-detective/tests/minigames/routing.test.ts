@@ -61,6 +61,19 @@ describe("full desk interaction routing", () => {
     });
   });
 
+  it("Shift+click monitor routes to daily practice after daily clear", () => {
+    expect(
+      routeDeskInteractionTag("monitor", {
+        ...shared,
+        monitorDailyClear: true,
+        shiftKey: true,
+      }),
+    ).toEqual({
+      kind: "runner",
+      mode: "daily",
+    });
+  });
+
   it("routes case file separately", () => {
     expect(routeDeskInteractionTag("case-file", shared)).toEqual({
       kind: "case-file",

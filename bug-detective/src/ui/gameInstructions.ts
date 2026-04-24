@@ -41,7 +41,7 @@ export const HOWTO_MODAL_STEPS: readonly {
   },
   {
     title: "Controls",
-    body: "Click to open stations or inspect flavor props. Esc exits zoom. Desk minis can be closed with X or Esc.",
+    body: "Click to open stations or inspect flavor props. Esc exits inspect zoom (or tap Exit on the bar). Code run jumps with Space. After you clear the daily monitor run, Shift+click the monitor to practice daily again; normal click opens endless.",
     icon: "⌨",
   },
 ];

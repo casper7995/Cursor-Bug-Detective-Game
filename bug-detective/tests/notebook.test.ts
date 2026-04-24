@@ -31,4 +31,41 @@ describe("notebook gating", () => {
     expect(g.enterAnswering(t0 + 300)).toBe(true);
     expect(g.phase.kind).toBe("answering");
   });
+
+  it("allows daily runner again after monitor clear and resumes desk from results", () => {
+    const g = new GameState();
+    const t0 = 5000;
+    g.enterInvestigating(t0);
+    g.phase = {
+      kind: "investigating",
+      startedAt: t0,
+      notebook: {},
+      monitorDailyClear: true,
+    };
+    expect(g.enterRunner(t0 + 1, "daily")).toBe(true);
+    expect(g.phase.kind).toBe("runner");
+    g.returnToInvestigatingFromRunner({});
+    expect(g.phase.kind).toBe("investigating");
+    if (g.phase.kind !== "investigating")
+      throw new Error("expected investigating");
+    g.phase = {
+      kind: "results",
+      correct: true,
+      score: 100,
+      notebook: g.phase.notebook,
+      elapsedMs: 10,
+      breakdown: {
+        weightedSum: 0,
+        timePenalty: 0,
+        perGame: { runner: 0, sentence: 0, errand: 0, tamper: 0 },
+        baseScore: 0,
+      },
+      monitorDailyClear: true,
+    };
+    expect(g.resumeInvestigatingFromResults(t0 + 999)).toBe(true);
+    expect(g.phase.kind).toBe("investigating");
+    if (g.phase.kind !== "investigating")
+      throw new Error("expected investigating");
+    expect(g.phase.monitorDailyClear).toBe(true);
+  });
 });

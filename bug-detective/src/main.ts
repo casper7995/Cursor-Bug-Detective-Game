@@ -6,9 +6,7 @@ import { createMascotMesh } from "./cursor/mascotMesh";
 import { MascotController } from "./cursor/mascotController";
 import { createDesktopDiorama } from "./scene/desktopDiorama";
 import { applyPropFlavor } from "./scene/propInteractions";
-import {
-  routeDeskInteractionTag,
-} from "./scene/deskInteractionRouting";
+import { routeDeskInteractionTag } from "./scene/deskInteractionRouting";
 import { CursorTracker } from "./intro/cursorTracker";
 import { createPagePeel, type PagePeel } from "./intro/pagePeel";
 import { showCaseFileModal } from "./ui/caseFileModal";
@@ -210,7 +208,10 @@ function bootGameInner(simplified: boolean): void {
         { x: number; y: number } | null
       >;
     }
-  ).__bdResolveAllHovers = (): Record<string, { x: number; y: number } | null> => {
+  ).__bdResolveAllHovers = (): Record<
+    string,
+    { x: number; y: number } | null
+  > => {
     const checklistTags = [
       "calendar",
       "mug",
@@ -230,7 +231,12 @@ function bootGameInner(simplified: boolean): void {
     for (const t of checklistTags) out[t] = null;
     const r = renderer.domElement.getBoundingClientRect();
     const hitsAt = (x: number, y: number): readonly { tag: string }[] => {
-      if (x <= r.left + 1 || x >= r.right - 1 || y <= r.top + 1 || y >= r.bottom - 1)
+      if (
+        x <= r.left + 1 ||
+        x >= r.right - 1 ||
+        y <= r.top + 1 ||
+        y >= r.bottom - 1
+      )
         return [];
       const ndc = new THREE.Vector2(
         ((x - r.left) / r.width) * 2 - 1,
@@ -289,15 +295,17 @@ function bootGameInner(simplified: boolean): void {
     };
     const step = 2;
     for (let y = r.top + 2; y < r.bottom - 2 && remaining.size > 0; y += step) {
-      for (let x = r.left + 2; x < r.right - 2 && remaining.size > 0; x += step) {
+      for (
+        let x = r.left + 2;
+        x < r.right - 2 && remaining.size > 0;
+        x += step
+      ) {
         const hits = hitsAt(x, y);
         for (const want of checklistTags) {
           if (!remaining.has(want)) continue;
           if (!hits.some((h) => h.tag === want)) continue;
-          const refined =
-            refineTop(x, y, want) ??
-            refineInTop3(x, y, want) ??
-            { x: Math.round(x), y: Math.round(y) };
+          const refined = refineTop(x, y, want) ??
+            refineInTop3(x, y, want) ?? { x: Math.round(x), y: Math.round(y) };
           if (!verify(refined, want)) continue;
           out[want] = refined;
           remaining.delete(want);
@@ -311,10 +319,11 @@ function bootGameInner(simplified: boolean): void {
         for (let x = r.left + 1; x < r.right - 1; x += fineStep) {
           const h = hitsAt(x, y);
           if (h[0]?.tag === want || h.some((e) => e.tag === want)) {
-            const cand =
-              refineTop(x, y, want) ??
-              refineInTop3(x, y, want) ??
-              { x: Math.round(x), y: Math.round(y) };
+            const cand = refineTop(x, y, want) ??
+              refineInTop3(x, y, want) ?? {
+                x: Math.round(x),
+                y: Math.round(y),
+              };
             if (!verify(cand, want)) continue;
             out[want] = cand;
             remaining.delete(want);
@@ -358,7 +367,12 @@ function bootGameInner(simplified: boolean): void {
       const seed = pts[`hit_${tag}`];
       if (!seed) return null;
       const tryPt = (x: number, y: number): { x: number; y: number } | null => {
-        if (x <= r.left + 1 || x >= r.right - 1 || y <= r.top + 1 || y >= r.bottom - 1)
+        if (
+          x <= r.left + 1 ||
+          x >= r.right - 1 ||
+          y <= r.top + 1 ||
+          y >= r.bottom - 1
+        )
           return null;
         const top = ray(x, y)[0]?.tag;
         return top === tag ? { x: Math.round(x), y: Math.round(y) } : null;
@@ -855,8 +869,8 @@ function bootGameInner(simplified: boolean): void {
     runnerSurfaceRestore = swap.restore;
     hud.setStatusText(
       mode === "daily"
-        ? "daily code run — Tab jumps · hold Right through wide gaps · Esc exits"
-        : "endless code run — climb for height · Tab jumps · hold Right · Esc exits",
+        ? "daily code run — Space jumps · hold Right through wide gaps · Esc exits"
+        : "endless code run — climb for height · Space jumps · hold Right · Esc exits",
     );
 
     window.setTimeout(() => {
@@ -887,24 +901,20 @@ function bootGameInner(simplified: boolean): void {
     return hits[0] ?? null;
   }
 
-  function handleDeskPointerDown(e: PointerEvent): void {
-    if (deskMinigame || runnerSession) return;
+  function dispatchDeskInteractionFromHit(
+    hit: THREE.Intersection,
+    e: PointerEvent,
+  ): void {
     if (state.phase.kind !== "investigating") return;
-    if (inspectZoomActive) {
-      exitInspectZoom(200);
-      return;
-    }
-    if (flavorInspectReturn) {
-      endFlavorInspectNow();
-      return;
-    }
-    const hit = pickDeskInteractionHit(e.clientX, e.clientY);
-    if (!hit?.object) return;
-    const tag = hit.object.userData.tag;
+    const inv = state.phase;
+    const obj = hit.object;
+    if (!obj) return;
+    const tag = obj.userData.tag;
     if (typeof tag !== "string") return;
     const route = routeDeskInteractionTag(tag, {
-      monitorDailyClear: state.phase.monitorDailyClear,
+      monitorDailyClear: inv.monitorDailyClear,
       anomalyTargetTag: picked.def.targetTag,
+      shiftKey: e.shiftKey,
     });
     const now = performance.now();
 
@@ -921,13 +931,23 @@ function bootGameInner(simplified: boolean): void {
         void showCaseFileModal(root);
         return;
       case "flavor":
-        startFlavorInspect(hit.object);
+        startFlavorInspect(obj);
         return;
       case "none":
         return;
       default:
         assertNever(route);
     }
+  }
+
+  function handleDeskPointerDown(e: PointerEvent): void {
+    if (deskMinigame || runnerSession) return;
+    if (state.phase.kind !== "investigating") return;
+    if (inspectZoomActive) exitInspectZoom(200);
+    if (flavorInspectReturn) endFlavorInspectNow();
+    const hit = pickDeskInteractionHit(e.clientX, e.clientY);
+    if (!hit?.object) return;
+    dispatchDeskInteractionFromHit(hit, e);
   }
 
   renderer.domElement.addEventListener("pointerdown", handleDeskPointerDown, {
@@ -1025,6 +1045,12 @@ function bootGameInner(simplified: boolean): void {
     void cameraRig.scriptedTo(inspectReturnPos, inspectReturnLook, durationMs);
   }
 
+  hud.onInspectExit(() => {
+    if (state.phase.kind !== "investigating") return;
+    if (inspectZoomActive) exitInspectZoom(420);
+    else endFlavorInspectNow();
+  });
+
   /** Escape always exits hover inspect / flavor zoom (desk minis + runner keep their own Esc). */
   document.addEventListener(
     "keydown",
@@ -1094,6 +1120,22 @@ function bootGameInner(simplified: boolean): void {
 
   resultsPanel.onRestart(() => {
     restartRound();
+  });
+
+  resultsPanel.onBackToDesk(() => {
+    if (!state.resumeInvestigatingFromResults(performance.now())) return;
+    resultsPanel.hide();
+    countdown.stop();
+    lastResults = null;
+    if (state.phase.kind !== "investigating") return;
+    hud.setNotebook(state.phase.notebook);
+    hud.setStatusText(
+      state.phase.monitorDailyClear
+        ? "Shift+click monitor — daily practice · click monitor — endless code run"
+        : "sweep the desk — hover props and trust your tooltip",
+    );
+    void cameraRig.scriptedTo(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT, 380);
+    mascotController.setFrozen(false);
   });
 
   const countdown = createCountdown();
@@ -1279,9 +1321,8 @@ function bootGameInner(simplified: boolean): void {
   //      surface while scale ramps (no "buried in the desk" frame).
   //   5. Cursor tracker switches target to desk; hop-on + walk-in + HUD.
   //   6. State transitions to investigating (untimed round).
-  const fastIntro = new URLSearchParams(window.location.search).get(
-    "fastIntro",
-  ) === "1";
+  const fastIntro =
+    new URLSearchParams(window.location.search).get("fastIntro") === "1";
   const MIN_CASE_READ_MS = fastIntro ? 0 : 3200; // QA: `?fastIntro=1` skips dwell for automated smoke
   const PEEL_BEGIN_MS = 200; // delay between mascot reaction and peel start
   const DOLLY_START_DELAY_MS = 420; // let the peel read before camera moves
@@ -1317,7 +1358,7 @@ function bootGameInner(simplified: boolean): void {
   caseFileCta.setAttribute("aria-live", "polite");
   caseFileCta.innerHTML =
     "<div>Press Space, Enter, or click to lift the page</div>" +
-    '<div style="margin-top:8px;font:500 12px \'Cursor Gothic\',ui-sans-serif,sans-serif;opacity:0.82;line-height:1.4;">' +
+    "<div style=\"margin-top:8px;font:500 12px 'Cursor Gothic',ui-sans-serif,sans-serif;opacity:0.82;line-height:1.4;\">" +
     "After the peel, <strong>hover the desk</strong> to locate the live bug. " +
     "Then clear the <strong>monitor, envelope, tray, and lamp</strong> for four cipher clues before you make the call.</div>";
   caseFileCta.style.cssText =
@@ -1424,7 +1465,8 @@ function bootGameInner(simplified: boolean): void {
           mascot.setTilt(0);
           mascot.setStride(0, 0);
           sfxMascotLand();
-          const landY = diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE;
+          const landY =
+            diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE;
           introLandingFeet.set(0.4, landY, 0.4);
           const hopYaw = Math.atan2(
             introLandingFeet.x - mascot.group.position.x,
@@ -1543,10 +1585,7 @@ function bootGameInner(simplified: boolean): void {
       }
       mascot.setStride(0, 0);
     } else if (state.phase.kind === "intro" && introStep === "landingHop") {
-      const u = Math.min(
-        1,
-        (now - introStepStartedAt) / INTRO_HOP_MS,
-      );
+      const u = Math.min(1, (now - introStepStartedAt) / INTRO_HOP_MS);
       const arc = Math.sin(u * Math.PI);
       mascot.group.position.y = introHopBaseY + arc * INTRO_HOP_PEAK_Y;
       mascot.setTilt(-arc * 0.32);
@@ -1564,8 +1603,14 @@ function bootGameInner(simplified: boolean): void {
             runnerSession.exitFromGameOverToDesktop();
           } else {
             void endRunnerSessionAsync(now).then(() => {
-              state.returnToInvestigatingFromRunner({});
-              hud.setStatusText("find the bug — hover to investigate");
+              const phase = state.returnToInvestigatingFromRunner({});
+              if (phase?.monitorDailyClear) {
+                hud.setStatusText(
+                  "Shift+click monitor — daily practice · click monitor — endless",
+                );
+              } else {
+                hud.setStatusText("find the bug — hover to investigate");
+              }
             });
           }
         } else if (runnerSession.isGameOver()) {
@@ -1587,7 +1632,10 @@ function bootGameInner(simplified: boolean): void {
           }
           const progress =
             mode === "endless"
-              ? Math.min(1, runnerEndlessDeathTimer / RUNNER_ENDLESS_RESTART_DELAY_S)
+              ? Math.min(
+                  1,
+                  runnerEndlessDeathTimer / RUNNER_ENDLESS_RESTART_DELAY_S,
+                )
               : 0;
           runnerSession.step(dtSec, false, false, {
             restartProgress01: progress,
@@ -1619,7 +1667,7 @@ function bootGameInner(simplified: boolean): void {
               sfxClueFound();
               if (phase) hud.setNotebook(phase.notebook);
               hud.setStatusText(
-                `runner clue locked · ${picked.def.gameClueWords.runner.toUpperCase()} · daily clear unlocks endless`,
+                `runner clue locked · ${picked.def.gameClueWords.runner.toUpperCase()} · endless: click monitor · daily replay: Shift+click`,
               );
             } else if (captured.kind === "daily_fail") {
               state.returnToInvestigatingFromRunner({});
@@ -1631,7 +1679,7 @@ function bootGameInner(simplified: boolean): void {
                 monitorDailyClear: true,
               });
               hud.setStatusText(
-                `endless complete — best ${captured.score}m · click monitor to climb again`,
+                `endless complete — best ${captured.score}m · click monitor (endless) · Shift+click (daily)`,
               );
               void postScore(
                 {
@@ -1648,7 +1696,7 @@ function bootGameInner(simplified: boolean): void {
               ).then((res) => {
                 if (!res) return;
                 hud.setStatusText(
-                  `endless complete — rank ${res.rank} · click monitor to climb again`,
+                  `endless complete — rank ${res.rank} · click monitor (endless) · Shift+click (daily)`,
                 );
               });
             }
@@ -1735,8 +1783,9 @@ function bootGameInner(simplified: boolean): void {
       if (hover.tag) {
         const hint = friendlyTagName(hover.tag);
         hud.setHover(hover.tag, hint);
-        (window as unknown as { __bdLastHoverTag?: string | null }).__bdLastHoverTag =
-          hover.tag;
+        (
+          window as unknown as { __bdLastHoverTag?: string | null }
+        ).__bdLastHoverTag = hover.tag;
         if (lastHoverTag !== hover.tag) {
           if (hover.tag !== null) sfxHover();
           lastHoverTag = hover.tag;
@@ -1744,8 +1793,9 @@ function bootGameInner(simplified: boolean): void {
         mascot.setMagnifierLifted(isAnomalyTarget ? 1 : 0);
       } else {
         hud.setHover(null);
-        (window as unknown as { __bdLastHoverTag?: string | null }).__bdLastHoverTag =
-          null;
+        (
+          window as unknown as { __bdLastHoverTag?: string | null }
+        ).__bdLastHoverTag = null;
         mascot.setMagnifierLifted(0);
         lastHoverTag = null;
       }

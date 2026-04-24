@@ -28,15 +28,24 @@ export function routeDeskInteractionTag(
   opts: {
     readonly monitorDailyClear: boolean;
     readonly anomalyTargetTag: string;
+    /**
+     * After daily is cleared, normal click opens endless; Shift+click opens
+     * daily practice again.
+     */
+    readonly shiftKey?: boolean;
   },
 ): DeskInteractionRoute {
   switch (tag) {
     case "monitor":
-    case "monitor-screen":
+    case "monitor-screen": {
+      const wantDaily =
+        !opts.monitorDailyClear ||
+        (opts.monitorDailyClear && opts.shiftKey === true);
       return {
         kind: "runner",
-        mode: opts.monitorDailyClear ? "endless" : "daily",
+        mode: wantDaily ? "daily" : "endless",
       };
+    }
     case "case-file":
       return { kind: "case-file" };
     default: {

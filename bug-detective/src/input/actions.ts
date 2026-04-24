@@ -7,7 +7,7 @@ export const Action = {
   MenuConfirm: "MenuConfirm",
   MenuBack: "MenuBack",
   Settings: "Settings",
-  /** Jump in the monitor code-runner minigame — Tab (Cursor loves tab). */
+  /** Jump in the monitor code-runner minigame — Space (Tab stays for Sentence mini). */
   RunnerJump: "RunnerJump",
   /** Speed boost in the monitor code-runner — hold ArrowRight / D (not tap). */
   RunnerBoost: "RunnerBoost",
@@ -25,7 +25,7 @@ export const DEFAULT_BINDINGS: Record<ActionName, string[]> = {
   [Action.MenuConfirm]: ["Enter", "Space"],
   [Action.MenuBack]: ["Escape"],
   [Action.Settings]: ["Comma"],
-  [Action.RunnerJump]: ["Tab", "ArrowUp", "KeyW"],
+  [Action.RunnerJump]: ["Space", "ArrowUp", "KeyW"],
   [Action.RunnerBoost]: ["ArrowRight", "KeyD"],
   [Action.RunnerRetry]: ["KeyR"],
 };

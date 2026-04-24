@@ -20,6 +20,7 @@ export interface ResultsPanel {
   show(view: ResultsView): void;
   hide(): void;
   onRestart(handler: () => void): void;
+  onBackToDesk(handler: () => void): void;
   onShare(handler: () => void): void;
   setLeaderboardSlot(node: HTMLElement | null): void;
   setCountdownSlot(node: HTMLElement | null): void;
@@ -48,7 +49,9 @@ const STYLE_BREAKDOWN_TITLE =
   "display:block;font:600 11px ui-sans-serif,system-ui,sans-serif;text-transform:uppercase;letter-spacing:0.06em;color:#8696b6;margin-bottom:8px;";
 const STYLE_BREAKDOWN_LINE =
   "display:block;font:500 13px ui-monospace,monospace;color:#e8efff;line-height:1.5;";
-const STYLE_BTN_ROW = "display:flex;gap:10px;justify-content:flex-end;";
+const STYLE_BTN_ROW =
+  "display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap;width:100%;";
+const STYLE_BTN_ROW_RIGHT = "display:flex;gap:10px;flex-wrap:wrap;";
 const STYLE_BTN =
   "padding:11px 18px;border-radius:10px;border:1px solid rgba(232,239,255,0.18);background:#252a36;color:#e8efff;font:600 14px ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:background 80ms;";
 const STYLE_BTN_PRIMARY =
@@ -105,22 +108,35 @@ export function createResultsPanel(container: HTMLElement): ResultsPanel {
   btnRow.style.cssText = STYLE_BTN_ROW;
   panel.appendChild(btnRow);
 
+  const backDeskBtn = document.createElement("button");
+  backDeskBtn.type = "button";
+  backDeskBtn.textContent = "back to desk";
+  backDeskBtn.title = "Same case — replay minis without resetting the round";
+  backDeskBtn.style.cssText = STYLE_BTN;
+  btnRow.appendChild(backDeskBtn);
+
+  const btnRowRight = document.createElement("div");
+  btnRowRight.style.cssText = STYLE_BTN_ROW_RIGHT;
+  btnRow.appendChild(btnRowRight);
+
   const shareBtn = document.createElement("button");
   shareBtn.type = "button";
   shareBtn.textContent = "share";
   shareBtn.style.cssText = STYLE_BTN;
-  btnRow.appendChild(shareBtn);
+  btnRowRight.appendChild(shareBtn);
 
   const restartBtn = document.createElement("button");
   restartBtn.type = "button";
   restartBtn.textContent = "play again";
   restartBtn.title = "Keyboard: R, Enter, or Esc";
   restartBtn.style.cssText = STYLE_BTN_PRIMARY;
-  btnRow.appendChild(restartBtn);
+  btnRowRight.appendChild(restartBtn);
 
   let restartHandler: (() => void) | null = null;
+  let backToDeskHandler: (() => void) | null = null;
   let shareHandler: (() => void) | null = null;
   restartBtn.addEventListener("click", () => restartHandler?.());
+  backDeskBtn.addEventListener("click", () => backToDeskHandler?.());
   shareBtn.addEventListener("click", () => shareHandler?.());
 
   function show(view: ResultsView): void {
@@ -177,6 +193,9 @@ export function createResultsPanel(container: HTMLElement): ResultsPanel {
     hide,
     onRestart(h) {
       restartHandler = h;
+    },
+    onBackToDesk(h) {
+      backToDeskHandler = h;
     },
     onShare(h) {
       shareHandler = h;

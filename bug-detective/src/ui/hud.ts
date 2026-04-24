@@ -26,6 +26,8 @@ export interface Hud {
   setHover(tag: string | null, hint?: string | undefined): void;
   /** Lower-third flavor line during click-to-inspect on props. */
   setInspectCaption(text: string | null): void;
+  /** Click target next to caption — same as Esc / MenuBack for inspect zoom. */
+  onInspectExit(handler: (() => void) | null): void;
   update(camera: THREE.Camera): HudHoverInfo;
   destroy(): void;
 }
@@ -128,9 +130,24 @@ export function createHud(
   loupeEl.style.opacity = "0";
   wrapper.appendChild(loupeEl);
 
-  const inspectCaptionEl = document.createElement("div");
-  inspectCaptionEl.style.cssText = `position:absolute;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(92vw,560px);padding:10px 18px;border-radius:12px;background:rgba(245,240,232,0.94);color:${CURSOR.ink};border:1px solid rgba(245,78,0,0.35);font:500 13px 'Cursor Gothic',ui-sans-serif,sans-serif;text-align:center;pointer-events:none;box-shadow:0 6px 22px rgba(0,0,0,0.35);opacity:0;transition:opacity 120ms;`;
-  wrapper.appendChild(inspectCaptionEl);
+  const inspectBarWrap = document.createElement("div");
+  inspectBarWrap.style.cssText = `position:absolute;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(92vw,560px);display:none;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:rgba(245,240,232,0.94);color:${CURSOR.ink};border:1px solid rgba(245,78,0,0.35);box-shadow:0 6px 22px rgba(0,0,0,0.35);pointer-events:auto;opacity:0;transition:opacity 120ms;`;
+  const inspectCaptionText = document.createElement("div");
+  inspectCaptionText.style.cssText =
+    "flex:1;font:500 13px 'Cursor Gothic',ui-sans-serif,sans-serif;text-align:center;min-width:0;";
+  inspectBarWrap.appendChild(inspectCaptionText);
+  const inspectExitBtn = document.createElement("button");
+  inspectExitBtn.type = "button";
+  inspectExitBtn.textContent = "Exit · Esc";
+  inspectExitBtn.style.cssText = `flex-shrink:0;padding:8px 14px;border-radius:8px;border:1px solid rgba(245,78,0,0.45);background:rgba(255,255,255,0.92);color:${CURSOR.ink};font:600 12px 'Cursor Gothic',ui-sans-serif,sans-serif;cursor:pointer;`;
+  inspectBarWrap.appendChild(inspectExitBtn);
+  let inspectExitHandler: (() => void) | null = null;
+  inspectExitBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+    inspectExitHandler?.();
+  });
+  wrapper.appendChild(inspectBarWrap);
 
   const raycaster = new THREE.Raycaster();
   const mouseNdc = new THREE.Vector2();
@@ -285,12 +302,18 @@ export function createHud(
   }
   function setInspectCaption(text: string | null): void {
     if (text) {
-      inspectCaptionEl.textContent = text;
-      inspectCaptionEl.style.opacity = "1";
+      inspectCaptionText.textContent = text;
+      inspectBarWrap.style.display = "flex";
+      inspectBarWrap.style.opacity = "1";
     } else {
-      inspectCaptionEl.textContent = "";
-      inspectCaptionEl.style.opacity = "0";
+      inspectCaptionText.textContent = "";
+      inspectBarWrap.style.opacity = "0";
+      inspectBarWrap.style.display = "none";
     }
+  }
+
+  function onInspectExit(handler: (() => void) | null): void {
+    inspectExitHandler = handler;
   }
 
   function setHover(tag: string | null, hint?: string): void {
@@ -359,6 +382,7 @@ export function createHud(
     setExplorationHint,
     setHover,
     setInspectCaption,
+    onInspectExit,
     update,
     destroy,
   };

@@ -496,7 +496,7 @@ export function drawRunnerFrame(
 
   const hintFlash =
     failAnim !== undefined && failAnim < 1500
-      ? "missed jump — boost (→) over death gaps"
+      ? "missed jump — hold → or D to boost over death gaps"
       : null;
 
   ctx.save();
@@ -521,7 +521,10 @@ export function drawRunnerFrame(
   const activeToks = activeTokensForHeight(clueSet, maxClimbM);
   // Fade uses current climb tier (matches sim’s ramp), not per-plank gen tier.
   const tier = endlessTierFromMaxClimbM(maxClimbM);
-  const pristineLife = pristineLifeMsForTier(tier);
+  const pristineLife = pristineLifeMsForTier(
+    tier,
+    modeLabel.includes("endless") ? "endless" : undefined,
+  );
 
   for (const p of planks) {
     const sx0 = p.x0 - scroll;

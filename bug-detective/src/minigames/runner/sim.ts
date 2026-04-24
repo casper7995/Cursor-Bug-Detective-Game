@@ -86,8 +86,15 @@ export const PRISTINE_LIFE_BASE_MS = 7000;
 /** Keep culled planks a little longer so fade-out can finish. */
 const PLANK_CULL_GRACE_MS = 200;
 
-export function pristineLifeMsForTier(tier: number): number {
-  return Math.max(3500, PRISTINE_LIFE_BASE_MS - Math.max(0, tier) * 350);
+/** No death gaps in endless tier 0 until this plank id (inclusive of normal gaps only below). */
+export const ENDLESS_DEATH_GAP_WARMUP_MIN_PLANK_ID = 20;
+/** No death gaps in endless tier 0 while HUD climb stays below this (matches ~15–20m onboarding). */
+export const ENDLESS_DEATH_GAP_WARMUP_MIN_CLIMB_M = 18;
+
+export function pristineLifeMsForTier(tier: number, mode?: RunnerMode): number {
+  const bonus = mode === "endless" && tier === 0 ? 800 : 0;
+  const base = PRISTINE_LIFE_BASE_MS - Math.max(0, tier) * 350 + bonus;
+  return Math.max(3500, base);
 }
 
 /** Max upward jump height (px) from jump velocity and gravity. */
@@ -135,9 +142,34 @@ export function isDeathGapAfterPlankId(sid: number, endlessTier = 0): boolean {
   return sid % period === 0 && sid > 3;
 }
 
-function deathGapPx(rng: () => number, speedForReach: number): number {
+/**
+ * Endless tier 0 only: suppress death pits until the player has real height
+ * and enough platforms have spawned (avoids instant fail before clues/boost read).
+ */
+export function shouldSuppressEndlessDeathGap(
+  mode: RunnerMode,
+  endlessTier: number,
+  sid: number,
+  maxClimbM: number,
+): boolean {
+  if (mode !== "endless" || endlessTier !== 0) return false;
+  return (
+    sid < ENDLESS_DEATH_GAP_WARMUP_MIN_PLANK_ID ||
+    maxClimbM < ENDLESS_DEATH_GAP_WARMUP_MIN_CLIMB_M
+  );
+}
+
+export function deathGapPx(
+  rng: () => number,
+  speedForReach: number,
+  endlessTier: number,
+): number {
   const maxDeath = horizontalJumpRange(SPEED_BOOST_MAX) - 16;
-  const raw = Math.round(horizontalJumpRange(speedForReach) + 24 + rng() * 40);
+  const slackLo = endlessTier <= 1 ? 10 : 24;
+  const slackRng = endlessTier <= 1 ? 18 : 40;
+  const raw = Math.round(
+    horizontalJumpRange(speedForReach) + slackLo + rng() * slackRng,
+  );
   return Math.min(raw, maxDeath);
 }
 
@@ -186,6 +218,8 @@ export interface GeneratePlanksOpts {
   readonly endlessTier?: number;
   /** Sim elapsed ms when planks are born (for pristine decay). */
   readonly nowMs?: number;
+  /** Current HUD max climb (m); endless warm-up uses this with plank id. */
+  readonly maxClimbMForWarmup?: number;
 }
 
 export function generateInitialPlanks(
@@ -201,6 +235,7 @@ export function generateInitialPlanks(
   let nextId = startPlankId;
   const anomalyId = opts?.anomalyId ?? "calendar-tomorrow";
   const endlessTier = opts?.endlessTier ?? 0;
+  const maxClimbMForWarmup = opts?.maxClimbMForWarmup ?? 0;
   const bornAtMs = opts?.nowMs ?? 0;
   const speedForTier = effectiveSpeedBaseForTier(endlessTier);
   const targetEnd =
@@ -219,8 +254,16 @@ export function generateInitialPlanks(
     const w = Math.max(88 + Math.floor(rng() * 110), textW + 16);
     const baseGap =
       MIN_GAP + Math.floor(rng() * Math.max(1, maxGap - MIN_GAP + 1));
-    const gap = isDeathGapAfterPlankId(sid, endlessTier)
-      ? deathGapPx(rng, speedForTier)
+    const wantDeathGap =
+      isDeathGapAfterPlankId(sid, endlessTier) &&
+      !shouldSuppressEndlessDeathGap(
+        mode,
+        endlessTier,
+        sid,
+        maxClimbMForWarmup,
+      );
+    const gap = wantDeathGap
+      ? deathGapPx(rng, speedForTier, endlessTier)
       : baseGap;
 
     const midX = x + w * 0.5;
@@ -287,7 +330,7 @@ function finalizeNewSim(
   rng: () => number,
   anomalyId: AnomalyId,
 ): RunnerSimState {
-  const pristine0 = pristineLifeMsForTier(0);
+  const pristine0 = pristineLifeMsForTier(0, mode);
   const surface0 = supportYTop(0, planks, 0, pristine0);
   const playerY = Number.isFinite(surface0)
     ? surface0 - PLAYER_H
@@ -351,7 +394,7 @@ export function stepRunnerSim(
 
   let boost01 = state.boost01;
   const rampTier = endlessTierFromMaxClimbM(state.maxClimbM);
-  const pristineLifeMs = pristineLifeMsForTier(rampTier);
+  const pristineLifeMs = pristineLifeMsForTier(rampTier, state.mode);
   const speed0 = effectiveSpeedBaseForTier(rampTier);
   const speed =
     speed0 + (SPEED_BOOST_MAX - speed0) * boost01 * (wantBoost ? 1 : 0);
@@ -486,11 +529,13 @@ export function stepRunnerSim(
             anomalyId: state.anomalyId,
             endlessTier: genTier,
             nowMs: nextElapsed,
+            maxClimbMForWarmup: maxClimbM,
           }
         : {
             anomalyId: state.anomalyId,
             endlessTier: genTier,
             nowMs: nextElapsed,
+            maxClimbMForWarmup: maxClimbM,
           },
     );
     planks = [...planks, ...add.planks];

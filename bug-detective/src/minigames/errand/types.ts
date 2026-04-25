@@ -6,15 +6,26 @@ export type DrawerContent = "clue" | "junk" | "trap";
 export type DrawerIndex = 0 | 1 | 2 | 3 | 4;
 export type HelperIndex = 0 | 1 | 2;
 
+export type InterventionKind = "inspect" | "abort" | "push";
+
+export interface TaskSignalProfile {
+  readonly relevance01: number;
+  readonly safety01: number;
+  readonly urgency01: number;
+}
+
+export interface AgentTrait {
+  readonly paceScale: number;
+  readonly label: "steady" | "fast" | "careful";
+}
+
 export interface Drawer {
   readonly index: DrawerIndex;
   readonly hint: HintIcon;
   readonly content: DrawerContent;
-  /** Time it takes the helper to fully fill, in ms. 1500..3000. */
   readonly fillRateMs: number;
-  /** For traps: progress fraction (0.3..0.7) at which the ABORT modal appears. */
+  readonly signalProfile: TaskSignalProfile;
   readonly trapAlertAt01: number;
-  /** Trap "push" coin flip — deterministic per drawer. */
   readonly trapPushIsClue: boolean;
 }
 
@@ -29,23 +40,24 @@ export type HelperState =
 export interface Helper {
   index: HelperIndex;
   state: HelperState;
-  /** Drawer the helper is assigned to (if any). */
   drawerAssigned: DrawerIndex | null;
-  /** 0..1 fill progress for filling/alert states. */
   fillProgress: number;
-  /** Final result once the helper has returned (or null if lost). */
   result: "clue" | "junk" | null;
+  readonly trait: AgentTrait;
+  tripwireT: number;
 }
 
 export interface ErrandRound {
-  /** 5 drawers in deterministic seed order. */
   readonly drawers: readonly Drawer[];
-  /** Mapping describing which hint icons "tend" to lead to which content. */
   readonly hintTruthMap: Readonly<Record<HintIcon, DrawerContent>>;
+  readonly agentTraits: readonly [AgentTrait, AgentTrait, AgentTrait];
 }
 
 export const ERRAND_NUM_DRAWERS = 5;
 export const ERRAND_NUM_HELPERS = 3;
+
+/** Window to abort or push a trap before auto-abort. */
+export const ERRAND_TRIPWIRE_ABORT_S = 2.4;
 
 export const ERRAND_SCORE = {
   ZERO: 0,

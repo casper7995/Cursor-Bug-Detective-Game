@@ -14,25 +14,30 @@ import { hitDeskHelpButton, TutorialGate } from "../desk/tutorialGate";
 import {
   buildErrandRound,
   canAssignHelper,
+  errandEarnsDeskClue,
   namespacedSeed,
+  nudgeSignalsAfterInspect,
   scoreErrandRun,
 } from "./round";
 import {
   ERRAND_NUM_HELPERS,
+  ERRAND_TRIPWIRE_ABORT_S,
   type Drawer,
   type DrawerIndex,
   type ErrandRound,
   type Helper,
   type HelperIndex,
+  type InterventionKind,
+  type TaskSignalProfile,
 } from "./types";
 import {
   agentRowAt,
-  drawAbortModal,
   drawAgentsCard,
   drawErrandIntro,
   drawErrandResult,
   drawErrandTutorialDiagram,
   drawTasksCard,
+  hitWatchIntervention,
   taskCardAt,
 } from "./draw";
 import { clueTokenForErrand } from "./clueTokens";
@@ -52,7 +57,6 @@ const DISPATCH_TIMEOUT_S = 6.0;
 const WATCH_CAP_S = 18.0;
 const RETURN_DURATION_S = 1.6;
 const RESULT_AUTOCLOSE_S = 3.2;
-const ABORT_WINDOW_S = 2.4;
 
 export interface ErrandSessionOpts {
   readonly overlayCtx: CanvasRenderingContext2D;
@@ -64,20 +68,9 @@ export interface ErrandSessionOpts {
 type Phase =
   | { kind: "intro"; t: number }
   | { kind: "dispatch"; t: number }
-  | {
-      kind: "alert";
-      t: number;
-      helperIdx: HelperIndex;
-      hover: "abort" | "push" | null;
-    }
   | { kind: "watch"; t: number }
   | { kind: "return"; t: number }
   | { kind: "result"; t: number };
-
-interface AbortHits {
-  readonly abort: { x: number; y: number; w: number; h: number };
-  readonly push: { x: number; y: number; w: number; h: number };
-}
 
 export class ErrandSession {
   private readonly overlayCtx: CanvasRenderingContext2D;
@@ -94,8 +87,11 @@ export class ErrandSession {
   private pointerY = 0;
   private grabbedHelper: HelperIndex | null = null;
   private alertedTrapHandled = new Set<HelperIndex>();
-  /** Cached abort-modal hit rects, captured during draw. */
-  private abortHits: AbortHits | null = null;
+  /** How many times the player manually dispatched (excludes auto-fill). */
+  private playerDispatched = 0;
+  private nudgedTaskSignals = new Map<DrawerIndex, TaskSignalProfile>();
+  private triagePointerHover: ReturnType<typeof hitWatchIntervention> = null;
+  private agentRowHover: number | null = null;
   /** Brief footer hint after an invalid drop. */
   private transientFooter: string | null = null;
   private transientFooterClear: ReturnType<typeof setTimeout> | null = null;
@@ -104,10 +100,10 @@ export class ErrandSession {
     title: "Cursor Agents — dispatch queue",
     tagline: "Drag agents onto task cards. Read the icons.",
     howToLines: [
-      "Each agent runs one task at a time.",
-      "Drag from an agent row, or press 1–5 to assign the next free agent to that task.",
-      "Cup / key tend to deliver clues. ⚠ tasks ping mid-run.",
-      "On a tripwire: Abort keeps the agent safe, Push gambles for a clue.",
+      "Each agent runs one task at a time (pace: fast / steady / careful).",
+      "Drag a ready row, or press 1–5 to assign the next free agent to that task.",
+      "On each live task: in (inspect) / off (abort) / run (hurry, or tripwire bet).",
+      "Cup / key often align with clues. ⚠ tasks can trip; auto-abort if you wait too long.",
     ],
     drawDiagram: drawErrandTutorialDiagram,
     storageKey: "bd:miniTutorial:errand",
@@ -128,6 +124,8 @@ export class ErrandSession {
         drawerAssigned: null,
         fillProgress: 0,
         result: null,
+        trait: this.round.agentTraits[i]!,
+        tripwireT: 0,
       }),
     );
     const c = document.createElement("canvas");
@@ -168,11 +166,25 @@ export class ErrandSession {
       const p = this.gameFromClient(e.clientX, e.clientY);
       this.pointerX = p.x;
       this.pointerY = p.y;
-      if (this.phase.kind === "alert" && this.abortHits) {
-        const hits = this.abortHits;
-        if (inRect(p.x, p.y, hits.abort)) this.phase.hover = "abort";
-        else if (inRect(p.x, p.y, hits.push)) this.phase.hover = "push";
-        else this.phase.hover = null;
+      if (this.outcome || this.gate.isBlocking()) {
+        this.triagePointerHover = null;
+        this.agentRowHover = null;
+        return;
+      }
+      if (this.phase.kind === "watch") {
+        this.triagePointerHover = hitWatchIntervention(
+          this.round.drawers,
+          this.helpers,
+          p.x,
+          p.y,
+        );
+      } else {
+        this.triagePointerHover = null;
+      }
+      if (this.phase.kind === "dispatch" || this.phase.kind === "watch") {
+        this.agentRowHover = agentRowAt(this.helpers, p.x, p.y);
+      } else {
+        this.agentRowHover = null;
       }
     };
     const down = (e: PointerEvent): void => {
@@ -200,11 +212,18 @@ export class ErrandSession {
         this.finalizeOutcome();
         return;
       }
-      if (this.phase.kind === "alert" && this.abortHits) {
-        if (inRect(p.x, p.y, this.abortHits.abort)) this.resolveAlert("abort");
-        else if (inRect(p.x, p.y, this.abortHits.push))
-          this.resolveAlert("push");
-        return;
+      if (this.phase.kind === "watch") {
+        const tri = hitWatchIntervention(
+          this.round.drawers,
+          this.helpers,
+          p.x,
+          p.y,
+        );
+        if (tri) {
+          this.applyIntervention(tri);
+          e.preventDefault();
+          return;
+        }
       }
       if (this.phase.kind === "dispatch") {
         // Grab a waiting agent from its row.
@@ -243,6 +262,7 @@ export class ErrandSession {
             helper.drawerAssigned = taskIdx as DrawerIndex;
             helper.state = "filling";
             helper.fillProgress = 0;
+            if (this.phase.kind === "dispatch") this.playerDispatched += 1;
             sfxErrandDispatch();
           } else {
             sfxErrandReject();
@@ -282,6 +302,7 @@ export class ErrandSession {
       helper.drawerAssigned = taskIdx as DrawerIndex;
       helper.state = "filling";
       helper.fillProgress = 0;
+      this.playerDispatched += 1;
       sfxErrandDispatch();
       e.preventDefault();
     };
@@ -335,17 +356,11 @@ export class ErrandSession {
 
   /** While dragging, highlight the task under the pointer if this agent can take it. */
   private dropHighlightTaskIdx(): number | null {
-    if (this.phase.kind !== "dispatch" || this.grabbedHelper === null) return null;
+    if (this.phase.kind !== "dispatch" || this.grabbedHelper === null)
+      return null;
     const hi = this.grabbedHelper as number;
-    const under = taskCardAt(
-      this.round.drawers,
-      this.pointerX,
-      this.pointerY,
-    );
-    if (
-      under !== null &&
-      canAssignHelper(this.helpers, hi, under)
-    ) {
+    const under = taskCardAt(this.round.drawers, this.pointerX, this.pointerY);
+    if (under !== null && canAssignHelper(this.helpers, hi, under)) {
       return under;
     }
     return null;
@@ -369,28 +384,91 @@ export class ErrandSession {
     }
   }
 
-  private resolveAlert(choice: "abort" | "push"): void {
-    if (this.phase.kind !== "alert") return;
-    const helper = this.helpers[this.phase.helperIdx] as Helper;
-    const drawer = this.round.drawers[
-      helper.drawerAssigned as number
-    ] as Drawer;
-    if (choice === "abort") {
-      sfxErrandAlertChoice("abort");
-      helper.state = "returning";
-      helper.result = null;
-    } else {
-      sfxErrandAlertChoice("push");
-      if (drawer.trapPushIsClue) {
-        helper.state = "returning";
-        helper.result = "clue";
+  private getDisplaySignal(taskIdx: number): TaskSignalProfile {
+    const n = this.nudgedTaskSignals.get(taskIdx as DrawerIndex);
+    if (n) return n;
+    return (this.round.drawers[taskIdx] as Drawer).signalProfile;
+  }
+
+  private applyIntervention(k: {
+    taskIdx: number;
+    kind: InterventionKind;
+  }): void {
+    const helper = this.helpers.find((h) => h.drawerAssigned === k.taskIdx) as
+      | Helper
+      | undefined;
+    if (!helper || (helper.state !== "filling" && helper.state !== "alert")) {
+      return;
+    }
+    const drawer = this.round.drawers[k.taskIdx] as Drawer;
+    if (k.kind === "inspect") {
+      if (this.nudgedTaskSignals.has(k.taskIdx as DrawerIndex)) return;
+      this.nudgedTaskSignals.set(
+        k.taskIdx as DrawerIndex,
+        nudgeSignalsAfterInspect(drawer.content, drawer.signalProfile),
+      );
+      return;
+    }
+    if (k.kind === "abort") {
+      this.cancelOrAbort(helper, helper.state === "alert");
+      return;
+    }
+    if (k.kind === "push") {
+      if (helper.state === "alert") {
+        this.resolvePushGamble(helper);
       } else {
-        helper.state = "lost";
-        helper.result = null;
+        helper.fillProgress = Math.min(1, helper.fillProgress + 0.22);
+        this.checkFillThresholds(helper);
       }
     }
-    this.alertedTrapHandled.add(this.phase.helperIdx);
-    this.phase = { kind: "watch", t: 0 };
+  }
+
+  private resolvePushGamble(helper: Helper): void {
+    if (helper.state !== "alert" || helper.drawerAssigned === null) return;
+    const d = this.round.drawers[helper.drawerAssigned] as Drawer;
+    sfxErrandAlertChoice("push");
+    if (d.trapPushIsClue) {
+      helper.state = "returning";
+      helper.result = "clue";
+    } else {
+      helper.state = "lost";
+      helper.result = null;
+    }
+    this.alertedTrapHandled.add(helper.index);
+  }
+
+  private cancelOrAbort(helper: Helper, inTripwire: boolean): void {
+    if (helper.drawerAssigned === null) return;
+    if (inTripwire) {
+      sfxErrandAlertChoice("abort");
+    } else {
+      sfxErrandReject();
+    }
+    helper.state = "returning";
+    helper.result = null;
+    this.alertedTrapHandled.add(helper.index);
+  }
+
+  private checkFillThresholds(helper: Helper): void {
+    if (helper.state !== "filling" || helper.drawerAssigned === null) return;
+    const drawer = this.round.drawers[helper.drawerAssigned] as Drawer;
+    if (
+      drawer.content === "trap" &&
+      !this.alertedTrapHandled.has(helper.index) &&
+      helper.fillProgress >= drawer.trapAlertAt01
+    ) {
+      if (!this.trapPinged.has(helper.index)) {
+        this.trapPinged.add(helper.index);
+        sfxErrandTrapPing();
+      }
+      helper.state = "alert";
+      helper.tripwireT = 0;
+      return;
+    }
+    if (helper.fillProgress >= 1) {
+      helper.result = drawer.content === "clue" ? "clue" : null;
+      helper.state = "returning";
+    }
   }
 
   private allHelpersDone(): boolean {
@@ -422,43 +500,17 @@ export class ErrandSession {
       }
       case "watch": {
         this.phase = { kind: "watch", t: this.phase.t + dtSec };
-        this.advanceFillers(dtSec);
         for (const helper of this.helpers) {
-          if (helper.state !== "filling") continue;
-          if (helper.drawerAssigned === null) continue;
-          const drawer = this.round.drawers[helper.drawerAssigned] as Drawer;
-          if (
-            drawer.content === "trap" &&
-            !this.alertedTrapHandled.has(helper.index) &&
-            helper.fillProgress >= drawer.trapAlertAt01
-          ) {
-            if (!this.trapPinged.has(helper.index)) {
-              this.trapPinged.add(helper.index);
-              sfxErrandTrapPing();
-            }
-            helper.state = "alert";
-            this.phase = {
-              kind: "alert",
-              t: 0,
-              helperIdx: helper.index,
-              hover: null,
-            };
-            return;
+          if (helper.state !== "alert") continue;
+          helper.tripwireT += dtSec;
+          if (helper.tripwireT >= ERRAND_TRIPWIRE_ABORT_S) {
+            this.cancelOrAbort(helper, true);
           }
         }
+        this.advanceFillers(dtSec);
         if (this.allHelpersDone() || this.phase.t >= WATCH_CAP_S) {
           this.phase = { kind: "return", t: 0 };
         }
-        break;
-      }
-      case "alert": {
-        this.phase = {
-          kind: "alert",
-          t: this.phase.t + dtSec,
-          helperIdx: this.phase.helperIdx,
-          hover: this.phase.hover,
-        };
-        if (this.phase.t >= ABORT_WINDOW_S) this.resolveAlert("abort");
         break;
       }
       case "return": {
@@ -486,12 +538,10 @@ export class ErrandSession {
       if (helper.state !== "filling") continue;
       if (helper.drawerAssigned === null) continue;
       const drawer = this.round.drawers[helper.drawerAssigned] as Drawer;
-      const inc = (dtSec * 1000) / drawer.fillRateMs;
+      const effMs = drawer.fillRateMs * helper.trait.paceScale;
+      const inc = (dtSec * 1000) / effMs;
       helper.fillProgress = Math.min(1, helper.fillProgress + inc);
-      if (helper.fillProgress >= 1) {
-        helper.result = drawer.content === "clue" ? "clue" : null;
-        helper.state = "returning";
-      }
+      this.checkFillThresholds(helper);
     }
   }
 
@@ -511,6 +561,10 @@ export class ErrandSession {
       helpersLost: lost,
     });
     if (clues === 0) {
+      this.onExit();
+      return;
+    }
+    if (!errandEarnsDeskClue(this.playerDispatched, clues)) {
       this.onExit();
       return;
     }
@@ -534,17 +588,29 @@ export class ErrandSession {
     ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
     ctx.fillText("· dispatch queue", 110, 26);
 
+    const watchTriage =
+      this.phase.kind === "watch" && this.gate.isBlocking() === false
+        ? {
+            getDisplaySignal: (i: number) => this.getDisplaySignal(i),
+            watchMode: true,
+            watchHover: this.triagePointerHover,
+            inspectUsed: (i: number) =>
+              this.nudgedTaskSignals.has(i as DrawerIndex),
+          }
+        : null;
     drawTasksCard(
       ctx,
       this.round.drawers,
       this.helpers,
       this.dropHighlightTaskIdx(),
+      watchTriage,
     );
     drawAgentsCard(
       ctx,
       this.helpers,
       this.round.drawers,
       this.grabbedHelper,
+      this.agentRowHover,
       this.pointerX,
       this.pointerY,
     );
@@ -562,15 +628,6 @@ export class ErrandSession {
     // Phase overlays
     if (this.phase.kind === "intro") {
       drawErrandIntro(ctx, W, H, this.phase.t / INTRO_DURATION_S);
-      this.abortHits = null;
-    } else if (this.phase.kind === "alert") {
-      this.abortHits = drawAbortModal(
-        ctx,
-        W,
-        H,
-        this.phase.helperIdx,
-        Math.max(0, 1 - this.phase.t / ABORT_WINDOW_S),
-      );
     } else if (this.phase.kind === "result") {
       let clues = 0;
       let safe = 0;
@@ -592,9 +649,6 @@ export class ErrandSession {
         { clues, helpersSafe: safe, helpersLost: lost },
         score,
       );
-      this.abortHits = null;
-    } else {
-      this.abortHits = null;
     }
 
     drawDeskChromeAi(ctx);
@@ -646,12 +700,4 @@ export class ErrandSession {
   dispose(): void {
     (this as unknown as { _cleanup?: () => void })._cleanup?.();
   }
-}
-
-function inRect(
-  x: number,
-  y: number,
-  r: { x: number; y: number; w: number; h: number },
-): boolean {
-  return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }

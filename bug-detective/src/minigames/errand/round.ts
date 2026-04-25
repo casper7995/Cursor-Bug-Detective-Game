@@ -4,11 +4,13 @@ import { makeSeededRng } from "../../api/seedClient";
 import {
   ERRAND_NUM_DRAWERS,
   ERRAND_SCORE,
+  type AgentTrait,
   type Drawer,
   type DrawerContent,
   type DrawerIndex,
   type ErrandRound,
   type HintIcon,
+  type TaskSignalProfile,
 } from "./types";
 
 const HINT_ICONS: readonly HintIcon[] = [
@@ -19,7 +21,6 @@ const HINT_ICONS: readonly HintIcon[] = [
   "warn",
 ];
 
-/** FNV-1a fold of a label into a base seed. */
 export function namespacedSeed(base: number, label: string): number {
   let h = base >>> 0;
   for (let i = 0; i < label.length; i++) {
@@ -27,6 +28,73 @@ export function namespacedSeed(base: number, label: string): number {
     h = Math.imul(h, 16777619);
   }
   return h >>> 0;
+}
+
+function lerp01(a: number, b: number, t: number): number {
+  return Math.min(1, Math.max(0, a + (b - a) * t));
+}
+
+function r01(rng: () => number): number {
+  return rng();
+}
+
+function taskSignalProfileFor(
+  content: DrawerContent,
+  drawerIdx: number,
+  rng: () => number,
+): TaskSignalProfile {
+  const wobble = 0.18;
+  const rRel =
+    content === "clue"
+      ? 0.55 + r01(rng) * 0.45
+      : content === "junk"
+        ? 0.2 + r01(rng) * 0.4
+        : 0.25 + r01(rng) * 0.5;
+  const rSafe =
+    content === "trap"
+      ? 0.1 + r01(rng) * 0.35
+      : content === "clue"
+        ? 0.5 + r01(rng) * 0.4
+        : 0.4 + r01(rng) * 0.45;
+  const rUrg =
+    content === "trap" ? 0.45 + r01(rng) * 0.5 : 0.2 + r01(rng) * 0.6;
+  const f = (x: number) =>
+    lerp01(x, r01(rng), wobble * (0.5 + drawerIdx * 0.1));
+  return {
+    relevance01: f(rRel),
+    safety01: f(rSafe),
+    urgency01: f(rUrg),
+  };
+}
+
+export function nudgeSignalsAfterInspect(
+  content: DrawerContent,
+  p: TaskSignalProfile,
+): TaskSignalProfile {
+  const t =
+    content === "clue"
+      ? { relevance01: 0.9, safety01: 0.75, urgency01: 0.5 }
+      : content === "junk"
+        ? { relevance01: 0.3, safety01: 0.65, urgency01: 0.4 }
+        : { relevance01: 0.45, safety01: 0.15, urgency01: 0.85 };
+  const blend = 0.55;
+  return {
+    relevance01: lerp01(p.relevance01, t.relevance01, blend),
+    safety01: lerp01(p.safety01, t.safety01, blend),
+    urgency01: lerp01(p.urgency01, t.urgency01, blend),
+  };
+}
+
+function makeAgentTraits(
+  rng: () => number,
+): [AgentTrait, AgentTrait, AgentTrait] {
+  const pool: AgentTrait[] = [
+    { label: "fast", paceScale: 0.9 },
+    { label: "steady", paceScale: 1.0 },
+    { label: "careful", paceScale: 1.12 },
+  ];
+  shuffle(pool, rng);
+  return [pool[0]!, pool[1]!, pool[2]!];
 }
 
 function shuffle<T>(arr: T[], rng: () => number): T[] {
@@ -40,20 +108,9 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
   return arr;
 }
 
-/**
- * Deterministic 5-drawer round.
- * - Distribution: 2 clues, 2 junks, 1 trap.
- * - Each drawer has a hint icon. The "hint truth map" defines which icon tends
- *   to lead to which content; per-drawer noise can flip an icon.
- * - Trap drawer's alert appears between 30% and 70% fill, and the push coin
- *   flip is decided up front.
- */
 export function buildErrandRound(seed: number): ErrandRound {
   const rng = makeSeededRng(seed);
-
-  // Choose the hint→content mapping (rotates per seed).
-  const contents: DrawerContent[] = ["clue", "junk", "key" as DrawerContent /*placeholder*/];
-  void contents;
+  const agentTraits = makeAgentTraits(rng);
   const tendencies: Record<HintIcon, DrawerContent> = {
     cup: "clue",
     feather: "junk",
@@ -61,8 +118,6 @@ export function buildErrandRound(seed: number): ErrandRound {
     question: "junk",
     warn: "trap",
   };
-
-  // Build the assignment of contents to drawers (2/2/1) then randomise order.
   const distribution: DrawerContent[] = [
     "clue",
     "clue",
@@ -71,9 +126,6 @@ export function buildErrandRound(seed: number): ErrandRound {
     "trap",
   ];
   shuffle(distribution, rng);
-
-  // Pick hint icons: each drawer gets the icon tending to its content, with
-  // a small chance of getting a different icon (so players have to learn).
   const noise = 0.2;
   const drawers: Drawer[] = [];
   for (let i = 0; i < ERRAND_NUM_DRAWERS; i++) {
@@ -89,49 +141,48 @@ export function buildErrandRound(seed: number): ErrandRound {
     } else {
       hint = HINT_ICONS[Math.floor(rng() * HINT_ICONS.length)] as HintIcon;
     }
-    const fillRateMs = 1500 + Math.floor(rng() * 1500); // 1500..3000
-    const trapAlertAt01 = 0.3 + rng() * 0.4; // 0.3..0.7
+    const fillRateMs = 1500 + Math.floor(rng() * 1500);
+    const signalProfile = taskSignalProfileFor(content, i, rng);
+    const trapAlertAt01 = 0.3 + rng() * 0.4;
     const trapPushIsClue = rng() < 0.5;
     drawers.push({
       index: i as DrawerIndex,
       hint,
       content,
       fillRateMs,
+      signalProfile,
       trapAlertAt01,
       trapPushIsClue,
     });
   }
-  return { drawers, hintTruthMap: tendencies };
+  return { drawers, hintTruthMap: tendencies, agentTraits };
 }
 
 export interface ErrandTotals {
-  /** Clues delivered safely. */
   readonly clues: number;
-  /** Helpers that returned safely (clue or junk). */
   readonly helpersSafe: number;
-  /** Helpers lost (pushed-and-lost on a trap). */
   readonly helpersLost: number;
 }
 
-/** Pure scoring — base table + safe bonus + lost penalty, clamped [0,1000]. */
 export function scoreErrandRun(t: ErrandTotals): number {
   let base = 0;
   if (t.clues >= 3) base = ERRAND_SCORE.THREE;
   else if (t.clues === 2) base = ERRAND_SCORE.TWO;
   else if (t.clues === 1) base = ERRAND_SCORE.ONE;
   else base = ERRAND_SCORE.ZERO;
-
   if (t.clues === 0) return 0;
-
   if (t.helpersLost === 0) base += ERRAND_SCORE.SAFE_BONUS;
   base += t.helpersLost * ERRAND_SCORE.LOST_PENALTY;
   return Math.max(0, Math.min(1000, base));
 }
 
-/**
- * Returns true if `helper` can be assigned to `drawerIdx` given `helpers`'s
- * existing assignments. False if another helper already owns that drawer.
- */
+export function errandEarnsDeskClue(
+  playerDispatched: number,
+  clueCount: number,
+): boolean {
+  return playerDispatched >= 2 && clueCount >= 1;
+}
+
 export function canAssignHelper(
   helpers: readonly { drawerAssigned: number | null }[],
   helperIdx: number,

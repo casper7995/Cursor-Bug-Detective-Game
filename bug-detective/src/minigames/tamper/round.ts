@@ -184,6 +184,10 @@ export function scoreTamperRound(
   };
 }
 
+export function tamperEarnsDeskClue(result: TamperResult): boolean {
+  return result.rightCalls >= 3 && result.caughtLies >= 1;
+}
+
 export function spotById(scene: TamperScene, id: string): TamperSpot | null {
   return scene.spots.find((s) => s.id === id) ?? null;
 }

@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   buildErrandRound,
+  nudgeSignalsAfterInspect,
   scoreErrandRun,
   canAssignHelper,
   namespacedSeed,
 } from "../../src/minigames/errand/round";
-import { clueTokenForErrand } from "../../src/minigames/errand/clueTokens";
-import { ERRAND_NUM_DRAWERS } from "../../src/minigames/errand/types";
 import {
   agentRowHitRect,
   agentRowRect,
+  hitWatchIntervention,
   taskCardDropRect,
   taskCardRect,
+  taskInterventionButtonRects,
 } from "../../src/minigames/errand/draw";
+import { clueTokenForErrand } from "../../src/minigames/errand/clueTokens";
+import { ERRAND_NUM_DRAWERS } from "../../src/minigames/errand/types";
 
 describe("errand round", () => {
   it("same seed produces same drawer layout", () => {
@@ -27,6 +30,11 @@ describe("errand round", () => {
     const counts = { clue: 0, junk: 0, trap: 0 };
     for (const d of r.drawers) counts[d.content]++;
     expect(counts).toEqual({ clue: 2, junk: 2, trap: 1 });
+    expect(r.agentTraits).toHaveLength(3);
+    for (const d of r.drawers) {
+      expect(d.signalProfile.relevance01).toBeGreaterThanOrEqual(0);
+      expect(d.signalProfile.relevance01).toBeLessThanOrEqual(1);
+    }
   });
 
   it("namespacedSeed is stable", () => {
@@ -81,6 +89,43 @@ describe("errand assignment", () => {
     expect(canAssignHelper(helpers, 1, 1)).toBe(true);
     // Reassigning the same helper to its own drawer is allowed.
     expect(canAssignHelper(helpers, 0, 0)).toBe(true);
+  });
+});
+
+describe("errand triage (cursor agents)", () => {
+  it("inspect nudges signal profile toward true content", () => {
+    const p = { relevance01: 0.2, safety01: 0.5, urgency01: 0.4 };
+    const n = nudgeSignalsAfterInspect("clue", p);
+    expect(n.relevance01).toBeGreaterThan(p.relevance01);
+  });
+
+  it("hitWatchIntervention is null with no active helpers", () => {
+    const r = buildErrandRound(1);
+    expect(hitWatchIntervention(r.drawers, [], 50, 50)).toBe(null);
+  });
+
+  it("hitWatchIntervention matches inspect chip on a running task", () => {
+    const r = buildErrandRound(5);
+    const d0 = r.drawers[0]!;
+    const helpers = [
+      {
+        index: 0 as 0,
+        state: "filling" as const,
+        drawerAssigned: d0.index,
+        fillProgress: 0.2,
+        result: null,
+        trait: r.agentTraits[0]!,
+        tripwireT: 0,
+      },
+    ];
+    const { inspect } = taskInterventionButtonRects(taskCardRect(0));
+    const hit = hitWatchIntervention(
+      r.drawers,
+      helpers,
+      inspect.x + inspect.w / 2,
+      inspect.y + inspect.h / 2,
+    );
+    expect(hit).toEqual({ taskIdx: 0, kind: "inspect" });
   });
 });
 

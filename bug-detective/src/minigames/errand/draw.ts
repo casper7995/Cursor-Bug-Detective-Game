@@ -10,7 +10,14 @@ import {
   inRect,
   type Rect,
 } from "../desk/aiCard";
-import type { Drawer, Helper, HintIcon } from "./types";
+import {
+  ERRAND_TRIPWIRE_ABORT_S,
+  type Drawer,
+  type Helper,
+  type HintIcon,
+  type InterventionKind,
+  type TaskSignalProfile,
+} from "./types";
 
 // ---------------------------------------------------------------------
 // Layout (512 × 320 internal canvas)
@@ -20,22 +27,21 @@ const AGENT_ROW_HIT_PAD_Y = 6;
 const TASK_CARD_DROP_PAD = 8;
 
 export const ERRAND_LAYOUT = {
-  /** Top "Tasks" card. */
   tasksX: 18,
-  tasksY: 44,
+  tasksY: 40,
   tasksW: 478,
-  tasksH: 116,
-  /** Bottom "Agents" card. */
+  tasksH: 128,
   agentsX: 18,
-  agentsY: 168,
+  agentsY: 176,
   agentsW: 478,
-  agentsH: 124,
-  /** Task card geometry. */
+  agentsH: 128,
   taskCardW: 86,
-  taskCardH: 78,
+  taskCardH: 96,
   taskCardGap: 8,
-  /** Agent row geometry. */
-  agentRowH: 30,
+  watchActionH: 18,
+  watchActionW: 24,
+  watchActionGap: 4,
+  agentRowH: 34,
   agentRowGap: 4,
 } as const;
 
@@ -45,7 +51,12 @@ export function taskCardRect(idx: number): Rect {
   const total = 5 * L.taskCardW + 4 * L.taskCardGap;
   const x0 = L.tasksX + (L.tasksW - total) / 2;
   const y = L.tasksY + 28; // inset under the card title
-  return { x: x0 + idx * (L.taskCardW + L.taskCardGap), y, w: L.taskCardW, h: L.taskCardH };
+  return {
+    x: x0 + idx * (L.taskCardW + L.taskCardGap),
+    y,
+    w: L.taskCardW,
+    h: L.taskCardH,
+  };
 }
 
 export function agentRowRect(idx: number): Rect {
@@ -140,6 +151,196 @@ export function drawHintIcon(
   ctx.textAlign = "left";
 }
 
+const SIGNAL_LABELS: Array<keyof TaskSignalProfile> = [
+  "relevance01",
+  "safety01",
+  "urgency01",
+] as const;
+
+const SIGNAL_LABEL: Record<keyof TaskSignalProfile, string> = {
+  relevance01: "rel",
+  safety01: "safe",
+  urgency01: "urg",
+};
+
+function drawTaskSignalMeters(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  y0: number,
+  profile: TaskSignalProfile,
+): void {
+  const barW = 3;
+  const gap = 4;
+  const barH = 28;
+  for (let s = 0; s < SIGNAL_LABELS.length; s++) {
+    const k = SIGNAL_LABELS[s]!;
+    const v = profile[k] as number;
+    const x = x0 + s * (barW + gap);
+    ctx.fillStyle = CURSOR_AI.surfaceMute;
+    ctx.beginPath();
+    ctx.roundRect(x, y0, barW, barH, 1);
+    ctx.fill();
+    ctx.fillStyle = CURSOR_AI.blue;
+    const fillH = Math.max(0, v * barH);
+    ctx.beginPath();
+    ctx.roundRect(x, y0 + barH - fillH, barW, fillH, 1);
+    ctx.fill();
+  }
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "6px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textAlign = "left";
+  let lx = x0;
+  for (const k of SIGNAL_LABELS) {
+    ctx.fillText(SIGNAL_LABEL[k], lx, y0 + barH + 6);
+    lx += barW + gap;
+  }
+}
+
+function watchActionRowLayout(r: Rect): { x0: number; y: number } {
+  const L = ERRAND_LAYOUT;
+  const w = L.watchActionW;
+  const g = L.watchActionGap;
+  const h = L.watchActionH;
+  const total = 3 * w + 2 * g;
+  return {
+    x0: r.x + (r.w - total) / 2,
+    y: r.y + r.h - h - 3,
+  };
+}
+
+const TRIAGE_CHIP_TONES = {
+  primary: {
+    bg: CURSOR_AI.blue,
+    bgH: "#1858c9",
+    bd: CURSOR_AI.blue,
+    tx: "#fff",
+  },
+  secondary: {
+    bg: CURSOR_AI.surface,
+    bgH: CURSOR_AI.surfaceMute,
+    bd: CURSOR_AI.border,
+    tx: CURSOR_AI.ink,
+  },
+  approve: {
+    bg: CURSOR_AI.greenMute,
+    bgH: CURSOR_AI.green,
+    bd: CURSOR_AI.green,
+    tx: CURSOR_AI.green,
+  },
+  reject: {
+    bg: CURSOR_AI.redMute,
+    bgH: CURSOR_AI.red,
+    bd: CURSOR_AI.red,
+    tx: CURSOR_AI.red,
+  },
+  ghost: {
+    bg: "transparent",
+    bgH: CURSOR_AI.surfaceMute,
+    bd: CURSOR_AI.border,
+    tx: CURSOR_AI.inkMute,
+  },
+} as const;
+
+function helpersByDrawerSlot(helpers: readonly Helper[]): (Helper | null)[] {
+  const slot: (Helper | null)[] = [null, null, null, null, null];
+  for (const h of helpers) {
+    const a = h.drawerAssigned;
+    if (a !== null) slot[a] = h;
+  }
+  return slot;
+}
+
+function drawTriageChip(
+  ctx: CanvasRenderingContext2D,
+  rect: Rect,
+  label: string,
+  opts: {
+    readonly tone: "primary" | "secondary" | "approve" | "reject" | "ghost";
+    readonly hovered?: boolean;
+    readonly disabled?: boolean;
+  },
+): void {
+  const spec = TRIAGE_CHIP_TONES[opts.tone];
+  const hovered = opts.hovered === true && !opts.disabled;
+  ctx.save();
+  if (opts.disabled) ctx.globalAlpha = 0.45;
+  const fill = hovered && spec.bg !== "transparent" ? spec.bgH : spec.bg;
+  if (fill !== "transparent") {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 4);
+    ctx.fill();
+  } else if (hovered) {
+    ctx.fillStyle = spec.bgH;
+    ctx.beginPath();
+    ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 4);
+    ctx.fill();
+  }
+  ctx.strokeStyle = spec.bd;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 4);
+  ctx.stroke();
+  const useLightText =
+    hovered &&
+    (opts.tone === "primary" ||
+      opts.tone === "approve" ||
+      opts.tone === "reject");
+  ctx.fillStyle = useLightText ? "#ffffff" : spec.tx;
+  ctx.font = "600 7px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 0.5);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}
+
+export function taskInterventionButtonRects(r: Rect): {
+  readonly inspect: Rect;
+  readonly abort: Rect;
+  readonly push: Rect;
+} {
+  const L = ERRAND_LAYOUT;
+  const w = L.watchActionW;
+  const g = L.watchActionGap;
+  const h = L.watchActionH;
+  const { x0, y } = watchActionRowLayout(r);
+  return {
+    inspect: { x: x0, y, w, h },
+    abort: { x: x0 + w + g, y, w, h },
+    push: { x: x0 + 2 * (w + g), y, w, h },
+  };
+}
+
+export function hitWatchIntervention(
+  drawers: readonly Drawer[],
+  helpers: readonly Helper[],
+  x: number,
+  y: number,
+): { taskIdx: number; kind: InterventionKind } | null {
+  const byDrawer = helpersByDrawerSlot(helpers);
+  for (let i = 0; i < drawers.length; i++) {
+    const d = drawers[i] as Drawer;
+    const helper = byDrawer[d.index] ?? null;
+    if (!helper) continue;
+    if (helper.state !== "filling" && helper.state !== "alert") continue;
+    const r = taskCardRect(i);
+    const rects = taskInterventionButtonRects(r);
+    if (inRect(x, y, rects.inspect)) return { taskIdx: i, kind: "inspect" };
+    if (inRect(x, y, rects.abort)) return { taskIdx: i, kind: "abort" };
+    if (inRect(x, y, rects.push)) return { taskIdx: i, kind: "push" };
+  }
+  return null;
+}
+
+export interface ErrandTaskDrawOptions {
+  readonly getDisplaySignal: (taskIdx: number) => TaskSignalProfile;
+  readonly watchMode: boolean;
+  readonly watchHover: { taskIdx: number; kind: InterventionKind } | null;
+  readonly inspectUsed: (taskIdx: number) => boolean;
+}
+
 // ---------------------------------------------------------------------
 // Tasks card (top): 5 task cards in a row
 // ---------------------------------------------------------------------
@@ -167,42 +368,63 @@ export function drawTasksCard(
   ctx: CanvasRenderingContext2D,
   drawers: readonly Drawer[],
   helpers: readonly Helper[],
-  /** During drag: index of task (0..4) that would accept the current grab. */
   dropHighlightTaskIdx: number | null = null,
+  watchOpts: ErrandTaskDrawOptions | null = null,
 ): void {
   const L = ERRAND_LAYOUT;
   drawAiCard(ctx, L.tasksX, L.tasksY, L.tasksW, L.tasksH);
-  // Card title
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText("TASKS", L.tasksX + 14, L.tasksY + 18);
+  ctx.fillText("TASKS — triage + dispatch", L.tasksX + 14, L.tasksY + 18);
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textAlign = "right";
+  let liveCount = 0;
+  for (const h of helpers) {
+    if (h.drawerAssigned !== null) liveCount++;
+  }
   ctx.fillText(
-    `${drawers.length} pending · ${helpers.filter((h) => h.drawerAssigned !== null).length} active`,
+    `${drawers.length} in queue · ${liveCount} live`,
     L.tasksX + L.tasksW - 14,
     L.tasksY + 18,
   );
   ctx.textAlign = "left";
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "9px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText(
+    "signals: rel / safe / urg · live: in · off · run",
+    L.tasksX + 14,
+    L.tasksY + L.tasksH - 8,
+  );
 
+  const byDrawer = helpersByDrawerSlot(helpers);
+  const ro: ErrandTaskDrawOptions = watchOpts ?? {
+    getDisplaySignal: (ix: number) => (drawers[ix] as Drawer).signalProfile,
+    watchMode: false,
+    watchHover: null,
+    inspectUsed: () => false,
+  };
   for (let i = 0; i < drawers.length; i++) {
     const d = drawers[i] as Drawer;
     const r = taskCardRect(i);
-    const helper = helpers.find((h) => h.drawerAssigned === d.index) ?? null;
-    drawTaskCard(ctx, d, r, helper, dropHighlightTaskIdx === i);
+    const helper = byDrawer[i] ?? null;
+    drawTaskCard(ctx, i, d, r, helper, dropHighlightTaskIdx === i, ro);
   }
 }
 
 function drawTaskCard(
   ctx: CanvasRenderingContext2D,
+  taskIdx: number,
   drawer: Drawer,
   r: Rect,
   helper: Helper | null,
   isDropTarget: boolean,
+  opts: ErrandTaskDrawOptions,
 ): void {
   const isActive = helper?.state === "filling" || helper?.state === "alert";
   const isAlerted = helper?.state === "alert";
+  const showTriage = opts.watchMode && isActive;
+  const prof = opts.getDisplaySignal(taskIdx);
   drawAiCard(ctx, r.x, r.y, r.w, r.h, {
     radius: 8,
     fill: isActive ? CURSOR_AI.surface : CURSOR_AI.surface,
@@ -215,29 +437,74 @@ function drawTaskCard(
           : CURSOR_AI.border,
     shadow: isDropTarget,
   });
-  // Index chip top-left
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillText(`task #${drawer.index + 1}`, r.x + 8, r.y + 14);
-  // Hint icon centered
-  drawHintIcon(ctx, drawer.hint, r.x + r.w / 2, r.y + r.h / 2 + 2, 22);
-  // Status / agent badge bottom
+  ctx.fillStyle = CURSOR_AI.surfaceMute;
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.beginPath();
+  ctx.roundRect(r.x + r.w - 22, r.y + 5, 16, 14, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.textAlign = "center";
+  ctx.fillText(String(drawer.index + 1), r.x + r.w - 14, r.y + 15);
+  ctx.textAlign = "left";
+
+  drawTaskSignalMeters(ctx, r.x + 4, r.y + 20, prof);
+  drawHintIcon(ctx, drawer.hint, r.x + r.w / 2 + 10, r.y + r.h / 2 - 2, 20);
+
+  const { y: actionY } = watchActionRowLayout(r);
+  const statusY = showTriage ? actionY - 11 : r.y + r.h - 8;
+  const barY = showTriage ? actionY - 7 : r.y + r.h - 4;
   if (helper) {
     ctx.fillStyle = isAlerted ? CURSOR_AI.accent : CURSOR_AI.blue;
-    ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
+    ctx.font = "600 8px 'Cursor Mono', ui-monospace, monospace";
     ctx.textAlign = "center";
     ctx.fillText(
-      isAlerted ? "tripwire!" : `agent-0${helper.index + 1}`,
+      isAlerted ? "TRIP" : `ag${helper.index + 1} · ${helper.trait.label}`,
       r.x + r.w / 2,
-      r.y + r.h - 8,
+      statusY,
     );
     ctx.textAlign = "left";
+    if (helper.state === "filling" || helper.state === "alert") {
+      const barX = r.x + 10;
+      drawAiProgressLine(ctx, barX, barY, r.w - 20, helper.fillProgress, {
+        tone: helper.state === "alert" ? "alert" : "default",
+        thickness: 2,
+      });
+    }
   } else {
     ctx.fillStyle = CURSOR_AI.inkSubtle;
     ctx.font = "9px 'Cursor Mono', ui-monospace, monospace";
     ctx.textAlign = "center";
-    ctx.fillText("idle", r.x + r.w / 2, r.y + r.h - 8);
+    ctx.fillText("idle", r.x + r.w / 2, statusY);
     ctx.textAlign = "left";
+  }
+
+  if (showTriage) {
+    const rec = taskInterventionButtonRects(r);
+    const inUsed = opts.inspectUsed(taskIdx);
+    const hov = opts.watchHover;
+    const hIn =
+      hov && hov.taskIdx === taskIdx && hov.kind === "inspect" ? hov : null;
+    const hAb =
+      hov && hov.taskIdx === taskIdx && hov.kind === "abort" ? hov : null;
+    const hPu =
+      hov && hov.taskIdx === taskIdx && hov.kind === "push" ? hov : null;
+    drawTriageChip(ctx, rec.inspect, inUsed ? "in✓" : "in", {
+      tone: inUsed ? "ghost" : "primary",
+      hovered: hIn !== null,
+      disabled: inUsed,
+    });
+    drawTriageChip(ctx, rec.abort, "off", {
+      tone: "secondary",
+      hovered: hAb !== null,
+    });
+    drawTriageChip(ctx, rec.push, "run", {
+      tone: isAlerted ? "reject" : "approve",
+      hovered: hPu !== null,
+    });
   }
 }
 
@@ -249,6 +516,7 @@ export function drawAgentsCard(
   helpers: readonly Helper[],
   drawers: readonly Drawer[],
   pickedIndex: number | null,
+  hoverRowIdx: number | null,
   pointerX: number,
   pointerY: number,
 ): void {
@@ -261,7 +529,7 @@ export function drawAgentsCard(
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textAlign = "right";
   ctx.fillText(
-    "drag an agent → onto a task to dispatch",
+    "drag → task · fast/steady/careful paces (ETA)",
     L.agentsX + L.agentsW - 14,
     L.agentsY + 18,
   );
@@ -269,7 +537,8 @@ export function drawAgentsCard(
 
   for (let i = 0; i < helpers.length; i++) {
     const h = helpers[i] as Helper;
-    drawAgentRow(ctx, h, agentRowRect(i), drawers);
+    const highlight = hoverRowIdx === i && pickedIndex === null;
+    drawAgentRow(ctx, h, agentRowRect(i), drawers, highlight);
   }
 
   // Drag ghost — render the picked agent at the pointer location.
@@ -286,33 +555,50 @@ function drawAgentRow(
   helper: Helper,
   r: Rect,
   drawers: readonly Drawer[],
+  rowHover: boolean,
 ): void {
+  if (rowHover) {
+    ctx.save();
+    ctx.fillStyle = "rgba(0, 106, 255, 0.05)";
+    ctx.beginPath();
+    ctx.roundRect(r.x + 2, r.y, r.w - 4, r.h, 5);
+    ctx.fill();
+    ctx.restore();
+  }
   // Avatar
   drawAiAvatar(ctx, r.x + 14, r.y + r.h / 2, { size: 18 });
   // Name
   ctx.fillStyle = CURSOR_AI.ink;
-  ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
+  ctx.font = "600 10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textBaseline = "middle";
-  ctx.fillText(`agent-0${helper.index + 1}`, r.x + 32, r.y + r.h / 2);
+  ctx.fillText(`ag${helper.index + 1}`, r.x + 32, r.y + r.h / 2);
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "600 8px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText(`· ${helper.trait.label}`, r.x + 64, r.y + r.h / 2);
 
   // Status pill
-  const pillX = r.x + 110;
-  let label = "waiting";
+  const pillX = r.x + 120;
+  let label = "idle";
   let tone: "neutral" | "active" | "alert" | "done" | "lost" = "neutral";
   if (helper.state === "filling") {
     const taskN =
       helper.drawerAssigned !== null ? helper.drawerAssigned + 1 : "?";
-    label = `running task #${taskN}`;
+    label = `run #${taskN}`;
     tone = "active";
   } else if (helper.state === "alert") {
-    label = "tripwire";
+    label = "TRIP";
     tone = "alert";
   } else if (helper.state === "returning") {
-    label = helper.result === "clue" ? "delivered clue" : "returned empty";
+    label = helper.result === "clue" ? "clue" : "empty";
     tone = helper.result === "clue" ? "done" : "neutral";
   } else if (helper.state === "lost") {
     label = "lost";
     tone = "lost";
+  } else if (helper.state === "waiting") {
+    label = "ready";
+    tone = "neutral";
+  } else {
+    label = "moving";
   }
   drawAiStatusPill(ctx, pillX, r.y + r.h / 2, label, tone);
 
@@ -325,19 +611,20 @@ function drawAgentRow(
       tone: helper.state === "alert" ? "alert" : "default",
       thickness: 3,
     });
-    // ETA label above the bar
     if (helper.drawerAssigned !== null) {
       const drawer = drawers[helper.drawerAssigned];
       if (drawer) {
-        const etaMs = drawer.fillRateMs * (1 - helper.fillProgress);
         ctx.fillStyle = CURSOR_AI.inkSubtle;
         ctx.font = "9px 'Cursor Mono', ui-monospace, monospace";
         ctx.textAlign = "right";
-        ctx.fillText(
-          `${(etaMs / 1000).toFixed(1)}s`,
-          barX + barW,
-          barY - 4,
-        );
+        if (helper.state === "filling") {
+          const effMs = drawer.fillRateMs * helper.trait.paceScale;
+          const etaMs = effMs * (1 - helper.fillProgress);
+          ctx.fillText(`≈${(etaMs / 1000).toFixed(1)}s`, barX + barW, barY - 4);
+        } else {
+          const left = Math.max(0, ERRAND_TRIPWIRE_ABORT_S - helper.tripwireT);
+          ctx.fillText(`abort in ${left.toFixed(1)}s`, barX + barW, barY - 4);
+        }
         ctx.textAlign = "left";
       }
     }
@@ -383,11 +670,7 @@ export function drawAbortModal(
   );
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
-  ctx.fillText(
-    "Abort returns the agent safely (no clue).",
-    x + 24,
-    y + 70,
-  );
+  ctx.fillText("Abort returns the agent safely (no clue).", x + 24, y + 70);
   ctx.fillText(
     "Push runs the trap — 50/50 clue or lose the agent.",
     x + 24,

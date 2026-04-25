@@ -13,9 +13,7 @@ export interface SentenceResult {
   readonly maxBlueStreak: number;
 }
 
-export function scoreSentenceRun(
-  picks: readonly PlayerPick[],
-): SentenceResult {
+export function scoreSentenceRun(picks: readonly PlayerPick[]): SentenceResult {
   let score = 0;
   let blue = 0;
   let purple = 0;
@@ -78,8 +76,21 @@ export function classifyEnding(
   return "improv";
 }
 
+/** True when a full run merits notebook/outcome: full slot run plus ≥2 blues or 2+ consecutive blues. */
 export function shouldEmitOutcome(picks: readonly PlayerPick[]): boolean {
-  return picks.some((p) => p.color === "blue");
+  if (picks.length < SENTENCE_SLOTS_PER_TEMPLATE) return false;
+  let blues = 0;
+  let streak = 0;
+  for (const p of picks) {
+    if (p.color === "blue") {
+      blues++;
+      streak++;
+      if (streak >= 2) return true;
+    } else {
+      streak = 0;
+    }
+  }
+  return blues >= 2;
 }
 
 /** Inject the player name into a prefix once 3 consecutive blues land. */

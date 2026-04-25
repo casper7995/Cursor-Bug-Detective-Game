@@ -23,6 +23,13 @@ export interface RunnerSimConfig {
   readonly dailyGoalDistance: number;
 }
 
+export interface RunnerProjectile {
+  readonly x: number;
+  /** Hit / draw center y (down-positive canvas space). */
+  readonly y: number;
+  readonly text: string;
+}
+
 export interface RunnerSimState {
   readonly mode: RunnerMode;
   readonly scroll: number;
@@ -51,6 +58,10 @@ export interface RunnerSimState {
   readonly minFeetY: number;
   /** Drives themed snippet text / plank widths in endless generation. */
   readonly anomalyId: AnomalyId;
+  /** Endless-only: “error code” gap hazards. */
+  readonly projectiles: readonly RunnerProjectile[];
+  /** `elapsedMs` when the next gap projectile may spawn. */
+  readonly nextProjectileSpawnAtMs: number;
 }
 
 const PLAYER_W = 44;
@@ -76,6 +87,83 @@ const CLIMB_PX_PER_M = 2;
 
 const MIN_GAP = 32;
 
+export const RUNNER_PROJECTILE_W = 78;
+export const RUNNER_PROJECTILE_H = 16;
+const PROJECTILE_W = RUNNER_PROJECTILE_W;
+const PROJECTILE_H = RUNNER_PROJECTILE_H;
+const PROJECTILE_SPAWN_MIN_GAP_PX = 88;
+const PROJECTILE_SPAWN_AHEAD_MIN = 150;
+const PROJECTILE_SPAWN_AHEAD_MAX = 520;
+const PROJECTILE_MIN_CLIMB_M = 100;
+const PROJECTILE_SPAWN_TIER = 1;
+
+const ERR_CODE_PHRASES = [
+  "EADDRINUSE",
+  "TypeError",
+  "NaN",
+  "segfault",
+  "ENOENT",
+] as const;
+
+function playerHitByProjectile(
+  scroll: number,
+  playerY: number,
+  p: RunnerProjectile,
+): boolean {
+  const px0 = scroll + PLAYER_SCREEN_X;
+  const px1 = px0 + PLAYER_W;
+  const y0 = p.y - PROJECTILE_H / 2;
+  const y1 = p.y + PROJECTILE_H / 2;
+  const py0 = playerY;
+  const py1 = playerY + PLAYER_H;
+  if (p.x + PROJECTILE_W < px0 || p.x > px1) return false;
+  return y0 < py1 && y1 > py0;
+}
+
+function trySpawnErrorProjectileInGap(
+  scroll: number,
+  planks: readonly CodePlank[],
+  rng: () => number,
+  nowMs: number,
+  minNextSpawnMs: number,
+  maxClimbM: number,
+  endlessTier: number,
+): { projectiles: RunnerProjectile[]; nextSpawnAt: number; spawned: boolean } {
+  if (nowMs < minNextSpawnMs) {
+    return { projectiles: [], nextSpawnAt: minNextSpawnMs, spawned: false };
+  }
+  if (
+    maxClimbM < PROJECTILE_MIN_CLIMB_M ||
+    endlessTier < PROJECTILE_SPAWN_TIER
+  ) {
+    return { projectiles: [], nextSpawnAt: minNextSpawnMs, spawned: false };
+  }
+
+  for (let i = 0; i < planks.length - 1; i++) {
+    const a = planks[i]!;
+    const b = planks[i + 1]!;
+    if (a.x0 > b.x0) continue;
+    const gapW = b.x0 - a.x1;
+    if (gapW < PROJECTILE_SPAWN_MIN_GAP_PX) continue;
+    if (a.x1 < scroll + PROJECTILE_SPAWN_AHEAD_MIN) continue;
+    if (a.x1 > scroll + PROJECTILE_SPAWN_AHEAD_MAX) continue;
+    const mid = a.x1 + Math.min(110, Math.max(22, gapW * 0.45));
+    if (mid > b.x0 - 28) continue;
+    const y = (a.yTop + b.yTop) * 0.5 - 20;
+    const text = ERR_CODE_PHRASES[Math.floor(rng() * ERR_CODE_PHRASES.length)]!;
+    return {
+      projectiles: [{ x: mid - PROJECTILE_W * 0.5, y, text }],
+      nextSpawnAt: nowMs + 1500 + rng() * 1100,
+      spawned: true,
+    };
+  }
+  return {
+    projectiles: [],
+    nextSpawnAt: nowMs + 400,
+    spawned: false,
+  };
+}
+
 /** Layout: max plank height band (no solid floor — visual only). */
 export const LAYOUT_FLOOR_Y = 292;
 
@@ -91,10 +179,15 @@ export const ENDLESS_DEATH_GAP_WARMUP_MIN_PLANK_ID = 20;
 /** No death gaps in endless tier 0 while HUD climb stays below this (matches ~15–20m onboarding). */
 export const ENDLESS_DEATH_GAP_WARMUP_MIN_CLIMB_M = 18;
 
-export function pristineLifeMsForTier(tier: number, mode?: RunnerMode): number {
+export function pristineLifeMsForTier(
+  tier: number,
+  mode?: RunnerMode,
+  maxClimbM = 0,
+): number {
   const bonus = mode === "endless" && tier === 0 ? 800 : 0;
   const base = PRISTINE_LIFE_BASE_MS - Math.max(0, tier) * 350 + bonus;
-  return Math.max(3500, base);
+  const heightBonus = mode === "endless" ? Math.min(4500, maxClimbM * 5) : 0;
+  return Math.max(3500, base + heightBonus);
 }
 
 /** Max upward jump height (px) from jump velocity and gravity. */
@@ -164,9 +257,9 @@ export function deathGapPx(
   speedForReach: number,
   endlessTier: number,
 ): number {
-  const maxDeath = horizontalJumpRange(SPEED_BOOST_MAX) - 16;
-  const slackLo = endlessTier <= 1 ? 10 : 24;
-  const slackRng = endlessTier <= 1 ? 18 : 40;
+  const maxDeath = horizontalJumpRange(SPEED_BOOST_MAX) - 24;
+  const slackLo = endlessTier <= 1 ? 8 : 18;
+  const slackRng = endlessTier <= 1 ? 14 : 32;
   const raw = Math.round(
     horizontalJumpRange(speedForReach) + slackLo + rng() * slackRng,
   );
@@ -356,6 +449,8 @@ function finalizeNewSim(
     runStartFeetY: feet0,
     minFeetY: feet0,
     anomalyId,
+    projectiles: [],
+    nextProjectileSpawnAtMs: mode === "endless" ? 5000 : 0,
   };
 }
 
@@ -394,7 +489,11 @@ export function stepRunnerSim(
 
   let boost01 = state.boost01;
   const rampTier = endlessTierFromMaxClimbM(state.maxClimbM);
-  const pristineLifeMs = pristineLifeMsForTier(rampTier, state.mode);
+  const pristineLifeMs = pristineLifeMsForTier(
+    rampTier,
+    state.mode,
+    state.mode === "endless" ? state.maxClimbM : 0,
+  );
   const speed0 = effectiveSpeedBaseForTier(rampTier);
   const speed =
     speed0 + (SPEED_BOOST_MAX - speed0) * boost01 * (wantBoost ? 1 : 0);
@@ -476,6 +575,31 @@ export function stepRunnerSim(
     verticalPx / CLIMB_PX_PER_M + scroll / RUNNER_SPEED_BASE,
   );
 
+  const climbTier = endlessTierFromMaxClimbM(maxClimbM);
+  let projectiles: RunnerProjectile[] = state.projectiles.filter(
+    (p) => p.x + PROJECTILE_W > scroll - 120,
+  );
+  for (const p of projectiles) {
+    if (playerHitByProjectile(scroll, playerY, p)) {
+      return {
+        ...state,
+        failed: true,
+        scroll,
+        playerY,
+        playerVy,
+        elapsedMs: nextElapsed,
+        planks,
+        maxScroll: Math.max(state.maxScroll, scroll),
+        boost01,
+        lastGroundSurfaceY,
+        minFeetY,
+        maxClimbM,
+        projectiles,
+        nextProjectileSpawnAtMs: state.nextProjectileSpawnAtMs,
+      };
+    }
+  }
+
   if (!grounded && feetY > lastGroundSurfaceY + VOID_DEPTH_PX) {
     return {
       ...state,
@@ -490,6 +614,8 @@ export function stepRunnerSim(
       lastGroundSurfaceY,
       minFeetY,
       maxClimbM,
+      projectiles,
+      nextProjectileSpawnAtMs: state.nextProjectileSpawnAtMs,
     };
   }
 
@@ -508,6 +634,8 @@ export function stepRunnerSim(
       lastGroundSurfaceY,
       minFeetY,
       maxClimbM,
+      projectiles,
+      nextProjectileSpawnAtMs: state.nextProjectileSpawnAtMs,
     };
   }
 
@@ -552,6 +680,23 @@ export function stepRunnerSim(
     return nextElapsed < p.bornAtMs + pristineLifeMs + PLANK_CULL_GRACE_MS;
   });
 
+  let nextProjectileSpawnAtMs = state.nextProjectileSpawnAtMs;
+  if (state.mode === "endless") {
+    const spawn = trySpawnErrorProjectileInGap(
+      scroll,
+      planks,
+      rng,
+      nextElapsed,
+      nextProjectileSpawnAtMs,
+      maxClimbM,
+      climbTier,
+    );
+    if (spawn.spawned) {
+      projectiles = [...projectiles, ...spawn.projectiles];
+    }
+    nextProjectileSpawnAtMs = spawn.nextSpawnAt;
+  }
+
   const maxScroll = Math.max(state.maxScroll, scroll);
 
   return {
@@ -573,6 +718,8 @@ export function stepRunnerSim(
     lastGroundSurfaceY,
     minFeetY,
     runStartFeetY: state.runStartFeetY,
+    projectiles,
+    nextProjectileSpawnAtMs,
   };
 }
 

@@ -6,6 +6,8 @@ import {
   PLANK_LIFE_MS,
   pristineLifeMsForTier,
   RUNNER_DRAW,
+  RUNNER_PROJECTILE_H,
+  type RunnerProjectile,
 } from "./sim";
 import { snippetTextForPlankId, SNIPPET_MONO_FONT } from "./snippets";
 import type { RunnerMode } from "./types";
@@ -57,12 +59,12 @@ export interface DrawRunnerOpts {
   onClueTokenSeen?: (token: string) => void;
   /** ms since a new 100m tier — ribbon fades over 1.2s (endless ramp). */
   tierRibbon?: { tier: number; ageMs: number };
+  /** Endless gap hazards (error codes). */
+  projectiles?: readonly RunnerProjectile[];
   gameOver?: {
     peakHeightM: number;
     cluesSeen: readonly string[];
     mode: RunnerMode;
-    /** 0..1 endless auto-restart countdown. */
-    restartProgress01: number;
     /** ms since void fail — tumble/shake; card after 280ms. */
     failureAnimMs?: number;
   };
@@ -300,6 +302,36 @@ function fillMonoGlowText(
   ctx.fillText(text, x, baselineY);
 }
 
+function drawRunnerProjectiles(
+  ctx: CanvasRenderingContext2D,
+  scroll: number,
+  cameraY: number,
+  projectiles: readonly RunnerProjectile[] | undefined,
+  viewW: number,
+): void {
+  if (!projectiles || projectiles.length === 0) return;
+  ctx.save();
+  ctx.font = "600 10px 'Berkeley Mono', ui-monospace, monospace";
+  ctx.textBaseline = "middle";
+  for (const p of projectiles) {
+    const sx = p.x - scroll;
+    if (sx < -90 || sx > viewW + 50) continue;
+    const sy = p.y + cameraY;
+    const tw = ctx.measureText(p.text).width + 10;
+    const th = RUNNER_PROJECTILE_H + 6;
+    ctx.fillStyle = "rgba(20,8,0,0.45)";
+    ctx.strokeStyle = "rgba(245,78,0,0.7)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(sx, sy - th / 2, tw, th, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = CURSOR_GOLD;
+    ctx.fillText(p.text, sx + 5, sy);
+  }
+  ctx.restore();
+}
+
 function drawGroundShadow(
   ctx: CanvasRenderingContext2D,
   px: number,
@@ -372,10 +404,9 @@ export function drawGameOverCard(
     peakHeightM: number;
     cluesSeen: readonly string[];
     mode: RunnerMode;
-    restartProgress01: number;
   },
 ): void {
-  const { w, h, peakHeightM, cluesSeen, mode, restartProgress01 } = opts;
+  const { w, h, peakHeightM, cluesSeen, mode } = opts;
   ctx.save();
   ctx.fillStyle = "rgba(10,9,7,0.55)";
   ctx.fillRect(0, 0, w, h);
@@ -411,14 +442,7 @@ export function drawGameOverCard(
   ctx.font = "13px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
   ctx.fillStyle = "rgba(237,236,236,0.65)";
   if (mode === "endless") {
-    ctx.fillText("Auto-retrying… Esc to leave the monitor", w / 2, y0 + 148);
-    const barW = cw - 48;
-    const bx = (w - barW) / 2;
-    const by = y0 + 158;
-    ctx.fillStyle = "rgba(255,255,255,0.12)";
-    ctx.fillRect(bx, by, barW, 6);
-    ctx.fillStyle = CURSOR_ORANGE;
-    ctx.fillRect(bx, by, barW * restartProgress01, 6);
+    ctx.fillText("R to retry  ·  Esc to leave the monitor", w / 2, y0 + 156);
   } else {
     ctx.fillText("R retry · Esc back to the desk", w / 2, y0 + 154);
   }
@@ -476,6 +500,7 @@ export function drawRunnerFrame(
     clueTooltipHint,
     onClueTokenSeen,
     tierRibbon,
+    projectiles,
   } = opts;
 
   const feetW = playerY + RUNNER_DRAW.playerH;
@@ -524,6 +549,7 @@ export function drawRunnerFrame(
   const pristineLife = pristineLifeMsForTier(
     tier,
     modeLabel.includes("endless") ? "endless" : undefined,
+    modeLabel.includes("endless") ? maxClimbM : 0,
   );
 
   for (const p of planks) {
@@ -568,6 +594,10 @@ export function drawRunnerFrame(
     ctx.stroke();
 
     ctx.restore();
+  }
+
+  if (!gameOver) {
+    drawRunnerProjectiles(ctx, scroll, cameraY, projectiles, W);
   }
 
   const px = PLAYER_SCREEN_X;
@@ -641,7 +671,6 @@ export function drawRunnerFrame(
         peakHeightM: gameOver.peakHeightM,
         cluesSeen: gameOver.cluesSeen,
         mode: gameOver.mode,
-        restartProgress01: gameOver.restartProgress01,
       });
     }
   }

@@ -40,10 +40,12 @@ export function plankHasClueToken(plankId: number): boolean {
 
 /**
  * Height gate: how many tokens from the pool can appear at this climb height.
+ * Tuned so endless needs a long, high run before the full cipher is visible in snippets.
  */
 export function visibleTokenCountForHeight(heightM: number): number {
-  if (heightM < 100) return 1;
-  if (heightM < 200) return 2;
+  if (heightM < 220) return 1;
+  if (heightM < 420) return 2;
+  if (heightM < 680) return 3;
   return 4;
 }
 

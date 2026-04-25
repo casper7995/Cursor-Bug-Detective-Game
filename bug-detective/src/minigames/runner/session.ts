@@ -25,7 +25,6 @@ const DEFAULT_CFG: RunnerSimConfig = {
 };
 
 const TIER_RIBBON_MS = 1200;
-export const RUNNER_ENDLESS_AUTORESTART_MS = 2200;
 
 export interface RunnerSessionOptions {
   readonly baseSeed: number;
@@ -171,14 +170,7 @@ export class RunnerSession {
     }
   }
 
-  step(
-    dtSec: number,
-    wantJump: boolean,
-    wantBoost: boolean,
-    gameOverUi?: {
-      restartProgress01: number;
-    },
-  ): void {
+  step(dtSec: number, wantJump: boolean, wantBoost: boolean): void {
     if (this.outcome) return;
 
     if (!this.gameOver) {
@@ -236,6 +228,7 @@ export class RunnerSession {
       onClueTokenSeen: this.onClueTokenSeenBound,
       anomalyId: this.anomalyId,
       clueTooltipHint: this.clueTooltipHint,
+      projectiles: this.sim.projectiles,
     };
     const tierRibbon =
       this.tierRibbon &&
@@ -254,7 +247,6 @@ export class RunnerSession {
           peakHeightM: this.sim.maxClimbM,
           cluesSeen: this.getSeenClueList(),
           mode: this.mode,
-          restartProgress01: gameOverUi?.restartProgress01 ?? 0,
           failureAnimMs: this.failureAnimMs,
         },
       });

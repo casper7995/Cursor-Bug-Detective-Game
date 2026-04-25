@@ -43,6 +43,8 @@ async function resolveHoverPts(
 }
 
 test.describe("QA demo recordings (Deterministic)", () => {
+  test.describe.configure({ mode: "serial" });
+
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       try {

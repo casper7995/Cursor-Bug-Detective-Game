@@ -1,6 +1,12 @@
 export type MinigameKey = "runner" | "sentence" | "errand" | "tamper";
+/** Same union as `MinigameKey` — kept for older docs / plan text. */
 export type MinigameKind = MinigameKey;
-export const MINIGAMES: readonly MinigameKey[] = ["runner", "sentence", "errand", "tamper"] as const;
+export const MINIGAMES: readonly MinigameKey[] = [
+  "runner",
+  "sentence",
+  "errand",
+  "tamper",
+] as const;
 
 export type QaRunState =
   | "init"

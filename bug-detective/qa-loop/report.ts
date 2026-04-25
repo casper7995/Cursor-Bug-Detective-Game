@@ -1,13 +1,15 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { QaAssessmentDocument, RunManifestV1, MinigameKey } from "./types.js";
+import {
+  MINIGAMES,
+  type QaAssessmentDocument,
+  type RunManifestV1,
+} from "./types.js";
 import { defaultArtifactsDir } from "./runStore.js";
 
-function slots(): MinigameKey[] {
-  return ["runner", "sentence", "errand", "tamper"];
-}
-
-export async function loadAssessment(path: string): Promise<QaAssessmentDocument> {
+export async function loadAssessment(
+  path: string,
+): Promise<QaAssessmentDocument> {
   const raw = await readFile(path, "utf8");
   return JSON.parse(raw) as QaAssessmentDocument;
 }
@@ -19,10 +21,27 @@ export async function writeShareBundle(
 ): Promise<void> {
   const base = join(defaultArtifactsDir(repoRoot, manifest.runId), "share");
   await mkdir(base, { recursive: true });
-  await writeFile(join(base, "assessment-summary.md"), formatAssessmentSummary(assessment), "utf8");
-  await writeFile(join(base, "cursor-team-writeup.md"), formatTeamWriteup(manifest, assessment), "utf8");
-  const videoManifest = { runId: manifest.runId, videos: manifest.videos, scores: assessment.byMinigame, gate: assessment.gate };
-  await writeFile(join(base, "video-manifest.json"), JSON.stringify(videoManifest, null, 2) + "\n", "utf8");
+  await writeFile(
+    join(base, "assessment-summary.md"),
+    formatAssessmentSummary(assessment),
+    "utf8",
+  );
+  await writeFile(
+    join(base, "cursor-team-writeup.md"),
+    formatTeamWriteup(manifest, assessment),
+    "utf8",
+  );
+  const videoManifest = {
+    runId: manifest.runId,
+    videos: manifest.videos,
+    scores: assessment.byMinigame,
+    gate: assessment.gate,
+  };
+  await writeFile(
+    join(base, "video-manifest.json"),
+    JSON.stringify(videoManifest, null, 2) + "\n",
+    "utf8",
+  );
 }
 
 function formatAssessmentSummary(a: QaAssessmentDocument): string {
@@ -33,10 +52,17 @@ function formatAssessmentSummary(a: QaAssessmentDocument): string {
     `Failing: ${a.gate.failing.join(", ") || "(none)"}`,
     ``,
   ];
-  for (const s of slots()) {
+  for (const s of MINIGAMES) {
     const m = a.byMinigame[s];
-    lines.push(`## ${s} — ${m?.score100 ?? "?"}/100`);
-    if (m) lines.push(m.assessment, ``, m.recommendedFixes.slice(0, 5).map((x: string) => `- ${x}`).join("\n"));
+    lines.push(`## ${s} — ${m.score100}/100`);
+    lines.push(
+      m.assessment,
+      ``,
+      m.recommendedFixes
+        .slice(0, 5)
+        .map((x: string) => `- ${x}`)
+        .join("\n"),
+    );
   }
   return lines.join("\n");
 }
@@ -49,7 +75,7 @@ function formatTeamWriteup(m: RunManifestV1, a: QaAssessmentDocument): string {
     `Threshold: ${a.gate.passThreshold} | allPassed: ${a.gate.allPassed}`,
     ``,
     `## Scores`,
-    ...slots().map((s) => `- **${s}**: ${a.byMinigame[s]?.score100 ?? "n/a"}/100`),
+    ...MINIGAMES.map((s) => `- **${s}**: ${a.byMinigame[s].score100}/100`),
     ``,
     `## SDK / ops`,
     `- Cursor cloud agents: @cursor/february Agent.create (record / plan / implement)`,

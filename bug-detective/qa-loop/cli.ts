@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { copyFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { join, dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,7 +6,11 @@ import {
   createInitialManifest,
   defaultArtifactsDir,
   loadManifest,
+  loadManifestForRunDir,
+  MANIFEST_FILE,
   newRunId,
+  nowIso,
+  qaRunArtifactsRelativePath,
   recordVideoPath,
   saveManifest,
 } from "./runStore.js";
@@ -33,8 +37,8 @@ const REPO = resolve(here, "..");
 function getArg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   if (i < 0) return undefined;
-  const v = process.argv[i + 1];
-  if (!v) return undefined;
+  if (i + 1 >= process.argv.length) return undefined;
+  const v = process.argv[i + 1]!;
   if (v.startsWith("--")) return undefined;
   return v;
 }
@@ -53,7 +57,15 @@ async function findLatestWebmAfter(
     let ent: import("node:fs").Dirent[] | undefined;
     try {
       ent = await readdir(dir, { withFileTypes: true });
-    } catch {
+    } catch (e: unknown) {
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? (e as { code?: string }).code
+          : undefined;
+      if (code !== "ENOENT") {
+        // eslint-disable-next-line no-console
+        console.warn("[qa-loop] readdir", dir, e);
+      }
       return;
     }
     for (const e of ent) {
@@ -125,7 +137,7 @@ function mergeAssessments(
     version: 1,
     runId,
     model,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso(),
     byMinigame,
     gate: {
       passThreshold: threshold,
@@ -135,13 +147,15 @@ function mergeAssessments(
   };
 }
 
-export async function runAssessForRunId(runId: string): Promise<void> {
+export async function runAssessForRunId(
+  runId: string,
+): Promise<{ allPassed: boolean }> {
   const runDir = defaultArtifactsDir(REPO, runId);
-  const mPath = join(runDir, "manifest.json");
+  const mPath = join(runDir, MANIFEST_FILE);
   const manifest = await loadManifest(mPath);
   const key = getGeminiApiKey();
   const model = getAssessModel();
-  const parts: QaAssessmentDocument[] = [];
+  const toAssess: { slot: MinigameKey; vp: string }[] = [];
   for (const slot of MINIGAMES) {
     const vp = manifest.videos[slot];
     if (!vp) {
@@ -149,18 +163,21 @@ export async function runAssessForRunId(runId: string): Promise<void> {
       console.warn(`[qa-loop] no video for ${slot}; using placeholder in gate`);
       continue;
     }
-    parts.push(
-      await assessOneVideoWithGemini({
+    toAssess.push({ slot, vp });
+  }
+  if (toAssess.length === 0)
+    throw new Error("No videos in manifest to assess (record clips first).");
+  const parts = await Promise.all(
+    toAssess.map(({ slot, vp }) =>
+      assessOneVideoWithGemini({
         apiKey: key,
         model,
         runId: manifest.runId,
         videoPath: vp,
         minigame: slot,
       }),
-    );
-  }
-  if (parts.length === 0)
-    throw new Error("No videos in manifest to assess (record clips first).");
+    ),
+  );
   const merged = mergeAssessments(
     manifest.runId,
     parts,
@@ -182,6 +199,78 @@ export async function runAssessForRunId(runId: string): Promise<void> {
   console.log(
     `Wrote ${out} allPassed=${merged.gate.allPassed} failing=${merged.gate.failing.join(",") || "(none)"}`,
   );
+  return { allPassed: merged.gate.allPassed };
+}
+
+function runDemoRecordSpec(scenario: MinigameKey): SpawnSyncReturns<Buffer> {
+  return spawnSync(
+    "npx",
+    [
+      "playwright",
+      "test",
+      "e2e/demo-record.spec.ts",
+      "--project=demo",
+      "-g",
+      scenario,
+    ],
+    {
+      cwd: REPO,
+      stdio: "inherit",
+      env: { ...process.env, BD_QA_SCENARIO: scenario },
+    },
+  );
+}
+
+/** One walk of `test-results/`: best .webm per scenario (same tie-break as single-scenario search). */
+async function findLatestWebmPerScenario(
+  base: string,
+  sinceMs: number,
+  scenarios: readonly string[],
+): Promise<Map<string, string>> {
+  const all: { p: string; t: number }[] = [];
+  async function walk(dir: string): Promise<void> {
+    let ent: import("node:fs").Dirent[] | undefined;
+    try {
+      ent = await readdir(dir, { withFileTypes: true });
+    } catch (e: unknown) {
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? (e as { code?: string }).code
+          : undefined;
+      if (code !== "ENOENT") {
+        // eslint-disable-next-line no-console
+        console.warn("[qa-loop] readdir", dir, e);
+      }
+      return;
+    }
+    for (const e of ent) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) await walk(p);
+      else if (e.isFile() && p.endsWith(".webm")) {
+        all.push({ p, t: (await stat(p)).mtimeMs });
+      }
+    }
+  }
+  await walk(join(base, "test-results"));
+  const out = new Map<string, string>();
+  for (const scenario of scenarios) {
+    const results = all
+      .filter((x) => x.t >= sinceMs)
+      .map((x) => {
+        const hay = x.p.toLowerCase();
+        const needle = scenario.toLowerCase();
+        const score = hay.includes(needle) ? 1 : 0;
+        return { ...x, score };
+      });
+    if (results.length === 0) continue;
+    results.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.t !== a.t) return b.t - a.t;
+      return b.p.length - a.p.length;
+    });
+    out.set(scenario, results[0]!.p);
+  }
+  return out;
 }
 
 async function cmdRecord(): Promise<void> {
@@ -191,7 +280,7 @@ async function cmdRecord(): Promise<void> {
   const runId = getArg("--run") ?? newRunId();
   const runDir = defaultArtifactsDir(REPO, runId);
   await mkdir(runDir, { recursive: true });
-  const mPath = join(runDir, "manifest.json");
+  const mPath = join(runDir, MANIFEST_FILE);
   let manifest: RunManifestV1;
   try {
     manifest = await loadManifest(mPath);
@@ -200,22 +289,7 @@ async function cmdRecord(): Promise<void> {
   }
   if (hasFlag("--local")) {
     const t0 = Date.now();
-    const r = spawnSync(
-      "npx",
-      [
-        "playwright",
-        "test",
-        "e2e/demo-record.spec.ts",
-        "--project=demo",
-        "-g",
-        scenario,
-      ],
-      {
-        cwd: REPO,
-        stdio: "inherit",
-        env: { ...process.env, BD_QA_SCENARIO: scenario },
-      },
-    );
+    const r = runDemoRecordSpec(scenario);
     if (r.status !== 0)
       throw new Error(`playwright record failed: exit ${r.status}`);
     const webm = await findLatestWebmAfter(REPO, t0 - 2000, scenario);
@@ -257,16 +331,16 @@ async function cmdPlan(): Promise<void> {
   if (!runId) throw new Error("Missing --run");
   const { agentId, run } = await startPlanCloudAgent(REPO, runId);
   const runDir = defaultArtifactsDir(REPO, runId);
-  let manifest = await loadManifest(join(runDir, "manifest.json"));
+  let manifest = await loadManifestForRunDir(runDir);
   manifest.state = "planned";
   manifest.cloud = { ...manifest.cloud, planAgentId: agentId };
   await saveManifest(runDir, manifest);
   const res = await waitRunDone(run);
   // eslint-disable-next-line no-console
   console.log("plan run status:", res.status);
-  manifest = await loadManifest(join(runDir, "manifest.json"));
+  manifest = await loadManifestForRunDir(runDir);
   manifest.state = "needs-approval";
-  manifest.planPath = join("artifacts/qa-runs", runId, "cursor-plan.md");
+  manifest.planPath = join(qaRunArtifactsRelativePath(runId), "cursor-plan.md");
   await saveManifest(runDir, manifest);
 }
 
@@ -274,20 +348,20 @@ async function cmdApprove(): Promise<void> {
   const runId = getArg("--run");
   if (!runId) throw new Error("Missing --run");
   const runDir = defaultArtifactsDir(REPO, runId);
-  let manifest = await loadManifest(join(runDir, "manifest.json"));
+  let manifest = await loadManifestForRunDir(runDir);
   manifest.planApproved = true;
   manifest.pendingNextStep = "implement";
   manifest.state = "implementing";
   await saveManifest(runDir, manifest);
   if (hasFlag("--execute")) {
     const { agentId, run } = await startImplementCloudAgent(REPO, runId);
-    manifest = await loadManifest(join(runDir, "manifest.json"));
+    manifest = await loadManifestForRunDir(runDir);
     manifest.cloud = { ...manifest.cloud, implementAgentId: agentId };
     await saveManifest(runDir, manifest);
     const res = await waitRunDone(run);
     // eslint-disable-next-line no-console
     console.log("implement:", res.status, res.git);
-    manifest = await loadManifest(join(runDir, "manifest.json"));
+    manifest = await loadManifestForRunDir(runDir);
     if (res.git?.branches?.[0]?.prUrl) {
       manifest.cloud = {
         ...manifest.cloud,
@@ -310,7 +384,7 @@ async function cmdIterate(): Promise<void> {
   await mkdir(runDir, { recursive: true });
   let m: RunManifestV1;
   try {
-    m = await loadManifest(join(runDir, "manifest.json"));
+    m = await loadManifestForRunDir(runDir);
   } catch {
     m = createInitialManifest(runId);
   }
@@ -322,31 +396,23 @@ async function cmdIterate(): Promise<void> {
     await saveManifest(runDir, m);
     throw new Error("max iterations reached");
   }
+  const t0 = Date.now();
   for (const s of MINIGAMES) {
-    const t0 = Date.now();
-    const r = spawnSync(
-      "npx",
-      [
-        "playwright",
-        "test",
-        "e2e/demo-record.spec.ts",
-        "--project=demo",
-        "-g",
-        s,
-      ],
-      {
-        cwd: REPO,
-        stdio: "inherit",
-        env: { ...process.env, BD_QA_SCENARIO: s },
-      },
-    );
+    const r = runDemoRecordSpec(s);
     if (r.status !== 0) {
       m.state = "blocked";
       m.lastError = `playwright ${s} failed`;
       await saveManifest(runDir, m);
       throw new Error(m.lastError!);
     }
-    const webm = await findLatestWebmAfter(REPO, t0 - 2000, s);
+  }
+  const byScenario = await findLatestWebmPerScenario(
+    REPO,
+    t0 - 2000,
+    MINIGAMES,
+  );
+  for (const s of MINIGAMES) {
+    const webm = byScenario.get(s);
     if (!webm) throw new Error("no webm for " + s);
     const target = join(runDir, "videos", `${s}.webm`);
     await mkdir(dirname(target), { recursive: true });
@@ -355,9 +421,8 @@ async function cmdIterate(): Promise<void> {
   }
   m.state = "recording";
   await saveManifest(runDir, m);
-  await runAssessForRunId(m.runId);
-  const m2 = await loadManifest(join(runDir, "manifest.json"));
-  if (!m2.allPassed) {
+  const { allPassed } = await runAssessForRunId(m.runId);
+  if (!allPassed) {
     try {
       await cmdPlan();
     } catch (e) {
@@ -371,20 +436,21 @@ async function cmdShare(): Promise<void> {
   const runId = getArg("--run");
   if (!runId) throw new Error("Missing --run");
   const runDir = defaultArtifactsDir(REPO, runId);
-  const m = await loadManifest(join(runDir, "manifest.json"));
+  const m = await loadManifestForRunDir(runDir);
   const a = await loadAssessment(join(runDir, "assessment.json"));
   await writeShareBundle(REPO, m, a);
   // eslint-disable-next-line no-console
   console.log("Share bundle in", join(runDir, "share"));
 }
 
-
 async function cmdStatus(): Promise<void> {
   const runId = getArg("--run");
   const runBase = join(REPO, "artifacts", "qa-runs");
   const { existsSync } = await import("node:fs");
   if (!existsSync(runBase)) {
-    console.log("No runs yet. Try: npm run qa:record -- --local --scenario runner");
+    console.log(
+      "No runs yet. Try: npm run qa:record -- --local --scenario runner",
+    );
     return;
   }
   const dirs = (await readdir(runBase, { withFileTypes: true }))
@@ -397,19 +463,26 @@ async function cmdStatus(): Promise<void> {
     return;
   }
   if (runId) {
-    const mPath = join(runBase, runId, "manifest.json");
-    if (!existsSync(mPath)) { console.error("Run not found:", runId); return; }
+    const mPath = join(runBase, runId, MANIFEST_FILE);
+    if (!existsSync(mPath)) {
+      console.error("Run not found:", runId);
+      return;
+    }
     const m = await loadManifest(mPath);
-    console.log(`Run: ${m.runId}\n  state: ${m.state}\n  iter: ${m.iteration}/${m.maxIterations}\n  allPassed: ${m.allPassed ?? "?"}\n  videos: ${JSON.stringify(m.videos)}`);
+    console.log(
+      `Run: ${m.runId}\n  state: ${m.state}\n  iter: ${m.iteration}/${m.maxIterations}\n  allPassed: ${m.allPassed ?? "?"}\n  videos: ${JSON.stringify(m.videos)}`,
+    );
     return;
   }
   console.log(`\nAll runs (${dirs.length}):`);
   for (const id of dirs.slice(0, 10)) {
-    const mPath = join(runBase, id, "manifest.json");
+    const mPath = join(runBase, id, MANIFEST_FILE);
     if (!existsSync(mPath)) continue;
     const m = await loadManifest(mPath);
     const mark = m.allPassed ? "✅" : m.state === "blocked" ? "❌" : "  ";
-    console.log(`  ${mark} ${id}  [${m.state}]  iter=${m.iteration}/${m.maxIterations}`);
+    console.log(
+      `  ${mark} ${id}  [${m.state}]  iter=${m.iteration}/${m.maxIterations}`,
+    );
   }
   if (dirs.length > 10) console.log(`  … and ${dirs.length - 10} more`);
 }

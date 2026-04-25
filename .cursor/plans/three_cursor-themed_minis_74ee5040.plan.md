@@ -4,19 +4,19 @@ overview: "Replace the three non-runner minigames with new fun-first designs the
 todos:
   - id: stage1-slot-rename
     content: Stage 1 - Rename notebook slots (runner | sentence | errand | tamper), update score weights, hud, anomalies gameClueWords, gameState, runner clueTokens reader, and matching tests. Build + test green.
-    status: pending
+    status: completed
   - id: stage2-tamper
     content: Stage 2 - Implement Spot the Tampering session (types, scenes, draw, clueTokens, tamperSession + tests). Wire lamp prop tag in main.ts to launch it. Delete bug-detective/src/minigames/lamp/. Build + test green.
-    status: pending
+    status: completed
   - id: stage3-errand
     content: Stage 3 - Implement Errand Race session (types, drawers, draw, clueTokens, errandSession + tests). Wire reagent-tray tag in main.ts. Delete bug-detective/src/minigames/reagent/. Build + test green.
-    status: pending
+    status: completed
   - id: stage4-sentence
     content: Stage 4 - Implement Finish the Sentence session (types, templates with 12 anomaly entries, draw with 4 ending share cards, clueTokens, sentenceSession + tests). Wire evidence-envelope tag in main.ts. Delete bug-detective/src/minigames/envelope/. Build + test green.
-    status: pending
+    status: completed
   - id: stage5-cleanup
     content: Stage 5 - rg sweep for dead refs (lampSession/reagentSession/envelopeSession/LampFilter/ReagentMix/EnvelopeCipher). Confirm HUD labels (RUN/WORD/DASH/EYE) and that all 4 slots fill end-to-end. Build + test green.
-    status: pending
+    status: completed
 isProject: false
 ---
 

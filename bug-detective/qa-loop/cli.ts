@@ -150,8 +150,9 @@ function mergeAssessments(
 
 export async function runAssessForRunId(
   runId: string,
+  repoRoot: string = REPO,
 ): Promise<{ allPassed: boolean }> {
-  const runDir = defaultArtifactsDir(REPO, runId);
+  const runDir = defaultArtifactsDir(repoRoot, runId);
   const mPath = join(runDir, MANIFEST_FILE);
   const manifest = await loadManifest(mPath);
   const key = getGeminiApiKey();
@@ -191,10 +192,15 @@ export async function runAssessForRunId(
     const b = merged.byMinigame[s];
     if (b) manifest.scores[s] = b.score100;
   }
-  manifest.assessmentPath = relative(REPO, out);
+  manifest.assessmentPath = relative(repoRoot, out);
   manifest.allPassed = merged.gate.allPassed;
   manifest.state = merged.gate.allPassed ? "passed" : "assessed";
   manifest.pendingNextStep = merged.gate.allPassed ? "complete" : "plan";
+  manifest.cockpit = {
+    ...manifest.cockpit,
+    phase: "review-ready",
+    lastActionAt: nowIso(),
+  };
   await saveManifest(runDir, manifest);
   // eslint-disable-next-line no-console
   console.log(
@@ -512,7 +518,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

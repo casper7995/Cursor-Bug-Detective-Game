@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { MinigameKey, QaRunState, RunManifestV1 } from "./types.js";
 
@@ -20,6 +20,10 @@ export function nowIso(): string {
 /** Single source for prompt strings: `artifacts/qa-runs/<runId>`. */
 export function qaRunArtifactsRelativePath(runId: string): string {
   return `artifacts/qa-runs/${runId}`;
+}
+
+export function manifestPathForRun(repoRoot: string, runId: string): string {
+  return join(defaultArtifactsDir(repoRoot, runId), MANIFEST_FILE);
 }
 
 function assertRunManifestV1(x: unknown): RunManifestV1 {
@@ -45,6 +49,13 @@ export async function loadManifestForRunDir(
   runDir: string,
 ): Promise<RunManifestV1> {
   return loadManifest(join(runDir, MANIFEST_FILE));
+}
+
+export async function loadManifestForRunId(
+  repoRoot: string,
+  runId: string,
+): Promise<RunManifestV1> {
+  return loadManifest(manifestPathForRun(repoRoot, runId));
 }
 
 export async function saveManifest(
@@ -83,6 +94,7 @@ export function createInitialManifest(
     passThreshold: opts.passThreshold ?? 90,
     scores: {},
     planApproved: false,
+    cockpit: { phase: "idle" },
   };
 }
 
@@ -96,4 +108,35 @@ export function recordVideoPath(
     videos: { ...manifest.videos, [slot]: absPath },
     state: "recording",
   };
+}
+
+export async function listRunManifests(
+  repoRoot: string,
+): Promise<RunManifestV1[]> {
+  const runBase = join(repoRoot, "artifacts", "qa-runs");
+  let dirs: import("node:fs").Dirent[];
+  try {
+    dirs = await readdir(runBase, { withFileTypes: true });
+  } catch (e: unknown) {
+    const code =
+      e && typeof e === "object" && "code" in e
+        ? (e as { code?: string }).code
+        : undefined;
+    if (code === "ENOENT") return [];
+    throw e;
+  }
+  const manifests = await Promise.all(
+    dirs
+      .filter((dirent) => dirent.isDirectory())
+      .map(async (dirent) => {
+        try {
+          return await loadManifestForRunDir(join(runBase, dirent.name));
+        } catch {
+          return undefined;
+        }
+      }),
+  );
+  return manifests
+    .filter((manifest): manifest is RunManifestV1 => Boolean(manifest))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }

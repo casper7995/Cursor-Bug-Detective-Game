@@ -22,8 +22,8 @@ and Cursor-themed mascot.
    glass cursor; HUD shows tooltips. Each prop has been mutated by today's
    anomaly (one of 12 — calendar shows wrong date, clock spins
    counter-clockwise, mug name swapped, monitor reflection wrong, photo
-   shows you, sticky-note has a warning, pen floating, lamp shadow
-   wrong, steam falls down, blank book, extra keyboard key, plant
+   shows you, sticky-note has a warning, pen floating, steam falls down,
+   blank book, extra keyboard key (10-case anomaly pool)
    glitching).
 4. Press Enter or wait for timer → **answer panel**: 3 choices (correct
    + 2 distractors), pick one with arrow keys + Enter, mouse, or 1/2/3.

@@ -1,0 +1,122 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  color: #e8e8ef;
+  background: #0d0d12;
+  line-height: 1.4;
+}
+header,
+.layout {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem;
+}
+header h1 {
+  font-size: 1.25rem;
+  margin: 0 0 0.5rem;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 1rem;
+}
+aside {
+  background: #16161f;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  padding: 0.75rem;
+  align-self: start;
+}
+main {
+  min-width: 0;
+}
+aside ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+aside li {
+  margin: 0.25rem 0;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  border-radius: 4px;
+}
+aside li:hover,
+aside li.active {
+  background: #2a2a3a;
+}
+button {
+  margin: 0.15rem 0.35rem 0.15rem 0;
+  padding: 0.4rem 0.65rem;
+  background: #3b3b50;
+  color: #f4f4f8;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+button:hover {
+  background: #4a4a64;
+}
+.panel {
+  background: #12121a;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.78rem;
+  background: #0a0a10;
+  padding: 0.5rem;
+  border-radius: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+#agentId {
+  width: 100%;
+  max-width: 36rem;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: #0a0a10;
+  color: #e8e8ef;
+  border: 1px solid #3a3a4a;
+  border-radius: 4px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.35rem;
+  margin: 0.25rem 0 0.5rem;
+}
+.hint {
+  font-size: 0.8rem;
+  color: #a8a8c0;
+  margin: 0.25rem 0 0.35rem;
+}
+.videos {
+  display: grid;
+  gap: 0.75rem;
+}
+.video-slot h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+}
+video {
+  max-width: 100%;
+  background: #000;
+  border-radius: 4px;
+}
+code {
+  background: #1a1a24;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  font-size: 0.85em;
+}

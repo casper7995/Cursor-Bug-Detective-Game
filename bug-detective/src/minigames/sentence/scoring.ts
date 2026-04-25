@@ -71,29 +71,22 @@ export function classifyEnding(
   oranges: number,
 ): EndingKind {
   if (blue >= SENTENCE_SLOTS_PER_TEMPLATE) return "by-the-book";
-  if (oranges >= 2) return "typewriter-wrote-it";
+  // Orange+idle "wrong" picks: need 3+ in an 8-beat run (2 still reads as improv).
+  if (oranges >= 3) return "typewriter-wrote-it";
   if (purple >= 3) return "cursed-case-file";
   return "improv";
 }
 
 /**
- * Desk / notebook gating: requires a **full** sentence run (`SENTENCE_SLOTS_PER_TEMPLATE` picks),
- * then either **≥2** case-correct (blue) picks **or** **2+ consecutive** blues. Not “any single blue”.
+ * Desk / notebook gating: full 8-beat run and at least **five** case-correct (blue) picks.
  */
 export function shouldEmitOutcome(picks: readonly PlayerPick[]): boolean {
   if (picks.length < SENTENCE_SLOTS_PER_TEMPLATE) return false;
   let blues = 0;
-  let streak = 0;
   for (const p of picks) {
-    if (p.color === "blue") {
-      blues++;
-      streak++;
-      if (streak >= 2) return true;
-    } else {
-      streak = 0;
-    }
+    if (p.color === "blue") blues++;
   }
-  return blues >= 2;
+  return blues >= 5;
 }
 
 /** Inject the player name into a prefix once 3 consecutive blues land. */

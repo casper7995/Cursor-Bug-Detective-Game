@@ -1,7 +1,5 @@
 import { Agent } from "@cursor/february";
 import type { AgentOptions, RunResult, SDKAgent } from "@cursor/february";
-
-type CloudAgentRun = Awaited<ReturnType<SDKAgent["send"]>>;
 import {
   recordingAgentPrompt,
   planAgentPrompt,
@@ -11,6 +9,16 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defaultArtifactsDir } from "./runStore.js";
 import { getCursorApiKey } from "./env.js";
+
+type CloudAgentRun = Awaited<ReturnType<SDKAgent["send"]>>;
+
+export interface CloudAgentStart {
+  agentId: string;
+  runId?: string;
+  run: CloudAgentRun;
+}
+
+export type CloudFollowUpResult = CloudAgentRun;
 
 function repoConfig():
   | { url: string; startingRef?: string; prUrl?: string }[]
@@ -54,10 +62,18 @@ function buildCloud(autoCreatePR: boolean): NonNullable<AgentOptions["cloud"]> {
   return { env, ...(repos ? { repos } : {}), autoCreatePR };
 }
 
+export function extractCloudRunId(run: unknown): string | undefined {
+  if (run === null || typeof run !== "object") return undefined;
+  const candidate = run as { runId?: unknown; id?: unknown };
+  if (typeof candidate.runId === "string") return candidate.runId;
+  if (typeof candidate.id === "string") return candidate.id;
+  return undefined;
+}
+
 export async function startRecordingCloudAgent(
   repoRoot: string,
   runId: string,
-): Promise<{ agentId: string; run: CloudAgentRun }> {
+): Promise<CloudAgentStart> {
   const apiKey = getCursorApiKey();
   const outDir = defaultArtifactsDir(repoRoot, runId);
   await mkdir(outDir, { recursive: true });
@@ -72,13 +88,18 @@ export async function startRecordingCloudAgent(
     name: `bug-detective-qa-record-${runId}`,
   });
   const run = await agent.send(recordingAgentPrompt(runId), {});
-  return { agentId: agent.agentId, run };
+  const cloudRunId = extractCloudRunId(run);
+  return {
+    agentId: agent.agentId,
+    ...(cloudRunId ? { runId: cloudRunId } : {}),
+    run,
+  };
 }
 
 export async function startPlanCloudAgent(
   repoRoot: string,
   runId: string,
-): Promise<{ agentId: string; run: CloudAgentRun }> {
+): Promise<CloudAgentStart> {
   const apiKey = getCursorApiKey();
   const outDir = defaultArtifactsDir(repoRoot, runId);
   await mkdir(outDir, { recursive: true });
@@ -88,13 +109,18 @@ export async function startPlanCloudAgent(
     name: `bug-detective-qa-plan-${runId}`,
   });
   const run = await agent.send(planAgentPrompt(runId), {});
-  return { agentId: agent.agentId, run };
+  const cloudRunId = extractCloudRunId(run);
+  return {
+    agentId: agent.agentId,
+    ...(cloudRunId ? { runId: cloudRunId } : {}),
+    run,
+  };
 }
 
 export async function startImplementCloudAgent(
   repoRoot: string,
   runId: string,
-): Promise<{ agentId: string; run: CloudAgentRun }> {
+): Promise<CloudAgentStart> {
   const apiKey = getCursorApiKey();
   const outDir = defaultArtifactsDir(repoRoot, runId);
   await mkdir(outDir, { recursive: true });
@@ -104,7 +130,27 @@ export async function startImplementCloudAgent(
     name: `bug-detective-qa-implement-${runId}`,
   });
   const run = await agent.send(implementAgentPrompt(runId), {});
-  return { agentId: agent.agentId, run };
+  const cloudRunId = extractCloudRunId(run);
+  return {
+    agentId: agent.agentId,
+    ...(cloudRunId ? { runId: cloudRunId } : {}),
+    run,
+  };
+}
+
+export async function sendFollowUpToAgent(
+  agentId: string,
+  text: string,
+): Promise<CloudFollowUpResult> {
+  const apiKey = getCursorApiKey();
+  const sdk = Agent as typeof Agent & {
+    resume?: (agentId: string, options: { apiKey: string }) => SDKAgent;
+  };
+  if (typeof sdk.resume !== "function") {
+    throw new Error("@cursor/february Agent.resume is unavailable.");
+  }
+  const agent = sdk.resume(agentId, { apiKey });
+  return agent.send(text, {});
 }
 
 export async function waitRunDone(run: {

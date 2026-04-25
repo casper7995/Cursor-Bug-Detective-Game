@@ -225,10 +225,8 @@ function bootGameInner(simplified: boolean): void {
       "monitor-screen",
       "case-file",
       "evidence-envelope",
-      "lamp-shadow",
       "coffee-steam",
       "keyboard",
-      "plant",
       "lamp",
       "desk",
     ] as const;
@@ -442,10 +440,8 @@ function bootGameInner(simplified: boolean): void {
       "monitor-screen",
       "case-file",
       "evidence-envelope",
-      "lamp-shadow",
       "coffee-steam",
       "keyboard",
-      "plant",
       "lamp",
       "desk",
       "monitor",
@@ -1004,14 +1000,11 @@ function bootGameInner(simplified: boolean): void {
     camPos.copy(focus).add(tmpDirScratch.multiplyScalar(dClamped));
   }
 
-  function anomalyInspectFraming(tag: string): {
+  function anomalyInspectFraming(_tag: string): {
     lerp: number;
     yLift: number;
     durationMs: number;
   } {
-    if (tag === "lamp-shadow") {
-      return { lerp: 0.26, yLift: 0.38, durationMs: 520 };
-    }
     return { lerp: 0.36, yLift: 0.24, durationMs: 580 };
   }
 
@@ -1859,15 +1852,7 @@ function bootGameInner(simplified: boolean): void {
         inspectCamPos.y += yLift;
         clampInspectCamDistance(inspectCamPos, inspectAnomalyPos);
         void cameraRig.scriptedTo(inspectCamPos, inspectAnomalyPos, durationMs);
-        if (hover.tag === "lamp-shadow") {
-          hud.setInspectCaption(
-            "Shadow — does it point the right way? Esc / Wider / scroll",
-          );
-        } else {
-          hud.setInspectCaption(
-            "Inspecting — Esc / Wider / scroll to zoom out",
-          );
-        }
+        hud.setInspectCaption("Inspecting — Esc / Wider / scroll to zoom out");
       } else if (!isAnomalyTarget && inspectZoomActive) {
         exitInspectZoom(420);
       }
@@ -2074,8 +2059,6 @@ function bootGameInner(simplified: boolean): void {
         return "reagent tray";
       case "lamp":
         return "lamp";
-      case "lamp-shadow":
-        return "shadow";
       case "coffee-steam":
         return "steam";
       case "calendar":
@@ -2086,8 +2069,6 @@ function bootGameInner(simplified: boolean): void {
         return "case file";
       case "keyboard":
         return "keyboard";
-      case "plant":
-        return "plant";
       case "desk":
         return "desk";
       default:

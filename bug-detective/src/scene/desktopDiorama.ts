@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { DeskFootCircle } from "../cursor/deskFootResolve";
 import { makeFakePageTexture } from "../intro/pagePeel";
+import { DESK_PROP_POSITIONS } from "./deskLayout";
 
 /**
  * One hand-crafted desktop diorama. All interactive props carry a string
@@ -29,15 +30,10 @@ export interface DioramaObjects {
   readonly lamp: THREE.Group;
   /** Card in lamp cone — visible when `flags.lampActive`. */
   readonly lampCard: THREE.Mesh;
-  /** Upright “case file” card near the lamp (visual anchor for shadows). */
-  readonly lampShadowStandee: THREE.Mesh;
-  /** Large faux shadow on the desk — primary hover target for `lamp-shadow`. */
-  readonly lampShadowProp: THREE.Mesh;
   /** Lying case jacket — same art as intro peel; re-readable via click. */
   readonly caseFileSheet: THREE.Mesh;
   readonly coffeeSteam: THREE.Mesh;
   readonly keyboard: THREE.Group;
-  readonly plant: THREE.Group;
   readonly backWall: THREE.Mesh;
   /** Step every prop's per-frame animation (clock hands, steam, etc). */
   step(elapsed: number, dt: number): void;
@@ -68,70 +64,6 @@ const WOOD = 0x6b4a2b;
 const WOOD_DARK = 0x4a3320;
 const PLASTIC = 0x1a1d24;
 const STICKY = 0xfff48a;
-
-/** Dark evidence-flag silhouette for the lamp-shadow standee (reads in bright cone). */
-function makeFlagSilhouetteTexture(): THREE.CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 256;
-  const ctx = c.getContext("2d");
-  if (!ctx) throw new Error("2d");
-  ctx.clearRect(0, 0, 256, 256);
-  const poleW = 14;
-  const poleX = 72;
-  const poleTop = 48;
-  const poleBot = 208;
-  ctx.fillStyle = "#1d2330";
-  ctx.strokeStyle = "#b88a3e";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.roundRect(poleX, poleTop, poleW, poleBot - poleTop, 3);
-  ctx.fill();
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(poleX + poleW, poleTop + 28);
-  ctx.lineTo(200, poleTop + 52);
-  ctx.lineTo(200, poleTop + 128);
-  ctx.lineTo(poleX + poleW, poleTop + 152);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  return tex;
-}
-
-/** Elongated cast-shadow on desk — same flag motif, stretched and feathered. */
-function makeFlagShadowTexture(): THREE.CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 128;
-  const ctx = c.getContext("2d");
-  if (!ctx) throw new Error("2d");
-  ctx.clearRect(0, 0, 256, 128);
-  const g = ctx.createLinearGradient(0, 64, 256, 64);
-  g.addColorStop(0, "rgba(8,8,12,0.92)");
-  g.addColorStop(0.35, "rgba(10,10,16,0.72)");
-  g.addColorStop(0.75, "rgba(12,12,18,0.35)");
-  g.addColorStop(1, "rgba(12,12,18,0)");
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.ellipse(48, 64, 28, 18, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "rgba(8,8,12,0.78)";
-  ctx.beginPath();
-  ctx.moveTo(70, 58);
-  ctx.lineTo(230, 42);
-  ctx.lineTo(238, 86);
-  ctx.lineTo(78, 82);
-  ctx.closePath();
-  ctx.fill();
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  return tex;
-}
 
 export function createDesktopDiorama(): DioramaObjects {
   const root = new THREE.Group();
@@ -392,13 +324,14 @@ export function createDesktopDiorama(): DioramaObjects {
   hoverables.push(coffeeSteam);
 
   // ---- Calendar (small standing card) ------------------------------
-  // Forward on the desk, right of the keyboard — not tucked behind the monitor.
+  // Position from shared layout (`deskLayout`) — right side, clear of intro lane.
+  const calPos = DESK_PROP_POSITIONS.calendar;
   const calendarTex = makeCalendarTexture(formatToday());
   const calendar = new THREE.Mesh(
     new THREE.PlaneGeometry(0.7, 0.5),
     new THREE.MeshBasicMaterial({ map: calendarTex, side: THREE.DoubleSide }),
   );
-  calendar.position.set(0.5, deskTopY + 0.27, 0.46);
+  calendar.position.set(calPos.x, deskTopY + 0.27, calPos.z);
   calendar.rotation.y = -0.36;
   calendar.userData.tag = "calendar";
   root.add(calendar);
@@ -661,46 +594,6 @@ export function createDesktopDiorama(): DioramaObjects {
   lampOutline.position.y = 0.03;
   lamp.add(lampOutline);
 
-  // Evidence-flag standee + elongated faux shadow (lamp-shadow-wrong flips / moves these).
-  const standeeTex = makeFlagSilhouetteTexture();
-  const standeeMat = new THREE.MeshStandardMaterial({
-    map: standeeTex,
-    transparent: true,
-    alphaTest: 0.5,
-    roughness: 0.85,
-    metalness: 0,
-    side: THREE.DoubleSide,
-  });
-  const lampShadowStandee = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.44, 0.58),
-    standeeMat,
-  );
-  lampShadowStandee.position.set(-1.55, deskTopY + 0.32, 0.05);
-  lampShadowStandee.rotation.y = 0.42;
-  lampShadowStandee.castShadow = true;
-  lampShadowStandee.receiveShadow = true;
-  lampShadowStandee.userData.tag = "lamp-shadow";
-  root.add(lampShadowStandee);
-  hoverables.push(lampShadowStandee);
-
-  const fauxShadowTex = makeFlagShadowTexture();
-  const lampShadowProp = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.4, 0.7),
-    new THREE.MeshBasicMaterial({
-      map: fauxShadowTex,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false,
-    }),
-  );
-  lampShadowProp.rotation.x = -Math.PI / 2;
-  lampShadowProp.rotation.z = -0.35;
-  lampShadowProp.position.set(-1.0, deskTopY + 0.004, 0.32);
-  lampShadowProp.renderOrder = 1;
-  lampShadowProp.userData.tag = "lamp-shadow";
-  root.add(lampShadowProp);
-  hoverables.push(lampShadowProp);
-
   // ---- Case file sheet (matches intro peel art; hidden until investigation) ---
   const sheetW = 0.95;
   const sheetD = 0.6;
@@ -727,40 +620,9 @@ export function createDesktopDiorama(): DioramaObjects {
   root.add(caseFileSheet);
   hoverables.push(caseFileSheet);
 
-  // ---- Plant --------------------------------------------------------
-  const plant = new THREE.Group();
-  plant.position.set(3.4, deskTopY, -1.5);
-  root.add(plant);
-
-  const pot = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.28, 0.22, 0.36, 16),
-    new THREE.MeshStandardMaterial({ color: 0x8b4a2b, roughness: 0.7 }),
-  );
-  pot.position.y = 0.18;
-  pot.castShadow = true;
-  pot.receiveShadow = true;
-  pot.userData.tag = "plant";
-  plant.add(pot);
-  hoverables.push(pot);
-
-  const leafMat = new THREE.MeshStandardMaterial({
-    color: 0x2d6a3e,
-    roughness: 0.55,
-  });
-  for (let i = 0; i < 5; i++) {
-    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 6), leafMat);
-    const angle = (i / 5) * Math.PI * 2;
-    leaf.position.set(Math.cos(angle) * 0.12, 0.55, Math.sin(angle) * 0.12);
-    leaf.rotation.z = Math.cos(angle) * 0.5;
-    leaf.rotation.x = Math.sin(angle) * 0.5;
-    leaf.castShadow = true;
-    plant.add(leaf);
-  }
-
   // ---- Animation step -----------------------------------------------
   const steamBaseY = coffeeSteam.position.y;
   const caseFileBaseY = caseFileSheet.position.y;
-  const plantBaseRotation = plant.rotation.clone();
   const keyboardBaseY = keyboard.position.y;
   const mugBaseRot = {
     x: mug.rotation.x,
@@ -836,24 +698,6 @@ export function createDesktopDiorama(): DioramaObjects {
         caseFileBaseY + 0.02 + Math.sin(elapsed * 1.45) * 0.008;
     }
 
-    // Plant glitch jitter when the plant-glitching anomaly is on. This
-    // used to live in a parallel requestAnimationFrame loop in
-    // anomalies.ts which leaked across restarts; it now rides the main
-    // render loop and is automatically torn down with the diorama.
-    if (plant.userData.glitching) {
-      plant.rotation.x = plantBaseRotation.x + (Math.random() - 0.5) * 0.05;
-      plant.rotation.z = plantBaseRotation.z + (Math.random() - 0.5) * 0.05;
-    } else {
-      plant.rotation.x = plantBaseRotation.x;
-      const pf = plant.userData.flavorEndMs as number | undefined;
-      if (pf && nowMs < pf) {
-        const u = 1 - (pf - nowMs) / 620;
-        plant.rotation.z = plantBaseRotation.z + Math.sin(u * Math.PI) * 0.08;
-      } else {
-        plant.rotation.z = plantBaseRotation.z;
-      }
-    }
-
     // Click flavor reactions (propInteractions.applyPropFlavor)
     const calEnd = calendar.userData.flavorEndMs as number | undefined;
     if (calEnd && nowMs < calEnd) {
@@ -898,17 +742,6 @@ export function createDesktopDiorama(): DioramaObjects {
     } else {
       desk.scale.set(deskBaseScale, deskBaseScale, deskBaseScale);
     }
-
-    const shEnd = lampShadowStandee.userData.flavorEndMs as number | undefined;
-    if (shEnd && nowMs < shEnd) {
-      const u = 1 - (shEnd - nowMs) / 620;
-      lampShadowStandee.rotation.z = Math.sin(u * Math.PI * 2) * 0.07;
-      (lampShadowProp.material as THREE.MeshBasicMaterial).opacity =
-        0.85 + 0.12 * Math.sin(u * Math.PI);
-    } else {
-      lampShadowStandee.rotation.z = 0;
-      (lampShadowProp.material as THREE.MeshBasicMaterial).opacity = 0.85;
-    }
   }
 
   function setDeskHighlight(tag: string | null): void {
@@ -927,14 +760,7 @@ export function createDesktopDiorama(): DioramaObjects {
       r: 0.42,
     },
     { x: lamp.position.x, z: lamp.position.z, r: 0.34 },
-    {
-      x: lampShadowStandee.position.x,
-      z: lampShadowStandee.position.z,
-      r: 0.32,
-    },
-    { x: lampShadowProp.position.x, z: lampShadowProp.position.z, r: 0.82 },
-    { x: plant.position.x, z: plant.position.z, r: 0.36 },
-    { x: calendar.position.x, z: calendar.position.z, r: 0.34 },
+    { x: calendar.position.x, z: calendar.position.z, r: 0.36 },
   ];
 
   return {
@@ -954,12 +780,9 @@ export function createDesktopDiorama(): DioramaObjects {
     reagentSpinner,
     lamp,
     lampCard,
-    lampShadowStandee,
-    lampShadowProp,
     caseFileSheet,
     coffeeSteam,
     keyboard,
-    plant,
     backWall,
     flags,
     step,

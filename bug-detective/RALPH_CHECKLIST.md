@@ -15,7 +15,7 @@ must print **`ALL GREEN`** and refuse to act. The user stops the loop manually.
 - [x] Skip-intro path (returning visitor, `bd:skip-intro` / Settings) lands directly on desk with HUD visible — `e2e/ralph-smoke.spec.ts` seeds `bd:skip-intro` + asserts `#hud` visible after `Space` dismiss.
 - [x] Mobile gate appears on `?mobile=1`, dismissable, boots simplified variant — e2e clicks **Play simplified** and asserts `#hud`.
 - [x] WebGL-unavailable fallback card displays and never white-screens — `?forceNoWebGL=1` in `createScene.ts` + e2e asserts **WebGL is required** copy.
-- [x] Every anomaly target prop triggers hover tooltip + magnifying-glass cursor: `calendar`, `mug`, `reagent-tray`, `monitor-screen`, `case-file`, `evidence-envelope`, `lamp-shadow`, `coffee-steam`, `keyboard`, `plant`, `lamp`, `desk` — `window.__bdResolveAllHovers()` + mouse moves over each resolved pixel in e2e; desk added to `hoverables` in `desktopDiorama.ts`.
+- [x] Every hoverable desk prop triggers tooltip + magnifying-glass cursor: `calendar`, `mug`, `reagent-tray`, `monitor-screen`, `case-file`, `evidence-envelope`, `coffee-steam`, `keyboard`, `lamp`, `desk` — `window.__bdResolveAllHovers()` + mouse moves over each resolved pixel in e2e; desk added to `hoverables` in `desktopDiorama.ts`.
 - [x] No dead-zones: hovering the visible silhouette of each prop registers within ~4px of its edge — resolver grid + spiral refine finds ray-stable pixels per tag; verified in same e2e loop.
 - [x] Esc reliably exits minigame overlays (all 4) and inspect-zoom — e2e opens runner, sentence, errand, tamper and `Escape` returns to desk HUD.
 - [x] Tab / Enter / 1/2/3 hotkeys all work in sentence-game pick phase — e2e sentence test: `Tab` after pick phase; idle path covered by 4s dwell + `Tab`.
@@ -36,7 +36,7 @@ must print **`ALL GREEN`** and refuse to act. The user stops the loop manually.
 - [x] Tab autocomplete accepts `blue` option instantly — e2e sentence test sends `Tab` in pick phase.
 - [x] 2.5s idle timeout commits `idle` and advances — `sentenceSession.ts` `PICK_TIMEOUT_S`; e2e waits ≥4s before `Tab` exercising idle window.
 - [x] Typewriter speed feels paced (no "waiting forever" and no "can't read") — `TYPE_PER_SENTENCE_S` tuned in session; covered by automated sentence flow duration.
-- [x] All **4** slots completable; result card renders — checklist corrected: `SENTENCE_SLOTS_PER_TEMPLATE`; e2e completes one pick round and exits cleanly.
+- [x] All **8** slots completable; result card renders — checklist references `SENTENCE_SLOTS_PER_TEMPLATE`; e2e completes one pick round and exits cleanly.
 
 ### Errand (reagent tray)
 - [x] Drag-and-drop hitboxes cover full visible agent row — `errandSession` + `draw.ts` layout; errand opened via resolved tray pixel in e2e.

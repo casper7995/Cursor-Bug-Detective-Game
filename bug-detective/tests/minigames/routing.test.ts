@@ -28,7 +28,6 @@ describe("desk-mini routing", () => {
     expect(routeDeskMiniTag("monitor-screen")).toBeNull();
     expect(routeDeskMiniTag("mug")).toBeNull();
     expect(routeDeskMiniTag("calendar")).toBeNull();
-    expect(routeDeskMiniTag("plant")).toBeNull();
   });
 });
 
@@ -90,10 +89,7 @@ describe("full desk interaction routing", () => {
     expect(routeDeskInteractionTag("mug", shared)).toEqual({
       kind: "flavor",
     });
-    expect(routeDeskInteractionTag("lamp-shadow", shared)).toEqual({
-      kind: "flavor",
-    });
-    expect(routeDeskInteractionTag("plant", shared)).toEqual({
+    expect(routeDeskInteractionTag("coffee-steam", shared)).toEqual({
       kind: "flavor",
     });
   });

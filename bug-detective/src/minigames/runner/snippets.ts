@@ -65,11 +65,6 @@ export const ANOMALY_SNIPPETS: Record<AnomalyId, readonly string[]> = {
     "// the page keeps its own VOID — nothing holding the LIFT",
     "physics.assert(caseFile.support === VOID); // HOVER",
   ],
-  "lamp-shadow-wrong": [
-    "if (shadow.direction === TOWARD) bug('INVERT');",
-    "// the BEACON drags its shade — REACH bends the wrong way",
-    "expect(shadow.vector).not.toPointAwayFrom(BEACON);",
-  ],
   "steam-down": [
     "if (vapor.velocity.y < 0) fix('SINK');",
     "// the POUR runs the wrong way — CHILL fighting GRAVITY",
@@ -84,11 +79,6 @@ export const ANOMALY_SNIPPETS: Record<AnomalyId, readonly string[]> = {
     "if (keys.has(INTRUDER)) warn('ODD');",
     "// one CRIMSON cap too many — the COUNT is off by one",
     "layout.COUNT(keyboard) > 104; // CRIMSON",
-  ],
-  "plant-glitching": [
-    "if (plant.leaves.JITTER) renderGlitch('FRAME');",
-    "// the GREEN STUTTERs — a FRAME is missing from the loop",
-    "plant.mesh.userData.STUTTER = true;",
   ],
 };
 

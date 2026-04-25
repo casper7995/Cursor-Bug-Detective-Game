@@ -11,9 +11,13 @@ export const MINIGAMES: readonly MinigameKey[] = [
 export type QaRunState =
   | "init"
   | "recording"
+  | "cloud-recording"
+  | "artifacts-ready"
+  | "analyzing"
   | "assessed"
   | "planned"
   | "needs-approval"
+  | "sent-to-cursor"
   | "implementing"
   | "pr-ready"
   | "passed"
@@ -21,11 +25,75 @@ export type QaRunState =
 
 export type PendingNextStep = "assess" | "plan" | "implement" | "complete";
 
+export type CloudAgentRole = "record" | "plan" | "implement";
+
+export interface QaCloudRunRef {
+  role: CloudAgentRole;
+  agentId: string;
+  runId?: string;
+  status?: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
 export interface QaRunCloud {
   recordAgentId?: string;
+  recordRunId?: string;
   planAgentId?: string;
+  planRunId?: string;
   implementAgentId?: string;
+  implementRunId?: string;
   lastPrUrl?: string;
+  latestArtifactAgentId?: string;
+  runs?: Partial<Record<CloudAgentRole, QaCloudRunRef>>;
+}
+
+export interface CloudArtifactSnapshot {
+  path: string;
+  size?: number;
+  updatedAt?: string;
+  sourceAgentId?: string;
+  listedAt: string;
+}
+
+export type ArtifactDownloadStatus = "pending" | "downloaded" | "failed";
+
+export interface DownloadedArtifact {
+  path: string;
+  relativePath: string;
+  localPath?: string;
+  size?: number;
+  updatedAt?: string;
+  downloadedAt: string;
+  status: ArtifactDownloadStatus;
+  error?: string;
+}
+
+export type CockpitPhase =
+  | "idle"
+  | "cloud-recording"
+  | "artifacts-ready"
+  | "downloading"
+  | "analyzing"
+  | "review-ready"
+  | "sent-to-cursor"
+  | "implementing"
+  | "blocked";
+
+export interface CockpitJob {
+  id: string;
+  label: string;
+  status: "queued" | "running" | "done" | "failed";
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+}
+
+export interface QaCockpitState {
+  phase: CockpitPhase;
+  lastActionAt?: string;
+  messages?: string[];
+  jobs?: CockpitJob[];
 }
 
 export interface RunManifestV1 {
@@ -47,6 +115,9 @@ export interface RunManifestV1 {
   planPath?: string;
   lastError?: string;
   cloud?: QaRunCloud;
+  artifactSnapshots?: CloudArtifactSnapshot[];
+  downloadedArtifacts?: DownloadedArtifact[];
+  cockpit?: QaCockpitState;
 }
 
 export interface MinigameIssue {

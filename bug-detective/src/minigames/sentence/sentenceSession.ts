@@ -11,6 +11,7 @@ import {
   hitDeskCloseButton,
 } from "../desk/deskLayout";
 import { hitDeskHelpButton, TutorialGate } from "../desk/tutorialGate";
+import { makeSeededRng } from "../../api/seedClient";
 import type { AnomalyId } from "../../scene/anomalies";
 import { pickTemplate } from "./templates";
 import { injectName, scoreSentenceRun, shouldEmitOutcome } from "./scoring";
@@ -22,6 +23,7 @@ import {
   drawShareCard,
   drawSuggestionPopover,
   getSuggestionRowRects,
+  type SuggestionRowRect,
   inSuggestionRect,
   SENTENCE_LAYOUT,
 } from "./draw";
@@ -62,7 +64,7 @@ type Phase =
       kind: "pick";
       sentenceIdx: number;
       t: number;
-      hover: PickColor | null;
+      selectedRowIndex: number;
     }
   | { kind: "result"; t: number };
 
@@ -90,6 +92,7 @@ export class SentenceSession {
   private readonly onExit: () => void;
   private readonly renderCtx: CanvasRenderingContext2D;
   private readonly clueWord: string;
+  private readonly templateSeed: number;
   private readonly template: SentenceTemplate;
   private readonly playerName: string | null;
   private readonly resolvedPrefixes: string[];
@@ -98,14 +101,15 @@ export class SentenceSession {
   private outcome: MiniGameOutcome | null = null;
   private pointerBound = false;
   private lastTypewriterTick = -1;
-  private lastPickHover: PickColor | null = null;
+  private lastPickRow = -1;
   private readonly gate = new TutorialGate({
-    title: "Tab — autocomplete the case file",
-    tagline: "Press Tab for the recommended suggestion.",
+    title: "Tab cycles · Enter accepts · read the clue",
+    tagline:
+      "The case-correct line is not always the top row — look before you pick.",
     howToLines: [
-      "Tab or Enter accepts the recommended (blue) suggestion.",
-      "Press 1 / 2 / 3 — or click — to pick a different row.",
-      "Wait 3 seconds and the typewriter settles on the orange option.",
+      "Tab moves the highlight. Enter locks in that row (not “always blue”).",
+      "1 / 2 / 3 or a click choose that visible row, top to bottom.",
+      "Wait 3s idle and the typewriter picks the orange line for you.",
     ],
     drawDiagram: drawSentenceTutorialDiagram,
     storageKey: "bd:miniTutorial:sentence",
@@ -117,6 +121,7 @@ export class SentenceSession {
     this.onExit = opts.onExit;
     this.clueWord = opts.clueWord;
     const seed = namespacedSeed(0xb1c2d3e4, `sentence:${opts.clueWord}`);
+    this.templateSeed = seed;
     this.template = pickTemplate(seed, opts.anomalyId);
     this.playerName = readPlayerName();
     this.resolvedPrefixes = this.template.slots.map((s) => s.prefix);
@@ -156,14 +161,15 @@ export class SentenceSession {
       if (this.phase.kind !== "pick") return;
       const slot = this.template.slots[this.phase.sentenceIdx];
       if (!slot) return;
-      const rows = getSuggestionRowRects(this.renderCtx, slot.options);
+      const rows = this.rowsForSlot(this.phase.sentenceIdx);
       const hit = inSuggestionRect(rows, p.x, p.y);
-      const nextHover = hit ? hit.color : null;
-      if (nextHover !== null && nextHover !== this.lastPickHover) {
+      if (!hit) return;
+      const nextRow = hit.index;
+      if (nextRow !== this.lastPickRow) {
         sfxSentencePickHover();
       }
-      this.lastPickHover = nextHover;
-      this.phase.hover = nextHover;
+      this.lastPickRow = nextRow;
+      this.phase.selectedRowIndex = nextRow;
     };
     const down = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
@@ -187,7 +193,7 @@ export class SentenceSession {
       if (this.phase.kind === "pick") {
         const slot = this.template.slots[this.phase.sentenceIdx];
         if (!slot) return;
-        const rows = getSuggestionRowRects(this.renderCtx, slot.options);
+        const rows = this.rowsForSlot(this.phase.sentenceIdx);
         const hit = inSuggestionRect(rows, p.x, p.y);
         if (hit) this.commitPick(hit.color);
       }
@@ -227,26 +233,31 @@ export class SentenceSession {
       }
       if (this.gate.isBlocking() || this.outcome) return;
       if (this.phase.kind !== "pick") return;
-      // Tab / Enter → accept recommended (blue).
-      if (e.key === "Tab" || e.key === "Enter") {
+      if (e.key === "Tab") {
         e.preventDefault();
         e.stopPropagation();
-        this.commitPick("blue");
+        this.cycleSelectedRow();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        this.commitSelectedRow();
         return;
       }
       if (e.key === "1" || e.code === "Digit1" || e.code === "Numpad1") {
         e.preventDefault();
-        this.commitPick("blue");
+        this.commitRow(0);
         return;
       }
       if (e.key === "2" || e.code === "Digit2" || e.code === "Numpad2") {
         e.preventDefault();
-        this.commitPick("purple");
+        this.commitRow(1);
         return;
       }
       if (e.key === "3" || e.code === "Digit3" || e.code === "Numpad3") {
         e.preventDefault();
-        this.commitPick("orange");
+        this.commitRow(2);
         return;
       }
     };
@@ -276,6 +287,39 @@ export class SentenceSession {
     this.picks.push({ sentenceIdx, color });
     this.maybeInjectNameForNext();
     this.advanceAfterPick();
+  }
+
+  private rowsForSlot(sentenceIdx: number): readonly SuggestionRowRect[] {
+    const slot = this.template.slots[sentenceIdx];
+    if (!slot) return [];
+    return getSuggestionRowRects(this.renderCtx, slot.options, slot.rowOrder);
+  }
+
+  private initialRowFocus(sentenceIdx: number): number {
+    const h = namespacedSeed(this.templateSeed, `row-focus:${sentenceIdx}`);
+    return Math.floor(makeSeededRng(h)() * 3);
+  }
+
+  private cycleSelectedRow(): void {
+    if (this.phase.kind !== "pick") return;
+    const rows = this.rowsForSlot(this.phase.sentenceIdx);
+    if (rows.length === 0) return;
+    this.phase.selectedRowIndex =
+      (this.phase.selectedRowIndex + 1) % rows.length;
+    this.lastPickRow = this.phase.selectedRowIndex;
+    sfxSentencePickHover();
+  }
+
+  private commitSelectedRow(): void {
+    if (this.phase.kind !== "pick") return;
+    this.commitRow(this.phase.selectedRowIndex);
+  }
+
+  private commitRow(rowIndex: number): void {
+    if (this.phase.kind !== "pick") return;
+    const row = this.rowsForSlot(this.phase.sentenceIdx)[rowIndex];
+    if (!row) return;
+    this.commitPick(row.color);
   }
 
   private commitIdle(): void {
@@ -354,13 +398,15 @@ export class SentenceSession {
         }
         if (this.phase.t >= TYPE_PER_SENTENCE_S) {
           this.lastTypewriterTick = -1;
-          this.lastPickHover = null;
+          const si = this.phase.sentenceIdx;
+          const focus = this.initialRowFocus(si);
+          this.lastPickRow = focus;
           sfxSentenceSuggestionOpen();
           this.phase = {
             kind: "pick",
-            sentenceIdx: this.phase.sentenceIdx,
+            sentenceIdx: si,
             t: 0,
-            hover: null,
+            selectedRowIndex: focus,
           };
         }
         break;
@@ -370,7 +416,7 @@ export class SentenceSession {
           kind: "pick",
           sentenceIdx: this.phase.sentenceIdx,
           t: this.phase.t + dtSec,
-          hover: this.phase.hover,
+          selectedRowIndex: this.phase.selectedRowIndex,
         };
         if (this.phase.t >= PICK_TIMEOUT_S) this.commitIdle();
         break;
@@ -430,14 +476,13 @@ export class SentenceSession {
   private draw(): void {
     const ctx = this.renderCtx;
     const paragraph = this.currentParagraph();
-    const showCaret =
-      this.phase.kind === "type" || this.phase.kind === "pick";
+    const showCaret = this.phase.kind === "type" || this.phase.kind === "pick";
     drawEditorScene(ctx, W, H, paragraph, 1, showCaret);
 
     // Title strip
     ctx.fillStyle = CURSOR_AI.ink;
     ctx.font = "700 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText("Tab — autocomplete", 18, 26);
+    ctx.fillText("Tab cycles · Enter accepts", 18, 26);
     ctx.fillStyle = CURSOR_AI.inkSubtle;
     ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
     ctx.fillText(`· case_file.md`, 162, 26);
@@ -447,9 +492,9 @@ export class SentenceSession {
     } else if (this.phase.kind === "pick") {
       const slot = this.template.slots[this.phase.sentenceIdx];
       if (slot) {
-        const rows = getSuggestionRowRects(ctx, slot.options);
+        const rows = this.rowsForSlot(this.phase.sentenceIdx);
         const remain = Math.max(0, 1 - this.phase.t / PICK_TIMEOUT_S);
-        drawSuggestionPopover(ctx, rows, this.phase.hover, remain);
+        drawSuggestionPopover(ctx, rows, this.phase.selectedRowIndex, remain);
       }
     } else if (this.phase.kind === "result") {
       const result = scoreSentenceRun(this.picks);

@@ -25,11 +25,9 @@ Legend:
 | photo-self | MIRROR · TWIN · GAZE · INSIDE | y | y | n | y (rubric) | none serious |
 | sticky-warning | PAPER · HUSH · SHOULDER · BREATH | y | y | n | y (rubric) | none serious |
 | pen-floating | HOVER · LIFT · AIRGAP · VOID | y | y | n | y (rubric) | none serious |
-| lamp-shadow-wrong | TOWARD · BEACON · INVERT · REACH | y | y | n | y (rubric) | none serious |
 | steam-down | SINK · CHILL · POUR · GRAVITY | y | y | n | y (rubric) | none serious |
 | blank-book | SILENT · HOLLOW · UNSAID · ERASED | y | y | n | y (rubric) | none serious |
 | keyboard-extra-key | ODD · CRIMSON · COUNT · INTRUDER | y | y | n | y (rubric) | none serious |
-| plant-glitching | STUTTER · GREEN · FRAME · JITTER | y | y | n | y (rubric) | none serious |
 
 ---
 

@@ -20,6 +20,7 @@
     "qa:approve": "tsx qa-loop/cli.ts approve",
     "qa:iterate": "tsx qa-loop/cli.ts iterate",
     "qa:share": "tsx qa-loop/cli.ts share",
+    "qa:cockpit": "tsx qa-loop/cockpitServer.ts",
     "qa:typecheck": "tsc --noEmit -p tsconfig.qa.json",
     "qa": "tsx qa-loop/cli.ts",
     "qa:status": "tsx qa-loop/cli.ts status"

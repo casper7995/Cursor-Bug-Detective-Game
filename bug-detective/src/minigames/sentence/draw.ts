@@ -1,7 +1,13 @@
 /** Tab autocomplete — Finish the Sentence rendered as a Cursor editor. */
 
 import { CURSOR_AI } from "../../ui/cursorAiTheme";
-import { drawAiAvatar, drawAiCard, drawAiProgressLine, inRect, type Rect } from "../desk/aiCard";
+import {
+  drawAiAvatar,
+  drawAiCard,
+  drawAiProgressLine,
+  inRect,
+  type Rect,
+} from "../desk/aiCard";
 import type { EndingKind, PickColor, SentenceSlot } from "./types";
 
 /** Wrap a string into lines no wider than width px in the current font. */
@@ -31,6 +37,7 @@ const COLOR_BY_PICK: Record<PickColor, string> = {
   purple: CURSOR_AI.purple,
   orange: CURSOR_AI.accent,
 };
+const DEFAULT_ROW_ORDER: readonly PickColor[] = ["blue", "purple", "orange"];
 
 // ---------------------------------------------------------------------
 // Editor surface — Cursor IDE styling
@@ -93,7 +100,11 @@ export function drawEditorScene(
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textAlign = "right";
-  ctx.fillText("press Tab to accept", L.editorX + L.editorW - 12, L.editorY + 12);
+  ctx.fillText(
+    "Tab · cycle · Enter · accept",
+    L.editorX + L.editorW - 12,
+    L.editorY + 12,
+  );
   ctx.textAlign = "left";
 
   // Gutter (line numbers)
@@ -156,35 +167,40 @@ export interface SuggestionRowRect extends Rect {
   readonly index: number;
 }
 
+/** Per-slot row shuffle; must match `pickTemplate` in `templates.ts`. */
+export { getSuggestionRowOrder } from "./templates";
+
 export function getSuggestionRowRects(
   ctx: CanvasRenderingContext2D,
   options: { blue: string; purple: string; orange: string },
+  rowOrder: readonly PickColor[] = DEFAULT_ROW_ORDER,
 ): readonly SuggestionRowRect[] {
   const L = SENTENCE_LAYOUT;
-  const colors: PickColor[] = ["blue", "purple", "orange"];
-  const labels = [options.blue, options.purple, options.orange];
   ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
-  const widths = labels.map((l) => ctx.measureText(l).width);
-  const popW = Math.max(L.popoverW, Math.max(...widths) + 80);
   const rows: SuggestionRowRect[] = [];
-  for (let i = 0; i < colors.length; i++) {
+  for (let i = 0; i < 3; i++) {
+    const c = rowOrder[i] as PickColor;
+    const word = options[c];
     rows.push({
       x: L.popoverX,
       y: L.popoverY + i * L.popoverRowH,
-      w: popW,
+      w: L.popoverW,
       h: L.popoverRowH,
-      color: colors[i] as PickColor,
-      word: labels[i] as string,
+      color: c,
+      word,
       index: i,
     });
   }
+  const widths = rows.map((r) => ctx.measureText(r.word).width);
+  const popW = Math.max(L.popoverW, Math.max(...widths) + 100);
+  for (const r of rows) (r as { w: number }).w = popW;
   return rows;
 }
 
 export function drawSuggestionPopover(
   ctx: CanvasRenderingContext2D,
   rows: readonly SuggestionRowRect[],
-  hover: PickColor | null,
+  highlightRow: number | null,
   secondsLeft01: number,
 ): void {
   if (rows.length === 0) return;
@@ -196,12 +212,12 @@ export function drawSuggestionPopover(
   drawAiCard(ctx, first.x, first.y, popW, popH, { radius: 8 });
   // Each row
   for (const r of rows) {
-    const isHover = hover === r.color;
-    if (isHover) {
-      ctx.fillStyle = COLOR_BY_PICK[r.color];
-      ctx.globalAlpha = 0.08;
+    const isHL = highlightRow === r.index;
+    if (isHL) {
+      ctx.fillStyle = CURSOR_AI.surfaceMute;
       ctx.fillRect(r.x + 1, r.y + 1, r.w - 2, r.h);
-      ctx.globalAlpha = 1;
+      ctx.strokeStyle = CURSOR_AI.borderStrong;
+      ctx.strokeRect(r.x + 2, r.y + 2, r.w - 4, r.h - 4);
     }
     // Leading arrow icon in row color
     ctx.fillStyle = COLOR_BY_PICK[r.color];
@@ -216,17 +232,12 @@ export function drawSuggestionPopover(
     ctx.fillStyle = CURSOR_AI.inkSubtle;
     ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
     ctx.textAlign = "right";
-    const badge = r.color === "blue" ? "Tab" : String(r.index + 1);
     const aux =
-      r.color === "blue"
-        ? "recommended"
-        : r.color === "purple"
-          ? "alt"
-          : "honest mistake";
+      r.color === "blue" ? "case" : r.color === "purple" ? "alt" : "nope";
     ctx.fillText(aux, r.x + r.w - 50, r.y + r.h / 2 + 1);
-    // Number / Tab badge pill on the very right
+    // Number badge — display row, not the answer
     ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
-    const badgeW = 34;
+    const badgeW = 30;
     const badgeX = r.x + r.w - badgeW - 8;
     const badgeY = r.y + (r.h - 14) / 2;
     ctx.fillStyle = CURSOR_AI.surfaceMute;
@@ -237,10 +248,17 @@ export function drawSuggestionPopover(
     ctx.stroke();
     ctx.fillStyle = CURSOR_AI.inkMute;
     ctx.textAlign = "center";
-    ctx.fillText(badge, badgeX + badgeW / 2, badgeY + 8);
+    ctx.fillText(String(r.index + 1), badgeX + badgeW / 2, badgeY + 8);
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
   }
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText(
+    "Tab cycles · Enter accepts · read the clue",
+    first.x + 8,
+    first.y + popH - 20,
+  );
   // Idle timer line at the bottom of the popover
   drawAiProgressLine(
     ctx,
@@ -272,20 +290,24 @@ export function drawIntroCard(
   drawAiAvatar(ctx, x + 32, y + 36, { size: 28 });
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "700 14px 'Cursor Gothic', sans-serif";
-  ctx.fillText("Tab — autocomplete the case file", x + 60, y + 30);
+  ctx.fillText("Case file — Tab autocomplete", x + 60, y + 30);
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
-  ctx.fillText("4 sentences · 3 suggestions each", x + 60, y + 48);
+  ctx.fillText("8 beats · 3 suggestions (shuffled order)", x + 60, y + 48);
   ctx.fillStyle = CURSOR_AI.ink;
-  ctx.fillText(
-    "Press Tab for the recommended suggestion.",
-    x + 24,
-    y + 80,
-  );
+  ctx.fillText("Read the clue. Tab cycles rows.", x + 24, y + 80);
   ctx.fillStyle = CURSOR_AI.inkMute;
-  ctx.fillText("Or pick row 1 / 2 / 3 with the keys or by clicking.", x + 24, y + 98);
+  ctx.fillText(
+    "1 / 2 / 3 or click. The correct line is not always on top.",
+    x + 24,
+    y + 98,
+  );
   ctx.fillStyle = CURSOR_AI.inkSubtle;
-  ctx.fillText("Wait 4s and the typewriter commits the orange line.", x + 24, y + 116);
+  ctx.fillText(
+    "Idle and the typewriter picks the bad option for you.",
+    x + 24,
+    y + 116,
+  );
   drawAiProgressLine(ctx, x + 24, y + h - 22, w - 48, progress01);
   ctx.restore();
 }
@@ -307,7 +329,7 @@ export function drawShareCard(
   ctx.fillStyle = CURSOR_AI.scrim;
   ctx.fillRect(0, 0, W, H);
   const w = 440;
-  const h = 244;
+  const h = 300;
   const x = (W - w) / 2;
   const y = (H - h) / 2;
   drawAiCard(ctx, x, y, w, h, { radius: 14 });
@@ -337,20 +359,20 @@ export function drawShareCard(
   ctx.fillText(endingLabel[ending], x + w - 14, y + 18);
   ctx.textAlign = "left";
 
-  // Paragraph body
-  drawParagraph(ctx, paragraph, x + 22, y + 50, w - 44, 16);
+  // Paragraph body (longer 8-beat runs)
+  drawParagraph(ctx, paragraph, x + 22, y + 50, w - 44, 14);
 
   // Footer score row
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText("score", x + 22, y + h - 30);
+  ctx.fillText("score", x + 22, y + h - 32);
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "700 22px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText(String(score), x + 22, y + h - 12);
+  ctx.fillText(String(score), x + 22, y + h - 14);
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textAlign = "right";
-  ctx.fillText("click anywhere to close", x + w - 22, y + h - 14);
+  ctx.fillText("click anywhere to close", x + w - 22, y + h - 16);
   ctx.textAlign = "left";
 
   ctx.restore();
@@ -371,7 +393,7 @@ function drawParagraph(
   for (const line of lines) {
     ctx.fillText(line, x, yy);
     yy += lineH;
-    if (yy > y + 160) break;
+    if (yy > y + 210) break;
   }
 }
 
@@ -399,15 +421,15 @@ export function drawSentenceTutorialDiagram(
   ctx.fillText("…", x + 56, cy);
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText("press Tab", x + 100, cy);
+  ctx.fillText("Tab cycles", x + 100, cy);
   ctx.fillStyle = CURSOR_AI.surfaceMute;
-  ctx.fillRect(x + 156, cy - 8, 24, 16);
+  ctx.fillRect(x + 164, cy - 8, 30, 16);
   ctx.strokeStyle = CURSOR_AI.border;
-  ctx.strokeRect(x + 156, cy - 8, 24, 16);
+  ctx.strokeRect(x + 164, cy - 8, 30, 16);
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
   ctx.textAlign = "center";
-  ctx.fillText("Tab", x + 168, cy + 1);
+  ctx.fillText("Enter", x + 179, cy + 1);
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.restore();

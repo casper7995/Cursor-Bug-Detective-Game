@@ -34,32 +34,37 @@ function lerp01(a: number, b: number, t: number): number {
   return Math.min(1, Math.max(0, a + (b - a) * t));
 }
 
-function r01(rng: () => number): number {
-  return rng();
-}
-
 function taskSignalProfileFor(
   content: DrawerContent,
   drawerIdx: number,
   rng: () => number,
 ): TaskSignalProfile {
   const wobble = 0.18;
-  const rRel =
-    content === "clue"
-      ? 0.55 + r01(rng) * 0.45
-      : content === "junk"
-        ? 0.2 + r01(rng) * 0.4
-        : 0.25 + r01(rng) * 0.5;
-  const rSafe =
-    content === "trap"
-      ? 0.1 + r01(rng) * 0.35
-      : content === "clue"
-        ? 0.5 + r01(rng) * 0.4
-        : 0.4 + r01(rng) * 0.45;
-  const rUrg =
-    content === "trap" ? 0.45 + r01(rng) * 0.5 : 0.2 + r01(rng) * 0.6;
-  const f = (x: number) =>
-    lerp01(x, r01(rng), wobble * (0.5 + drawerIdx * 0.1));
+  let rRel: number;
+  let rSafe: number;
+  let rUrg: number;
+  switch (content) {
+    case "clue":
+      rRel = 0.55 + rng() * 0.45;
+      rSafe = 0.5 + rng() * 0.4;
+      rUrg = 0.2 + rng() * 0.6;
+      break;
+    case "junk":
+      rRel = 0.2 + rng() * 0.4;
+      rSafe = 0.4 + rng() * 0.45;
+      rUrg = 0.2 + rng() * 0.6;
+      break;
+    case "trap":
+      rRel = 0.25 + rng() * 0.5;
+      rSafe = 0.1 + rng() * 0.35;
+      rUrg = 0.45 + rng() * 0.5;
+      break;
+    default: {
+      const _e: never = content;
+      throw new Error(String(_e));
+    }
+  }
+  const f = (x: number) => lerp01(x, rng(), wobble * (0.5 + drawerIdx * 0.1));
   return {
     relevance01: f(rRel),
     safety01: f(rSafe),
@@ -67,16 +72,27 @@ function taskSignalProfileFor(
   };
 }
 
+/** After Inspect, nudge the visible meters toward a blend with the true drawer content. */
 export function nudgeSignalsAfterInspect(
   content: DrawerContent,
   p: TaskSignalProfile,
 ): TaskSignalProfile {
-  const t =
-    content === "clue"
-      ? { relevance01: 0.9, safety01: 0.75, urgency01: 0.5 }
-      : content === "junk"
-        ? { relevance01: 0.3, safety01: 0.65, urgency01: 0.4 }
-        : { relevance01: 0.45, safety01: 0.15, urgency01: 0.85 };
+  let t: TaskSignalProfile;
+  switch (content) {
+    case "clue":
+      t = { relevance01: 0.9, safety01: 0.75, urgency01: 0.5 };
+      break;
+    case "junk":
+      t = { relevance01: 0.3, safety01: 0.65, urgency01: 0.4 };
+      break;
+    case "trap":
+      t = { relevance01: 0.45, safety01: 0.15, urgency01: 0.85 };
+      break;
+    default: {
+      const _e: never = content;
+      throw new Error(String(_e));
+    }
+  }
   const blend = 0.55;
   return {
     relevance01: lerp01(p.relevance01, t.relevance01, blend),
@@ -176,6 +192,7 @@ export function scoreErrandRun(t: ErrandTotals): number {
   return Math.max(0, Math.min(1000, base));
 }
 
+/** Desk clue: require at least two player-issued dispatches and one delivered clue. */
 export function errandEarnsDeskClue(
   playerDispatched: number,
   clueCount: number,

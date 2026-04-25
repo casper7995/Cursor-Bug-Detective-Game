@@ -174,7 +174,7 @@ function drawTaskSignalMeters(
   const barH = 28;
   for (let s = 0; s < SIGNAL_LABELS.length; s++) {
     const k = SIGNAL_LABELS[s]!;
-    const v = profile[k] as number;
+    const v = profile[k];
     const x = x0 + s * (barW + gap);
     ctx.fillStyle = CURSOR_AI.surfaceMute;
     ctx.beginPath();
@@ -427,7 +427,7 @@ function drawTaskCard(
   const prof = opts.getDisplaySignal(taskIdx);
   drawAiCard(ctx, r.x, r.y, r.w, r.h, {
     radius: 8,
-    fill: isActive ? CURSOR_AI.surface : CURSOR_AI.surface,
+    fill: CURSOR_AI.surface,
     stroke: isDropTarget
       ? CURSOR_AI.blue
       : isAlerted
@@ -440,19 +440,9 @@ function drawTaskCard(
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillText(`task #${drawer.index + 1}`, r.x + 8, r.y + 14);
-  ctx.fillStyle = CURSOR_AI.surfaceMute;
-  ctx.strokeStyle = CURSOR_AI.border;
-  ctx.beginPath();
-  ctx.roundRect(r.x + r.w - 22, r.y + 5, 16, 14, 4);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = CURSOR_AI.inkMute;
-  ctx.textAlign = "center";
-  ctx.fillText(String(drawer.index + 1), r.x + r.w - 14, r.y + 15);
-  ctx.textAlign = "left";
 
   drawTaskSignalMeters(ctx, r.x + 4, r.y + 20, prof);
-  drawHintIcon(ctx, drawer.hint, r.x + r.w / 2 + 10, r.y + r.h / 2 - 2, 20);
+  drawHintIcon(ctx, drawer.hint, r.x + r.w / 2, r.y + r.h / 2 - 2, 20);
 
   const { y: actionY } = watchActionRowLayout(r);
   const statusY = showTriage ? actionY - 11 : r.y + r.h - 8;
@@ -492,7 +482,7 @@ function drawTaskCard(
       hov && hov.taskIdx === taskIdx && hov.kind === "abort" ? hov : null;
     const hPu =
       hov && hov.taskIdx === taskIdx && hov.kind === "push" ? hov : null;
-    drawTriageChip(ctx, rec.inspect, inUsed ? "in✓" : "in", {
+    drawTriageChip(ctx, rec.inspect, inUsed ? "in+" : "in", {
       tone: inUsed ? "ghost" : "primary",
       hovered: hIn !== null,
       disabled: inUsed,

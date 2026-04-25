@@ -76,7 +76,10 @@ export function classifyEnding(
   return "improv";
 }
 
-/** True when a full run merits notebook/outcome: full slot run plus ≥2 blues or 2+ consecutive blues. */
+/**
+ * Desk / notebook gating: requires a **full** sentence run (`SENTENCE_SLOTS_PER_TEMPLATE` picks),
+ * then either **≥2** case-correct (blue) picks **or** **2+ consecutive** blues. Not “any single blue”.
+ */
 export function shouldEmitOutcome(picks: readonly PlayerPick[]): boolean {
   if (picks.length < SENTENCE_SLOTS_PER_TEMPLATE) return false;
   let blues = 0;

@@ -32,8 +32,10 @@ describe("errand round", () => {
     expect(counts).toEqual({ clue: 2, junk: 2, trap: 1 });
     expect(r.agentTraits).toHaveLength(3);
     for (const d of r.drawers) {
-      expect(d.signalProfile.relevance01).toBeGreaterThanOrEqual(0);
-      expect(d.signalProfile.relevance01).toBeLessThanOrEqual(1);
+      for (const k of ["relevance01", "safety01", "urgency01"] as const) {
+        expect(d.signalProfile[k]).toBeGreaterThanOrEqual(0);
+        expect(d.signalProfile[k]).toBeLessThanOrEqual(1);
+      }
     }
   });
 

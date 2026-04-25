@@ -184,6 +184,7 @@ export function scoreTamperRound(
   };
 }
 
+/** Desk clue: need solid calls plus at least one caught lie. */
 export function tamperEarnsDeskClue(result: TamperResult): boolean {
   return result.rightCalls >= 3 && result.caughtLies >= 1;
 }

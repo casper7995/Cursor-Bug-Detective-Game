@@ -43,7 +43,9 @@ export interface Helper {
   drawerAssigned: DrawerIndex | null;
   fillProgress: number;
   result: "clue" | "junk" | null;
+  /** Affects run pacing (fill speed). */
   readonly trait: AgentTrait;
+  /** Elapsed seconds in the trap tripwire window while alerted (0 outside). */
   tripwireT: number;
 }
 

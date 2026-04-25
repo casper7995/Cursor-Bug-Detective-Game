@@ -5,17 +5,17 @@
 export const CASE_FILE_TAGLINE =
   "Confidential · scan the desk, collect four clues, then make the call";
 
-/** Drawn on the procedural case-file texture (short lines; canvas layout in pagePeel). */
+/**
+ * Drawn on the case-file peel texture and 3D desk sheet — same story as `HOWTO_MODAL_STEPS`, fewer lines.
+ * (Help modal / ?howto=1 has the fuller step list.)
+ */
 export const CASE_FILE_BODY_LINES: readonly string[] = [
   "HOW TO PLAY",
-  "• First: hover the desk. One prop is wrong today.",
-  "• Then open the monitor, envelope, reagent tray, and lamp.",
-  "• Each station gives one clue word. Lock all four into Evidence.",
-  "• When Evidence reads 4/4, hit Make the call and name the anomaly.",
-  "• Esc backs out of inspect zoom; X closes a desk mini.",
+  "• Hover the desk first — one prop is wrong today.",
+  "• Open the monitor, envelope, reagent tray, and lamp; each pays a clue word into Evidence.",
+  "• At 4/4 Evidence, make the call. Esc / Exit leaves inspect zoom; X closes a desk mini.",
   "",
-  "This page is only the jacket. Under it: your desk, your tools,",
-  "and one bug hiding in plain sight.",
+  "Peel the page, then hunt the live bug on the desk.",
 ];
 
 /** Richer steps for the optional DOM modal (?howto=1 or settings). */

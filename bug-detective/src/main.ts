@@ -1357,10 +1357,9 @@ function bootGameInner(simplified: boolean): void {
   caseFileCta.setAttribute("role", "status");
   caseFileCta.setAttribute("aria-live", "polite");
   caseFileCta.innerHTML =
-    "<div>Press Space, Enter, or click to lift the page</div>" +
+    "<div>Press Space, Enter, or click to continue</div>" +
     "<div style=\"margin-top:8px;font:500 12px 'Cursor Gothic',ui-sans-serif,sans-serif;opacity:0.82;line-height:1.4;\">" +
-    "After the peel, <strong>hover the desk</strong> to locate the live bug. " +
-    "Then clear the <strong>monitor, envelope, tray, and lamp</strong> for four cipher clues before you make the call.</div>";
+    "After the peel: <strong>hover the desk</strong>, then the <strong>four props</strong> from the case file.</div>";
   caseFileCta.style.cssText =
     "position:fixed;left:50%;bottom:32px;transform:translateX(-50%);max-width:min(92vw,520px);padding:12px 22px;border-radius:12px;background:rgba(26,24,18,0.88);color:#efe7d7;border:1px solid rgba(245,78,0,0.45);font:600 14px 'Cursor Gothic',ui-sans-serif,sans-serif;letter-spacing:0.03em;text-align:center;opacity:0;pointer-events:none;transition:opacity 650ms ease;z-index:60;box-shadow:0 8px 28px rgba(0,0,0,0.45)";
   root.appendChild(caseFileCta);

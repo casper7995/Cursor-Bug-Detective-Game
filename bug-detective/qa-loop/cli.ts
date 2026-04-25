@@ -1,0 +1,335 @@
+import { spawnSync } from "node:child_process";
+import { copyFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { join, dirname, resolve, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  createInitialManifest,
+  defaultArtifactsDir,
+  loadManifest,
+  newRunId,
+  recordVideoPath,
+  saveManifest,
+} from "./runStore.js";
+import { assessOneVideoWithGemini } from "./geminiAssess.js";
+import { getAssessModel, getGeminiApiKey } from "./env.js";
+import { startRecordingCloudAgent, startPlanCloudAgent, startImplementCloudAgent, waitRunDone } from "./cursorAgent.js";
+import { loadAssessment, writeShareBundle } from "./report.js";
+import type { MinigameKey, MinigameAssessment, QaAssessmentDocument, RunManifestV1 } from "./types.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const REPO = resolve(here, "..");
+const SLOTS: MinigameKey[] = ["runner", "sentence", "errand", "tamper"];
+
+function getArg(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  if (i < 0) return undefined;
+  return process.argv[i + 1];
+}
+
+function hasFlag(n: string): boolean {
+  return process.argv.includes(n);
+}
+
+async function findLatestWebmAfter(base: string, before: number): Promise<string | undefined> {
+  const results: { p: string; t: number }[] = [];
+  async function walk(dir: string): Promise<void> {
+    let ent: import("node:fs").Dirent[] | undefined;
+    try {
+      ent = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of ent) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) await walk(p);
+      else if (e.isFile() && p.endsWith(".webm")) {
+        const t = (await stat(p)).mtimeMs;
+        if (t >= before) results.push({ p, t });
+      }
+    }
+  }
+  await walk(join(base, "test-results"));
+  if (results.length === 0) return undefined;
+  results.sort((a, b) => b.t - a.t);
+  return results[0]!.p;
+}
+
+function missingPlaceholder(s: MinigameKey): MinigameAssessment {
+  return {
+    minigame: s,
+    issues: [],
+    dimensions: {
+      clarity: 0,
+      controlFeel: 0,
+      fun: 0,
+      goalReadability: 0,
+      visualPolish: 0,
+      performanceSmoothness: 0,
+      cursorBrandFit: 0,
+    },
+    score100: 0,
+    assessment: "No recording for this minigame yet — record with npm run qa:record -- --local --scenario " + s,
+    recommendedFixes: ["Record: npm run qa:record -- --local --scenario " + s],
+  };
+}
+
+function mergeAssessments(
+  runId: string,
+  parts: QaAssessmentDocument[],
+  threshold: number,
+  model: string,
+): QaAssessmentDocument {
+  const acc: Partial<Record<MinigameKey, MinigameAssessment>> = {};
+  for (const p of parts) {
+    for (const k of SLOTS) {
+      const b = p.byMinigame[k];
+      if (b) acc[k] = b;
+    }
+  }
+  const byMinigame = {
+    runner: acc.runner ?? missingPlaceholder("runner"),
+    sentence: acc.sentence ?? missingPlaceholder("sentence"),
+    errand: acc.errand ?? missingPlaceholder("errand"),
+    tamper: acc.tamper ?? missingPlaceholder("tamper"),
+  };
+  const failing: MinigameKey[] = [];
+  for (const s of SLOTS) {
+    if (byMinigame[s].score100 < threshold) failing.push(s);
+  }
+  return {
+    version: 1,
+    runId,
+    model: parts[0]?.model ?? model,
+    createdAt: new Date().toISOString(),
+    byMinigame,
+    gate: { passThreshold: threshold, allPassed: failing.length === 0, failing },
+  };
+}
+
+export async function runAssessForRunId(runId: string): Promise<void> {
+  const runDir = defaultArtifactsDir(REPO, runId);
+  const mPath = join(runDir, "manifest.json");
+  const manifest = await loadManifest(mPath);
+  const key = getGeminiApiKey();
+  const model = getAssessModel();
+  const parts: QaAssessmentDocument[] = [];
+  for (const slot of SLOTS) {
+    const vp = manifest.videos[slot];
+    if (!vp) {
+      // eslint-disable-next-line no-console
+      console.warn(`[qa-loop] no video for ${slot}; using placeholder in gate`);
+      continue;
+    }
+    parts.push(
+      await assessOneVideoWithGemini({
+        apiKey: key,
+        model,
+        runId: manifest.runId,
+        videoPath: vp,
+        minigame: slot,
+      }),
+    );
+  }
+  if (parts.length === 0) throw new Error("No videos in manifest to assess (record clips first).");
+  const merged = mergeAssessments(manifest.runId, parts, manifest.passThreshold, model);
+  const out = join(runDir, "assessment.json");
+  await writeFile(out, JSON.stringify(merged, null, 2) + "\n", "utf8");
+  for (const s of SLOTS) {
+    const b = merged.byMinigame[s];
+    if (b) manifest.scores[s] = b.score100;
+  }
+  manifest.assessmentPath = relative(REPO, out);
+  manifest.allPassed = merged.gate.allPassed;
+  manifest.state = merged.gate.allPassed ? "passed" : "assessed";
+  manifest.pendingNextStep = merged.gate.allPassed ? "complete" : "plan";
+  await saveManifest(runDir, manifest);
+  // eslint-disable-next-line no-console
+  console.log(`Wrote ${out} allPassed=${merged.gate.allPassed} failing=${merged.gate.failing.join(",") || "(none)"}`);
+}
+
+async function cmdRecord(): Promise<void> {
+  const scenario = (getArg("--scenario") ?? "runner") as MinigameKey;
+  if (!SLOTS.includes(scenario)) throw new Error(`--scenario must be one of: ${SLOTS.join(", ")}`);
+  const runId = getArg("--run") ?? newRunId();
+  const runDir = defaultArtifactsDir(REPO, runId);
+  await mkdir(runDir, { recursive: true });
+  const mPath = join(runDir, "manifest.json");
+  let manifest: RunManifestV1;
+  try {
+    manifest = await loadManifest(mPath);
+  } catch {
+    manifest = createInitialManifest(runId);
+  }
+  if (hasFlag("--local")) {
+    const t0 = Date.now();
+    const r = spawnSync(
+      "npx",
+      ["playwright", "test", "e2e/demo-record.spec.ts", "--project=demo", "-g", scenario],
+      { cwd: REPO, stdio: "inherit", env: { ...process.env, BD_QA_SCENARIO: scenario } },
+    );
+    if (r.status !== 0) throw new Error(`playwright record failed: exit ${r.status}`);
+    const webm = await findLatestWebmAfter(REPO, t0 - 2000);
+    if (!webm) throw new Error("No .webm found under test-results/ after record");
+    const target = join(runDir, "videos", `${scenario}.webm`);
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(webm, target);
+    manifest = recordVideoPath(manifest, scenario, target);
+    if (!manifest.runId) manifest.runId = runId;
+  } else {
+    const { agentId, run } = await startRecordingCloudAgent(REPO, manifest.runId || runId);
+    manifest = {
+      ...manifest,
+      runId: manifest.runId || runId,
+      cloud: { ...manifest.cloud, recordAgentId: agentId },
+      state: "blocked",
+    };
+    await waitRunDone(run);
+  }
+  await saveManifest(runDir, manifest);
+  // eslint-disable-next-line no-console
+  console.log(`Recorded run=${manifest.runId} video[${scenario}]=${manifest.videos[scenario] ?? ""}`);
+}
+
+async function cmdAssess(): Promise<void> {
+  const runId = getArg("--run");
+  if (!runId) throw new Error("Missing --run <runId>");
+  await runAssessForRunId(runId);
+}
+
+async function cmdPlan(): Promise<void> {
+  const runId = getArg("--run");
+  if (!runId) throw new Error("Missing --run");
+  const { agentId, run } = await startPlanCloudAgent(REPO, runId);
+  const runDir = defaultArtifactsDir(REPO, runId);
+  let manifest = await loadManifest(join(runDir, "manifest.json"));
+  manifest.state = "planned";
+  manifest.cloud = { ...manifest.cloud, planAgentId: agentId };
+  await saveManifest(runDir, manifest);
+  const res = await waitRunDone(run);
+  // eslint-disable-next-line no-console
+  console.log("plan run status:", res.status);
+  manifest = await loadManifest(join(runDir, "manifest.json"));
+  manifest.state = "needs-approval";
+  manifest.planPath = join("artifacts/qa-runs", runId, "cursor-plan.md");
+  await saveManifest(runDir, manifest);
+}
+
+async function cmdApprove(): Promise<void> {
+  const runId = getArg("--run");
+  if (!runId) throw new Error("Missing --run");
+  const runDir = defaultArtifactsDir(REPO, runId);
+  let manifest = await loadManifest(join(runDir, "manifest.json"));
+  manifest.planApproved = true;
+  manifest.pendingNextStep = "implement";
+  manifest.state = "implementing";
+  await saveManifest(runDir, manifest);
+  if (hasFlag("--execute")) {
+    const { agentId, run } = await startImplementCloudAgent(REPO, runId);
+    manifest = await loadManifest(join(runDir, "manifest.json"));
+    manifest.cloud = { ...manifest.cloud, implementAgentId: agentId };
+    await saveManifest(runDir, manifest);
+    const res = await waitRunDone(run);
+    // eslint-disable-next-line no-console
+    console.log("implement:", res.status, res.git);
+    manifest = await loadManifest(join(runDir, "manifest.json"));
+    if (res.git?.branches?.[0]?.prUrl) {
+      manifest.cloud = { ...manifest.cloud, lastPrUrl: res.git.branches[0].prUrl };
+      manifest.state = "pr-ready";
+    }
+    await saveManifest(runDir, manifest);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log("Approved. Re-run: npm run qa:approve -- --run <id> --execute to start implement agent.");
+  }
+}
+
+async function cmdIterate(): Promise<void> {
+  const runId = getArg("--run") ?? newRunId();
+  const runDir = defaultArtifactsDir(REPO, runId);
+  await mkdir(runDir, { recursive: true });
+  let m: RunManifestV1;
+  try {
+    m = await loadManifest(join(runDir, "manifest.json"));
+  } catch {
+    m = createInitialManifest(runId);
+  }
+  m.runId = m.runId || runId;
+  m.iteration += 1;
+  if (m.iteration > m.maxIterations) {
+    m.state = "blocked";
+    m.lastError = "max iterations";
+    await saveManifest(runDir, m);
+    throw new Error("max iterations reached");
+  }
+  for (const s of SLOTS) {
+    const t0 = Date.now();
+    const r = spawnSync(
+      "npx",
+      ["playwright", "test", "e2e/demo-record.spec.ts", "--project=demo", "-g", s],
+      { cwd: REPO, stdio: "inherit", env: { ...process.env, BD_QA_SCENARIO: s } },
+    );
+    if (r.status !== 0) {
+      m.state = "blocked";
+      m.lastError = `playwright ${s} failed`;
+      await saveManifest(runDir, m);
+      throw new Error(m.lastError!);
+    }
+    const webm = await findLatestWebmAfter(REPO, t0 - 2000);
+    if (!webm) throw new Error("no webm for " + s);
+    const target = join(runDir, "videos", `${s}.webm`);
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(webm, target);
+    m = recordVideoPath(m, s, target);
+  }
+  m.state = "recording";
+  await saveManifest(runDir, m);
+  await runAssessForRunId(m.runId);
+  const m2 = await loadManifest(join(runDir, "manifest.json"));
+  if (!m2.allPassed) {
+    try {
+      await cmdPlan();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("plan skipped (cloud/auth):", e);
+    }
+  }
+}
+
+async function cmdShare(): Promise<void> {
+  const runId = getArg("--run");
+  if (!runId) throw new Error("Missing --run");
+  const runDir = defaultArtifactsDir(REPO, runId);
+  const m = await loadManifest(join(runDir, "manifest.json"));
+  const a = await loadAssessment(join(runDir, "assessment.json"));
+  await writeShareBundle(REPO, m, a);
+  // eslint-disable-next-line no-console
+  console.log("Share bundle in", join(runDir, "share"));
+}
+
+async function main(): Promise<void> {
+  const sub = process.argv[2] ?? "help";
+  if (sub === "record") await cmdRecord();
+  else if (sub === "assess") await cmdAssess();
+  else if (sub === "plan") await cmdPlan();
+  else if (sub === "approve") await cmdApprove();
+  else if (sub === "iterate") await cmdIterate();
+  else if (sub === "share") await cmdShare();
+  else {
+    // eslint-disable-next-line no-console
+    console.log(
+      `bug-detective QA loop\n` +
+        `  npm run qa:record  -- --local --scenario runner [--run id]\n` +
+        `  npm run qa:assess  -- --run <id>\n` +
+        `  npm run qa:plan    -- --run <id>   (requires CURSOR_API_KEY)\n` +
+        `  npm run qa:approve -- --run <id> [--execute]\n` +
+        `  npm run qa:iterate -- [--run id]\n` +
+        `  npm run qa:share   -- --run <id>\n` +
+        `Env: GEMINI_API_KEY, CURSOR_API_KEY, GEMINI_ASSESS_MODEL, CURSOR_QA_REPO_URL, ...\n`,
+    );
+  }
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

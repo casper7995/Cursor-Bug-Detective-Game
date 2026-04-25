@@ -1,3 +1,4 @@
+import "./loadEnv.js";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { copyFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { join, dirname, resolve, relative } from "node:path";

@@ -382,7 +382,6 @@ async function cmdShare(): Promise<void> {
 async function cmdStatus(): Promise<void> {
   const runId = getArg("--run");
   const runBase = join(REPO, "artifacts", "qa-runs");
-  const { readdir } = await import("node:fs/promises");
   const { existsSync } = await import("node:fs");
   if (!existsSync(runBase)) {
     console.log("No runs yet. Try: npm run qa:record -- --local --scenario runner");

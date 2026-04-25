@@ -165,6 +165,10 @@ function bootGameInner(simplified: boolean): void {
   // Game-time camera pose (used during investigation phase).
   const GAME_CAMERA_POS = new THREE.Vector3(3.2, 2.4, 5.2);
   const GAME_CAMERA_LOOKAT = new THREE.Vector3(-0.2, 0.3, -0.4);
+  const INVEST_DEFAULT_CAMERA_DIST =
+    GAME_CAMERA_POS.distanceTo(GAME_CAMERA_LOOKAT);
+  /** Nudge a HUD line about scroll/−+ when closer than this to the desk look target. */
+  const DESK_ZOOM_HINT_BELOW_DIST = INVEST_DEFAULT_CAMERA_DIST * 0.66;
   const tmpWheelAnchor = new THREE.Vector3();
   const tmpDirScratch = new THREE.Vector3();
 
@@ -968,6 +972,7 @@ function bootGameInner(simplified: boolean): void {
   const inspectBox = new THREE.Box3();
   let inspectZoomActive = false;
   let inspectZoomCooldownUntil = 0;
+  let lastDeskZoomHint: string | null = null;
 
   /**
    * Inspect framing: stay far enough from props to avoid clipping / huge
@@ -1035,7 +1040,7 @@ function bootGameInner(simplified: boolean): void {
       look: new THREE.Vector3(),
     };
     cameraRig.copyLookAtInto(flavorInspectReturn.look);
-    hud.setInspectCaption(`${caption} · Esc to exit`);
+    hud.setInspectCaption(`${caption} · Esc / Wider / scroll`);
     hitObject.updateMatrixWorld(true);
     inspectBox.setFromObject(hitObject);
     inspectBox.getCenter(inspectAnomalyPos);
@@ -1063,28 +1068,7 @@ function bootGameInner(simplified: boolean): void {
     void cameraRig.scriptedTo(inspectReturnPos, inspectReturnLook, durationMs);
   }
 
-  hud.onInspectExit(() => {
-    if (state.phase.kind !== "investigating") return;
-    if (inspectZoomActive) exitInspectZoom(420);
-    else endFlavorInspectNow();
-  });
-
-  /** Escape always exits hover inspect / flavor zoom (desk minis + runner keep their own Esc). */
-  document.addEventListener(
-    "keydown",
-    (e: KeyboardEvent) => {
-      if (e.code !== "Escape" || e.repeat) return;
-      if (state.phase.kind !== "investigating") return;
-      if (runnerSession || deskMinigame) return;
-      e.preventDefault();
-      if (inspectZoomActive) exitInspectZoom(420);
-      else endFlavorInspectNow();
-    },
-    { capture: true },
-  );
-
-  function handleInvestigationWheel(ev: WheelEvent): void {
-    if (ev.ctrlKey || ev.metaKey) return;
+  function applyInvestigationWheelDelta(rawDeltaY: number): void {
     if (state.phase.kind !== "investigating") return;
     if (runnerSession || deskMinigame) return;
     if (flavorInspectReturn || inspectZoomActive) {
@@ -1094,7 +1078,7 @@ function bootGameInner(simplified: boolean): void {
     }
     const d = cameraRig.camera.position.distanceTo(tmpWheelAnchor);
     if (d < 1e-4) return;
-    const step = Math.sign(ev.deltaY) * Math.min(120, Math.abs(ev.deltaY));
+    const step = Math.sign(rawDeltaY) * Math.min(120, Math.abs(rawDeltaY));
     const next = THREE.MathUtils.clamp(
       d * (1 + step * 0.0009),
       flavorInspectReturn || inspectZoomActive
@@ -1105,6 +1089,79 @@ function bootGameInner(simplified: boolean): void {
         : INVEST_WHEEL_MAX_DIST,
     );
     cameraRig.setDistanceFromAnchor(tmpWheelAnchor, next);
+  }
+
+  /**
+   * Snap back to the default desk framing and clear flavor / hover inspect.
+   * Does not run the short return tween from exitInspectZoom / endFlavorInspect.
+   */
+  function resetInvestigationCameraToDefault(): void {
+    if (state.phase.kind !== "investigating") return;
+    if (runnerSession || deskMinigame) return;
+    if (flavorInspectTimer) {
+      clearTimeout(flavorInspectTimer);
+      flavorInspectTimer = null;
+    }
+    flavorInspectReturn = null;
+    if (inspectZoomActive) {
+      inspectZoomActive = false;
+      inspectZoomCooldownUntil = performance.now() + 800;
+    }
+    hud.setInspectCaption(null);
+    mascotController.setFrozen(false);
+    void cameraRig.scriptedTo(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT, 420);
+  }
+
+  hud.onInspectExit(() => {
+    if (state.phase.kind !== "investigating") return;
+    if (inspectZoomActive) exitInspectZoom(420);
+    else endFlavorInspectNow();
+  });
+  hud.onInspectWider(() => {
+    if (state.phase.kind !== "investigating") return;
+    if (runnerSession || deskMinigame) return;
+    applyInvestigationWheelDelta(100);
+  });
+  hud.onInspectResetView(() => {
+    resetInvestigationCameraToDefault();
+  });
+
+  /** Escape exits inspect; +/− dolly; trackpad pinch uses wheel+ctrl (handled, not ignored). */
+  document.addEventListener(
+    "keydown",
+    (e: KeyboardEvent) => {
+      if (state.phase.kind !== "investigating") return;
+      if (runnerSession || deskMinigame) return;
+      const t = e.target;
+      if (
+        t instanceof HTMLInputElement ||
+        t instanceof HTMLTextAreaElement ||
+        t instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      if (e.code === "Minus" || e.code === "NumpadSubtract") {
+        e.preventDefault();
+        applyInvestigationWheelDelta(120);
+        return;
+      }
+      if (e.code === "NumpadAdd" || (e.code === "Equal" && e.shiftKey)) {
+        e.preventDefault();
+        applyInvestigationWheelDelta(-120);
+        return;
+      }
+      if (e.code !== "Escape" || e.repeat) return;
+      e.preventDefault();
+      if (inspectZoomActive) exitInspectZoom(420);
+      else endFlavorInspectNow();
+    },
+    { capture: true },
+  );
+
+  function handleInvestigationWheel(ev: WheelEvent): void {
+    if (state.phase.kind !== "investigating") return;
+    if (runnerSession || deskMinigame) return;
+    applyInvestigationWheelDelta(ev.deltaY);
     ev.preventDefault();
   }
   renderer.domElement.addEventListener("wheel", handleInvestigationWheel, {
@@ -1813,10 +1870,12 @@ function bootGameInner(simplified: boolean): void {
         void cameraRig.scriptedTo(inspectCamPos, inspectAnomalyPos, durationMs);
         if (hover.tag === "lamp-shadow") {
           hud.setInspectCaption(
-            "Shadow — does it point the right way? Esc to exit",
+            "Shadow — does it point the right way? Esc / Wider / scroll",
           );
         } else {
-          hud.setInspectCaption("Inspecting — Esc to exit");
+          hud.setInspectCaption(
+            "Inspecting — Esc / Wider / scroll to zoom out",
+          );
         }
       } else if (!isAnomalyTarget && inspectZoomActive) {
         exitInspectZoom(420);
@@ -1846,11 +1905,33 @@ function bootGameInner(simplified: boolean): void {
         lastHoverTag = null;
       }
 
+      {
+        const lim = inspectZoomActive || flavorInspectReturn;
+        const dist = cameraRig.camera.position.distanceTo(GAME_CAMERA_LOOKAT);
+        const nextHint =
+          lim || dist >= DESK_ZOOM_HINT_BELOW_DIST
+            ? null
+            : "Zoomed in — scroll, two-finger scroll, or − to widen · + to tighten";
+        if (nextHint !== lastDeskZoomHint) {
+          lastDeskZoomHint = nextHint;
+          hud.setViewZoomHint(nextHint);
+        }
+      }
+
       if (input.consumePress(Action.Submit)) {
         enterAnsweringNow(now);
       }
     } else {
       mascot.setStride(0, 0);
+    }
+
+    {
+      const deskExplore =
+        state.phase.kind === "investigating" && !deskMinigame && !runnerSession;
+      if (!deskExplore && lastDeskZoomHint !== null) {
+        lastDeskZoomHint = null;
+        hud.setViewZoomHint(null);
+      }
     }
 
     if (

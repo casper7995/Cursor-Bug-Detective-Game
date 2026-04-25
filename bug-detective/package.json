@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "Bug Detective — Vibe Jam 2026 single-case 3D detective puzzle.",
+  "description": "Bug Detective \u2014 Vibe Jam 2026 single-case 3D detective puzzle.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && tsc -p tsconfig.qa.json --noEmit && vite build",
@@ -21,7 +21,8 @@
     "qa:iterate": "tsx qa-loop/cli.ts iterate",
     "qa:share": "tsx qa-loop/cli.ts share",
     "qa:typecheck": "tsc --noEmit -p tsconfig.qa.json",
-    "qa": "tsx qa-loop/cli.ts"
+    "qa": "tsx qa-loop/cli.ts",
+    "qa:status": "tsx qa-loop/cli.ts status"
   },
   "devDependencies": {
     "@playwright/test": "^1.51.1",

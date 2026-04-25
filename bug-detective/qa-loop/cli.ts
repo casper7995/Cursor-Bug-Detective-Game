@@ -12,26 +12,43 @@ import {
 } from "./runStore.js";
 import { assessOneVideoWithGemini } from "./geminiAssess.js";
 import { getAssessModel, getGeminiApiKey } from "./env.js";
-import { startRecordingCloudAgent, startPlanCloudAgent, startImplementCloudAgent, waitRunDone } from "./cursorAgent.js";
+import {
+  startRecordingCloudAgent,
+  startPlanCloudAgent,
+  startImplementCloudAgent,
+  waitRunDone,
+} from "./cursorAgent.js";
 import { loadAssessment, writeShareBundle } from "./report.js";
-import type { MinigameKey, MinigameAssessment, QaAssessmentDocument, RunManifestV1 } from "./types.js";
+import {
+  MINIGAMES,
+  type MinigameKey,
+  type MinigameAssessment,
+  type QaAssessmentDocument,
+  type RunManifestV1,
+} from "./types.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(here, "..");
-const SLOTS: MinigameKey[] = ["runner", "sentence", "errand", "tamper"];
 
 function getArg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   if (i < 0) return undefined;
-  return process.argv[i + 1];
+  const v = process.argv[i + 1];
+  if (!v) return undefined;
+  if (v.startsWith("--")) return undefined;
+  return v;
 }
 
 function hasFlag(n: string): boolean {
   return process.argv.includes(n);
 }
 
-async function findLatestWebmAfter(base: string, before: number): Promise<string | undefined> {
-  const results: { p: string; t: number }[] = [];
+async function findLatestWebmAfter(
+  base: string,
+  before: number,
+  scenario: string,
+): Promise<string | undefined> {
+  const results: { p: string; t: number; score: number }[] = [];
   async function walk(dir: string): Promise<void> {
     let ent: import("node:fs").Dirent[] | undefined;
     try {
@@ -44,13 +61,22 @@ async function findLatestWebmAfter(base: string, before: number): Promise<string
       if (e.isDirectory()) await walk(p);
       else if (e.isFile() && p.endsWith(".webm")) {
         const t = (await stat(p)).mtimeMs;
-        if (t >= before) results.push({ p, t });
+        if (t >= before) {
+          const hay = p.toLowerCase();
+          const needle = scenario.toLowerCase();
+          const score = hay.includes(needle) ? 1 : 0;
+          results.push({ p, t, score });
+        }
       }
     }
   }
   await walk(join(base, "test-results"));
   if (results.length === 0) return undefined;
-  results.sort((a, b) => b.t - a.t);
+  results.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.t !== a.t) return b.t - a.t;
+    return b.p.length - a.p.length;
+  });
   return results[0]!.p;
 }
 
@@ -68,7 +94,9 @@ function missingPlaceholder(s: MinigameKey): MinigameAssessment {
       cursorBrandFit: 0,
     },
     score100: 0,
-    assessment: "No recording for this minigame yet — record with npm run qa:record -- --local --scenario " + s,
+    assessment:
+      "No recording for this minigame yet — record with npm run qa:record -- --local --scenario " +
+      s,
     recommendedFixes: ["Record: npm run qa:record -- --local --scenario " + s],
   };
 }
@@ -81,28 +109,29 @@ function mergeAssessments(
 ): QaAssessmentDocument {
   const acc: Partial<Record<MinigameKey, MinigameAssessment>> = {};
   for (const p of parts) {
-    for (const k of SLOTS) {
+    for (const k of MINIGAMES) {
       const b = p.byMinigame[k];
       if (b) acc[k] = b;
     }
   }
-  const byMinigame = {
-    runner: acc.runner ?? missingPlaceholder("runner"),
-    sentence: acc.sentence ?? missingPlaceholder("sentence"),
-    errand: acc.errand ?? missingPlaceholder("errand"),
-    tamper: acc.tamper ?? missingPlaceholder("tamper"),
-  };
+  const byMinigame = Object.fromEntries(
+    MINIGAMES.map((k) => [k, acc[k] ?? missingPlaceholder(k)] as const),
+  ) as QaAssessmentDocument["byMinigame"];
   const failing: MinigameKey[] = [];
-  for (const s of SLOTS) {
+  for (const s of MINIGAMES) {
     if (byMinigame[s].score100 < threshold) failing.push(s);
   }
   return {
     version: 1,
     runId,
-    model: parts[0]?.model ?? model,
+    model,
     createdAt: new Date().toISOString(),
     byMinigame,
-    gate: { passThreshold: threshold, allPassed: failing.length === 0, failing },
+    gate: {
+      passThreshold: threshold,
+      allPassed: failing.length === 0,
+      failing,
+    },
   };
 }
 
@@ -113,7 +142,7 @@ export async function runAssessForRunId(runId: string): Promise<void> {
   const key = getGeminiApiKey();
   const model = getAssessModel();
   const parts: QaAssessmentDocument[] = [];
-  for (const slot of SLOTS) {
+  for (const slot of MINIGAMES) {
     const vp = manifest.videos[slot];
     if (!vp) {
       // eslint-disable-next-line no-console
@@ -130,11 +159,17 @@ export async function runAssessForRunId(runId: string): Promise<void> {
       }),
     );
   }
-  if (parts.length === 0) throw new Error("No videos in manifest to assess (record clips first).");
-  const merged = mergeAssessments(manifest.runId, parts, manifest.passThreshold, model);
+  if (parts.length === 0)
+    throw new Error("No videos in manifest to assess (record clips first).");
+  const merged = mergeAssessments(
+    manifest.runId,
+    parts,
+    manifest.passThreshold,
+    model,
+  );
   const out = join(runDir, "assessment.json");
   await writeFile(out, JSON.stringify(merged, null, 2) + "\n", "utf8");
-  for (const s of SLOTS) {
+  for (const s of MINIGAMES) {
     const b = merged.byMinigame[s];
     if (b) manifest.scores[s] = b.score100;
   }
@@ -144,12 +179,15 @@ export async function runAssessForRunId(runId: string): Promise<void> {
   manifest.pendingNextStep = merged.gate.allPassed ? "complete" : "plan";
   await saveManifest(runDir, manifest);
   // eslint-disable-next-line no-console
-  console.log(`Wrote ${out} allPassed=${merged.gate.allPassed} failing=${merged.gate.failing.join(",") || "(none)"}`);
+  console.log(
+    `Wrote ${out} allPassed=${merged.gate.allPassed} failing=${merged.gate.failing.join(",") || "(none)"}`,
+  );
 }
 
 async function cmdRecord(): Promise<void> {
   const scenario = (getArg("--scenario") ?? "runner") as MinigameKey;
-  if (!SLOTS.includes(scenario)) throw new Error(`--scenario must be one of: ${SLOTS.join(", ")}`);
+  if (!MINIGAMES.includes(scenario))
+    throw new Error(`--scenario must be one of: ${MINIGAMES.join(", ")}`);
   const runId = getArg("--run") ?? newRunId();
   const runDir = defaultArtifactsDir(REPO, runId);
   await mkdir(runDir, { recursive: true });
@@ -164,19 +202,35 @@ async function cmdRecord(): Promise<void> {
     const t0 = Date.now();
     const r = spawnSync(
       "npx",
-      ["playwright", "test", "e2e/demo-record.spec.ts", "--project=demo", "-g", scenario],
-      { cwd: REPO, stdio: "inherit", env: { ...process.env, BD_QA_SCENARIO: scenario } },
+      [
+        "playwright",
+        "test",
+        "e2e/demo-record.spec.ts",
+        "--project=demo",
+        "-g",
+        scenario,
+      ],
+      {
+        cwd: REPO,
+        stdio: "inherit",
+        env: { ...process.env, BD_QA_SCENARIO: scenario },
+      },
     );
-    if (r.status !== 0) throw new Error(`playwright record failed: exit ${r.status}`);
-    const webm = await findLatestWebmAfter(REPO, t0 - 2000);
-    if (!webm) throw new Error("No .webm found under test-results/ after record");
+    if (r.status !== 0)
+      throw new Error(`playwright record failed: exit ${r.status}`);
+    const webm = await findLatestWebmAfter(REPO, t0 - 2000, scenario);
+    if (!webm)
+      throw new Error("No .webm found under test-results/ after record");
     const target = join(runDir, "videos", `${scenario}.webm`);
     await mkdir(dirname(target), { recursive: true });
     await copyFile(webm, target);
     manifest = recordVideoPath(manifest, scenario, target);
     if (!manifest.runId) manifest.runId = runId;
   } else {
-    const { agentId, run } = await startRecordingCloudAgent(REPO, manifest.runId || runId);
+    const { agentId, run } = await startRecordingCloudAgent(
+      REPO,
+      manifest.runId || runId,
+    );
     manifest = {
       ...manifest,
       runId: manifest.runId || runId,
@@ -187,7 +241,9 @@ async function cmdRecord(): Promise<void> {
   }
   await saveManifest(runDir, manifest);
   // eslint-disable-next-line no-console
-  console.log(`Recorded run=${manifest.runId} video[${scenario}]=${manifest.videos[scenario] ?? ""}`);
+  console.log(
+    `Recorded run=${manifest.runId} video[${scenario}]=${manifest.videos[scenario] ?? ""}`,
+  );
 }
 
 async function cmdAssess(): Promise<void> {
@@ -233,13 +289,18 @@ async function cmdApprove(): Promise<void> {
     console.log("implement:", res.status, res.git);
     manifest = await loadManifest(join(runDir, "manifest.json"));
     if (res.git?.branches?.[0]?.prUrl) {
-      manifest.cloud = { ...manifest.cloud, lastPrUrl: res.git.branches[0].prUrl };
+      manifest.cloud = {
+        ...manifest.cloud,
+        lastPrUrl: res.git.branches[0].prUrl,
+      };
       manifest.state = "pr-ready";
     }
     await saveManifest(runDir, manifest);
   } else {
     // eslint-disable-next-line no-console
-    console.log("Approved. Re-run: npm run qa:approve -- --run <id> --execute to start implement agent.");
+    console.log(
+      "Approved. Re-run: npm run qa:approve -- --run <id> --execute to start implement agent.",
+    );
   }
 }
 
@@ -261,12 +322,23 @@ async function cmdIterate(): Promise<void> {
     await saveManifest(runDir, m);
     throw new Error("max iterations reached");
   }
-  for (const s of SLOTS) {
+  for (const s of MINIGAMES) {
     const t0 = Date.now();
     const r = spawnSync(
       "npx",
-      ["playwright", "test", "e2e/demo-record.spec.ts", "--project=demo", "-g", s],
-      { cwd: REPO, stdio: "inherit", env: { ...process.env, BD_QA_SCENARIO: s } },
+      [
+        "playwright",
+        "test",
+        "e2e/demo-record.spec.ts",
+        "--project=demo",
+        "-g",
+        s,
+      ],
+      {
+        cwd: REPO,
+        stdio: "inherit",
+        env: { ...process.env, BD_QA_SCENARIO: s },
+      },
     );
     if (r.status !== 0) {
       m.state = "blocked";
@@ -274,7 +346,7 @@ async function cmdIterate(): Promise<void> {
       await saveManifest(runDir, m);
       throw new Error(m.lastError!);
     }
-    const webm = await findLatestWebmAfter(REPO, t0 - 2000);
+    const webm = await findLatestWebmAfter(REPO, t0 - 2000, s);
     if (!webm) throw new Error("no webm for " + s);
     const target = join(runDir, "videos", `${s}.webm`);
     await mkdir(dirname(target), { recursive: true });
@@ -306,6 +378,43 @@ async function cmdShare(): Promise<void> {
   console.log("Share bundle in", join(runDir, "share"));
 }
 
+
+async function cmdStatus(): Promise<void> {
+  const runId = getArg("--run");
+  const runBase = join(REPO, "artifacts", "qa-runs");
+  const { readdir } = await import("node:fs/promises");
+  const { existsSync } = await import("node:fs");
+  if (!existsSync(runBase)) {
+    console.log("No runs yet. Try: npm run qa:record -- --local --scenario runner");
+    return;
+  }
+  const dirs = (await readdir(runBase, { withFileTypes: true }))
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .sort()
+    .reverse();
+  if (dirs.length === 0) {
+    console.log("No runs found.");
+    return;
+  }
+  if (runId) {
+    const mPath = join(runBase, runId, "manifest.json");
+    if (!existsSync(mPath)) { console.error("Run not found:", runId); return; }
+    const m = await loadManifest(mPath);
+    console.log(`Run: ${m.runId}\n  state: ${m.state}\n  iter: ${m.iteration}/${m.maxIterations}\n  allPassed: ${m.allPassed ?? "?"}\n  videos: ${JSON.stringify(m.videos)}`);
+    return;
+  }
+  console.log(`\nAll runs (${dirs.length}):`);
+  for (const id of dirs.slice(0, 10)) {
+    const mPath = join(runBase, id, "manifest.json");
+    if (!existsSync(mPath)) continue;
+    const m = await loadManifest(mPath);
+    const mark = m.allPassed ? "✅" : m.state === "blocked" ? "❌" : "  ";
+    console.log(`  ${mark} ${id}  [${m.state}]  iter=${m.iteration}/${m.maxIterations}`);
+  }
+  if (dirs.length > 10) console.log(`  … and ${dirs.length - 10} more`);
+}
+
 async function main(): Promise<void> {
   const sub = process.argv[2] ?? "help";
   if (sub === "record") await cmdRecord();
@@ -314,6 +423,7 @@ async function main(): Promise<void> {
   else if (sub === "approve") await cmdApprove();
   else if (sub === "iterate") await cmdIterate();
   else if (sub === "share") await cmdShare();
+  else if (sub === "status") await cmdStatus();
   else {
     // eslint-disable-next-line no-console
     console.log(

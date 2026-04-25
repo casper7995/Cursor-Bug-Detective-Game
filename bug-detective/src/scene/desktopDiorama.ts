@@ -404,14 +404,20 @@ export function createDesktopDiorama(): DioramaObjects {
   root.add(calendar);
   hoverables.push(calendar);
 
-  // Calendar stand (easel leg; parented so it follows the card’s tilt/rotation)
-  const calStand = new THREE.Mesh(
-    new THREE.BoxGeometry(0.05, 0.5, 0.3),
-    new THREE.MeshStandardMaterial({ color: 0x222730, roughness: 0.5 }),
-  );
-  calStand.position.set(0.05, 0, -0.11);
-  calStand.castShadow = true;
-  calendar.add(calStand);
+  // Two small feet at the bottom corners — avoids a center “stick” reading as a spine on the card art.
+  const calFootMat = new THREE.MeshStandardMaterial({
+    color: 0x222730,
+    roughness: 0.5,
+  });
+  for (const fx of [-0.26, 0.26] as const) {
+    const foot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.07, 0.12, 0.08),
+      calFootMat,
+    );
+    foot.position.set(fx, -0.24, -0.07);
+    foot.castShadow = true;
+    calendar.add(foot);
+  }
 
   // ---- Reagent tray (3 wells + center mix + label) -------------------
   const reagentTray = new THREE.Group();

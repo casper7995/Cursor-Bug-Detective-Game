@@ -521,6 +521,8 @@ function bootGameInner(simplified: boolean): void {
   function syncCursorDeskNav(d: ReturnType<typeof createDesktopDiorama>): void {
     cursorTracker.setFootObstacles(d.mascotFootObstacles);
     cursorTracker.setDeskBounds(4, 2);
+    mascotController.setFootObstacles(d.mascotFootObstacles);
+    mascotController.setDeskBounds(4, 2);
   }
 
   // ---------------------------------------------------------------------

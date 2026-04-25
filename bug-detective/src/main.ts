@@ -1732,16 +1732,7 @@ function bootGameInner(simplified: boolean): void {
               runnerSession.restartSameMode();
             }
           }
-          const progress =
-            mode === "endless"
-              ? Math.min(
-                  1,
-                  runnerEndlessDeathTimer / RUNNER_ENDLESS_RESTART_DELAY_S,
-                )
-              : 0;
-          runnerSession.step(dtSec, false, false, {
-            restartProgress01: progress,
-          });
+          runnerSession.step(dtSec, false, false);
         } else {
           runnerEndlessDeathTimer = 0;
           const jump = input.consumePress(Action.RunnerJump);

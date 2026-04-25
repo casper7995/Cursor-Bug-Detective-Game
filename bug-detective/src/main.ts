@@ -165,6 +165,8 @@ function bootGameInner(simplified: boolean): void {
   // Game-time camera pose (used during investigation phase).
   const GAME_CAMERA_POS = new THREE.Vector3(3.2, 2.4, 5.2);
   const GAME_CAMERA_LOOKAT = new THREE.Vector3(-0.2, 0.3, -0.4);
+  const tmpWheelAnchor = new THREE.Vector3();
+  const tmpDirScratch = new THREE.Vector3();
 
   const diorama = createDesktopDiorama();
 
@@ -967,20 +969,34 @@ function bootGameInner(simplified: boolean): void {
   let inspectZoomActive = false;
   let inspectZoomCooldownUntil = 0;
 
-  /** Keep inspect dollying from crossing inside this radius around the focus. */
-  const INSPECT_MIN_DIST_FROM_FOCUS = 1.12;
+  /**
+   * Inspect framing: stay far enough from props to avoid clipping / huge
+   * texels, but not so far that the shot reads as a wide room view.
+   */
+  const INSPECT_MIN_DIST_FROM_FOCUS = 1.55;
+  const INSPECT_MAX_DIST_FROM_FOCUS = 3.25;
 
-  function clampInspectCamToMinDistance(
+  /** Default investigation scroll (distance to desk look target). */
+  const INVEST_WHEEL_MIN_DIST = 2.15;
+  const INVEST_WHEEL_MAX_DIST = 10.5;
+
+  function clampInspectCamDistance(
     camPos: THREE.Vector3,
     focus: THREE.Vector3,
   ): void {
-    const d = camPos.distanceTo(focus);
-    if (d >= INSPECT_MIN_DIST_FROM_FOCUS) return;
-    camPos
-      .subVectors(camPos, focus)
-      .normalize()
-      .multiplyScalar(INSPECT_MIN_DIST_FROM_FOCUS)
-      .add(focus);
+    tmpDirScratch.subVectors(camPos, focus);
+    const d0 = tmpDirScratch.length();
+    if (d0 < 1e-5) {
+      tmpDirScratch.set(0.55, 0.3, 0.75);
+    } else {
+      tmpDirScratch.multiplyScalar(1 / d0);
+    }
+    const dClamped = THREE.MathUtils.clamp(
+      d0 < 1e-5 ? INSPECT_MIN_DIST_FROM_FOCUS : d0,
+      INSPECT_MIN_DIST_FROM_FOCUS,
+      INSPECT_MAX_DIST_FROM_FOCUS,
+    );
+    camPos.copy(focus).add(tmpDirScratch.multiplyScalar(dClamped));
   }
 
   function anomalyInspectFraming(tag: string): {
@@ -1029,7 +1045,7 @@ function bootGameInner(simplified: boolean): void {
       0.45,
     );
     inspectCamPos.y += 0.24;
-    clampInspectCamToMinDistance(inspectCamPos, inspectAnomalyPos);
+    clampInspectCamDistance(inspectCamPos, inspectAnomalyPos);
     void cameraRig.scriptedTo(inspectCamPos, inspectAnomalyPos, 500);
     if (flavorInspectTimer) clearTimeout(flavorInspectTimer);
     flavorInspectTimer = window.setTimeout(() => {
@@ -1066,6 +1082,34 @@ function bootGameInner(simplified: boolean): void {
     },
     { capture: true },
   );
+
+  function handleInvestigationWheel(ev: WheelEvent): void {
+    if (ev.ctrlKey || ev.metaKey) return;
+    if (state.phase.kind !== "investigating") return;
+    if (runnerSession || deskMinigame) return;
+    if (flavorInspectReturn || inspectZoomActive) {
+      cameraRig.copyLookAtInto(tmpWheelAnchor);
+    } else {
+      tmpWheelAnchor.copy(GAME_CAMERA_LOOKAT);
+    }
+    const d = cameraRig.camera.position.distanceTo(tmpWheelAnchor);
+    if (d < 1e-4) return;
+    const step = Math.sign(ev.deltaY) * Math.min(120, Math.abs(ev.deltaY));
+    const next = THREE.MathUtils.clamp(
+      d * (1 + step * 0.0009),
+      flavorInspectReturn || inspectZoomActive
+        ? INSPECT_MIN_DIST_FROM_FOCUS
+        : INVEST_WHEEL_MIN_DIST,
+      flavorInspectReturn || inspectZoomActive
+        ? INSPECT_MAX_DIST_FROM_FOCUS
+        : INVEST_WHEEL_MAX_DIST,
+    );
+    cameraRig.setDistanceFromAnchor(tmpWheelAnchor, next);
+    ev.preventDefault();
+  }
+  renderer.domElement.addEventListener("wheel", handleInvestigationWheel, {
+    passive: false,
+  });
 
   function placeMascotAtDefaultDesk(deskTopY: number): void {
     mascot.group.position.set(
@@ -1765,6 +1809,7 @@ function bootGameInner(simplified: boolean): void {
           lerp,
         );
         inspectCamPos.y += yLift;
+        clampInspectCamDistance(inspectCamPos, inspectAnomalyPos);
         void cameraRig.scriptedTo(inspectCamPos, inspectAnomalyPos, durationMs);
         if (hover.tag === "lamp-shadow") {
           hud.setInspectCaption(

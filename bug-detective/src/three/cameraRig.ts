@@ -34,9 +34,45 @@ export class CameraRig {
 
   /** Snap to a static (position, lookAt) pose. Cancels any in-flight dolly. */
   setStatic(position: THREE.Vector3Like, lookAt: THREE.Vector3Like): void {
-    this.dolly = null;
+    if (this.dolly) {
+      this.dolly.resolve();
+      this.dolly = null;
+    }
     this.camera.position.set(position.x, position.y, position.z);
     this.currentLookAt.set(lookAt.x, lookAt.y, lookAt.z);
+    this.camera.lookAt(this.currentLookAt);
+  }
+
+  /**
+   * Place the camera on the ray from `anchor` through the current position at
+   * distance `dist`, then look at `anchor`. Used for scroll-wheel desk zoom
+   * (cancel any dolly, match standard lookAt behavior).
+   */
+  setDistanceFromAnchor(anchor: THREE.Vector3Like, dist: number): void {
+    if (this.dolly) {
+      this.dolly.resolve();
+      this.dolly = null;
+    }
+    const ax = anchor.x;
+    const ay = anchor.y;
+    const az = anchor.z;
+    this.currentLookAt.set(ax, ay, az);
+    let dx = this.camera.position.x - ax;
+    let dy = this.camera.position.y - ay;
+    let dz = this.camera.position.z - az;
+    const len0 = Math.hypot(dx, dy, dz);
+    if (len0 < 1e-5) {
+      // Degenerate: camera coincident with anchor — nudge with a generic outward bias.
+      dx = 0.55;
+      dy = 0.28;
+      dz = 0.8;
+    }
+    const inv = 1 / Math.hypot(dx, dy, dz);
+    this.camera.position.set(
+      ax + dx * inv * dist,
+      ay + dy * inv * dist,
+      az + dz * inv * dist,
+    );
     this.camera.lookAt(this.currentLookAt);
   }
 

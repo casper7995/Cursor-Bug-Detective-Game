@@ -392,28 +392,26 @@ export function createDesktopDiorama(): DioramaObjects {
   hoverables.push(coffeeSteam);
 
   // ---- Calendar (small standing card) ------------------------------
+  // Forward on the desk, right of the keyboard — not tucked behind the monitor.
   const calendarTex = makeCalendarTexture(formatToday());
   const calendar = new THREE.Mesh(
     new THREE.PlaneGeometry(0.7, 0.5),
     new THREE.MeshBasicMaterial({ map: calendarTex, side: THREE.DoubleSide }),
   );
-  calendar.position.set(-0.95, deskTopY + 0.27, -1.7);
-  calendar.rotation.y = 0.18;
+  calendar.position.set(0.5, deskTopY + 0.27, 0.46);
+  calendar.rotation.y = -0.36;
   calendar.userData.tag = "calendar";
   root.add(calendar);
   hoverables.push(calendar);
 
-  // Calendar stand (thin triangle behind)
+  // Calendar stand (easel leg; parented so it follows the card’s tilt/rotation)
   const calStand = new THREE.Mesh(
     new THREE.BoxGeometry(0.05, 0.5, 0.3),
     new THREE.MeshStandardMaterial({ color: 0x222730, roughness: 0.5 }),
   );
-  calStand.position.copy(calendar.position);
-  calStand.position.x += 0.05;
-  calStand.position.z -= 0.1;
-  calStand.rotation.y = 0.18;
+  calStand.position.set(0.05, 0, -0.11);
   calStand.castShadow = true;
-  root.add(calStand);
+  calendar.add(calStand);
 
   // ---- Reagent tray (3 wells + center mix + label) -------------------
   const reagentTray = new THREE.Group();

@@ -3,10 +3,26 @@ import { expect, test } from "@playwright/test";
 const RalphUrl =
   "/?fastIntro=1&seed=1&date=2026-04-21#anomaly=calendar-tomorrow";
 
-async function bootToDesk(page: import("@playwright/test").Page): Promise<void> {
+async function bootToDesk(
+  page: import("@playwright/test").Page,
+): Promise<void> {
   await page.goto(RalphUrl, { waitUntil: "domcontentloaded" });
   await page.keyboard.press("Space");
   await expect(page.locator("#hud")).toBeVisible({ timeout: 90_000 });
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as {
+        __bdResolveAllHovers?: () => Record<
+          string,
+          { x: number; y: number } | null
+        >;
+      };
+      const p = w.__bdResolveAllHovers?.()?.["evidence-envelope"] ?? null;
+      return Boolean(p);
+    },
+    undefined,
+    { timeout: 90_000 },
+  );
 }
 
 const TAG_LIST = [
@@ -22,7 +38,10 @@ async function resolveHoverPts(
 ): Promise<Record<(typeof TAG_LIST)[number], { x: number; y: number }>> {
   return page.evaluate((tagSubset) => {
     const w = window as unknown as {
-      __bdResolveAllHovers?: () => Record<string, { x: number; y: number } | null>;
+      __bdResolveAllHovers?: () => Record<
+        string,
+        { x: number; y: number } | null
+      >;
       __bdRayProbe?: (x: number, y: number) => Array<{ tag: string }>;
     };
     const raw = w.__bdResolveAllHovers!();
@@ -43,6 +62,8 @@ async function resolveHoverPts(
 }
 
 test.describe("QA demo recordings (Deterministic)", () => {
+  // Serial: each test records a new video artifact; running in parallel can make
+  // mtime-based discovery pick the wrong clip when the orchestrator reuses one worker.
   test.describe.configure({ mode: "serial" });
 
   test.beforeEach(async ({ page }) => {
@@ -64,7 +85,9 @@ test.describe("QA demo recordings (Deterministic)", () => {
     const hoverPts = await resolveHoverPts(page);
     const mon = hoverPts["monitor-screen"];
     await page.mouse.click(mon.x, mon.y);
-    await expect(page.locator("#bd-runner-tutorial")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#bd-runner-tutorial")).toBeVisible({
+      timeout: 15_000,
+    });
     await page.getByTestId("bd-runner-tutorial-dismiss").click();
     await expect(page.locator(".bd-runner")).toBeVisible();
     await page.keyboard.press("Escape");
@@ -74,7 +97,9 @@ test.describe("QA demo recordings (Deterministic)", () => {
 
   test("sentence", async ({ page }) => {
     await bootToDesk(page);
-    const env = (await resolveHoverPts(page, ["evidence-envelope"]))["evidence-envelope"];
+    const env = (await resolveHoverPts(page, ["evidence-envelope"]))[
+      "evidence-envelope"
+    ];
     await page.mouse.click(env.x, env.y);
     await page.waitForTimeout(4000);
     await page.keyboard.press("Tab");
@@ -85,7 +110,9 @@ test.describe("QA demo recordings (Deterministic)", () => {
 
   test("errand", async ({ page }) => {
     await bootToDesk(page);
-    const tray = (await resolveHoverPts(page, ["reagent-tray"]))["reagent-tray"];
+    const tray = (await resolveHoverPts(page, ["reagent-tray"]))[
+      "reagent-tray"
+    ];
     await page.mouse.click(tray.x, tray.y);
     await page.waitForTimeout(1500);
     await page.keyboard.press("Escape");

@@ -35,7 +35,10 @@ export const TAMPER_LAYOUT = {
 } as const;
 
 /** Reference rect for a TONIGHT spot row — exported for future overlays. */
-export function spotRowRect(_spot: TamperSpot, half: "original" | "tonight"): Rect {
+export function spotRowRect(
+  _spot: TamperSpot,
+  half: "original" | "tonight",
+): Rect {
   const L = TAMPER_LAYOUT;
   const yBase =
     half === "original" ? L.diffY + 38 : L.diffY + 38 + L.rowH * 5 + 22;
@@ -64,7 +67,9 @@ const BUGBOT_QUIPS_CLEAN: readonly string[] = [
 
 function bugbotQuip(call: TamperCall): string {
   const pool =
-    call.bugbotClaim === "tampered" ? BUGBOT_QUIPS_TAMPERED : BUGBOT_QUIPS_CLEAN;
+    call.bugbotClaim === "tampered"
+      ? BUGBOT_QUIPS_TAMPERED
+      : BUGBOT_QUIPS_CLEAN;
   const idx =
     (call.callIndex * 7919 + call.bugbotConfidencePct * 17) % pool.length;
   return pool[idx] as string;
@@ -132,7 +137,16 @@ export function drawDiffCard(
     const spot = spots[i] as TamperSpot;
     const oy = origHeaderY + 6 + i * L.rowH;
     const ty = tonightHeaderY + 6 + i * L.rowH;
-    drawSpotRow(ctx, spot, L.diffX + 12, oy, L.diffW - 24, L.rowH, false, false);
+    drawSpotRow(
+      ctx,
+      spot,
+      L.diffX + 12,
+      oy,
+      L.diffW - 24,
+      L.rowH,
+      false,
+      false,
+    );
     const isHighlighted = pointAtSpotId === spot.id;
     const isReveal = showRealTamper && spot.tampered;
     drawSpotRow(
@@ -245,7 +259,8 @@ export function drawChatCard(
 
   // Claim line
   if (call) {
-    const claim = call.bugbotClaim === "tampered" ? "Looks tampered." : "Looks clean.";
+    const claim =
+      call.bugbotClaim === "tampered" ? "Looks tampered." : "Looks clean.";
     const target = "code line";
     void target;
     ctx.fillStyle = CURSOR_AI.ink;
@@ -254,11 +269,22 @@ export function drawChatCard(
     // Quip
     ctx.fillStyle = CURSOR_AI.inkMute;
     ctx.font = "500 11px 'Cursor Gothic', sans-serif";
-    wrapAndDraw(ctx, `“${bugbotQuip(call)}”`, L.chatX + 14, L.chatY + 80, L.chatW - 28, 14);
+    wrapAndDraw(
+      ctx,
+      `“${bugbotQuip(call)}”`,
+      L.chatX + 14,
+      L.chatY + 80,
+      L.chatW - 28,
+      14,
+    );
     // Confidence
     ctx.fillStyle = CURSOR_AI.inkSubtle;
     ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
-    ctx.fillText(`confidence ${call.bugbotConfidencePct}%`, L.chatX + 14, L.chatY + 122);
+    ctx.fillText(
+      `confidence ${call.bugbotConfidencePct}%`,
+      L.chatX + 14,
+      L.chatY + 122,
+    );
   }
 
   // Buttons stacked
@@ -356,7 +382,11 @@ export function drawIntroCard(
   ctx.fillText(`scene · ${scene.displayName}`, x + 60, y + 50);
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
-  ctx.fillText("Bugbot reviews 6 calls. Read the confidence, then trust yourself.", x + 24, y + 82);
+  ctx.fillText(
+    "Bugbot reviews 6 calls. Read the confidence, then trust yourself.",
+    x + 24,
+    y + 82,
+  );
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.fillText(
     "Approve or Reject fast. Suggest fix only when you're ready to point at the lie.",
@@ -420,18 +450,14 @@ export function drawTamperTutorialDiagram(
   ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
   ctx.textBaseline = "middle";
   ctx.fillText("Bugbot →", x + 28, cy);
-  drawAiButton(
-    ctx,
-    { x: x + 86, y: cy - 14, w: 60, h: 24 },
-    "Approve",
-    { tone: "approve", leading: "✓" },
-  );
-  drawAiButton(
-    ctx,
-    { x: x + 152, y: cy - 14, w: 60, h: 24 },
-    "Reject",
-    { tone: "reject", leading: "✗" },
-  );
+  drawAiButton(ctx, { x: x + 86, y: cy - 14, w: 60, h: 24 }, "Approve", {
+    tone: "approve",
+    leading: "✓",
+  });
+  drawAiButton(ctx, { x: x + 152, y: cy - 14, w: 60, h: 24 }, "Reject", {
+    tone: "reject",
+    leading: "✗",
+  });
   ctx.textBaseline = "alphabetic";
   ctx.restore();
 }
@@ -581,7 +607,7 @@ function drawPropSketch(
       }
       ctx.stroke();
       break;
-    case "shadow":
+    case "puddle":
       ctx.fillStyle = "rgba(20,18,11,0.55)";
       ctx.beginPath();
       ctx.ellipse(0, size * 0.1, size * 0.55, size * 0.25, 0, 0, Math.PI * 2);

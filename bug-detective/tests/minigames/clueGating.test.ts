@@ -22,20 +22,41 @@ describe("desk mini clue gating helpers", () => {
     expect(errandEarnsDeskClue(2, 1)).toBe(true);
   });
 
-  it("sentence shouldEmitOutcome needs full round and 2+ blues or blue streak 2", () => {
+  it("sentence shouldEmitOutcome needs full round and at least 5 blues", () => {
     expect(shouldEmitOutcome(picks("blue"))).toBe(false);
-    expect(shouldEmitOutcome(picks("blue", "blue", "orange", "orange"))).toBe(
-      true,
-    );
-    expect(shouldEmitOutcome(picks("orange", "blue", "blue", "orange"))).toBe(
-      true,
-    );
-    expect(shouldEmitOutcome(picks("blue", "orange", "orange", "orange"))).toBe(
-      false,
-    );
-    expect(shouldEmitOutcome(picks("idle", "idle", "idle", "idle"))).toBe(
-      false,
-    );
+    expect(
+      shouldEmitOutcome(
+        picks(
+          "blue",
+          "blue",
+          "blue",
+          "blue",
+          "purple",
+          "purple",
+          "orange",
+          "idle",
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      shouldEmitOutcome(
+        picks(
+          "orange",
+          "blue",
+          "purple",
+          "blue",
+          "blue",
+          "idle",
+          "blue",
+          "blue",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      shouldEmitOutcome(
+        picks("idle", "idle", "idle", "idle", "idle", "idle", "idle", "idle"),
+      ),
+    ).toBe(false);
   });
 
   it("tamper requires ≥3 right calls and ≥1 caught lie", () => {

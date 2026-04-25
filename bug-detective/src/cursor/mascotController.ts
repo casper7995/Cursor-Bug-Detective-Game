@@ -1,4 +1,9 @@
 import * as THREE from "three";
+import {
+  clampFeetToDeskBounds,
+  resolveFeetAgainstDeskObstacles,
+  type DeskFootCircle,
+} from "./deskFootResolve";
 
 const MAX_SPEED = 1.65;
 const ACCEL = 8.5;
@@ -22,6 +27,10 @@ export class MascotController {
   private readonly vel = new THREE.Vector3();
   private readonly feetTarget = new THREE.Vector3();
   private hasFeetTarget = false;
+  private footObstacles: readonly DeskFootCircle[] = [];
+  private deskHalfWidth = 4;
+  private deskHalfDepth = 2;
+  private deskBoundsMargin = 0.22;
   private yaw = 0;
   private strideDistance = 0;
   private wasMoving = false;
@@ -56,6 +65,38 @@ export class MascotController {
       this.vel.set(0, 0, 0);
     }
     this.frozen = f;
+  }
+
+  /**
+   * Same desk obstacles as `CursorTracker` — applied each frame to the *actual*
+   * walk position so the path cannot cut through prop silhouettes.
+   */
+  setFootObstacles(circles: readonly DeskFootCircle[]): void {
+    this.footObstacles = circles;
+  }
+
+  setDeskBounds(
+    halfWidth: number,
+    halfDepth: number,
+    insetMargin?: number,
+  ): void {
+    this.deskHalfWidth = halfWidth;
+    this.deskHalfDepth = halfDepth;
+    if (insetMargin !== undefined) this.deskBoundsMargin = insetMargin;
+  }
+
+  private constrainFeetToWalkable(): void {
+    if (this.footObstacles.length > 0) {
+      resolveFeetAgainstDeskObstacles(this.pos, this.footObstacles, {
+        iterations: 10,
+      });
+    }
+    clampFeetToDeskBounds(
+      this.pos,
+      this.deskHalfWidth,
+      this.deskHalfDepth,
+      this.deskBoundsMargin,
+    );
   }
 
   step(
@@ -99,6 +140,7 @@ export class MascotController {
       const speed = Math.hypot(this.vel.x, this.vel.z);
       this.pos.x += this.vel.x * dtSec;
       this.pos.z += this.vel.z * dtSec;
+      this.constrainFeetToWalkable();
       const moving = speed > STOP_SPEED;
       if (moving) this.strideDistance += speed * dtSec;
       if (this.wasMoving && !moving) {
@@ -179,6 +221,7 @@ export class MascotController {
 
     this.pos.x += this.vel.x * dtSec;
     this.pos.z += this.vel.z * dtSec;
+    this.constrainFeetToWalkable();
 
     let extraY = 0;
     if (moving) {

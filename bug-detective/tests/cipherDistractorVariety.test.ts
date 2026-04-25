@@ -106,7 +106,7 @@ const ENTRIES = parseAnomalies();
 
 describe("cipher distractor variety (objective)", () => {
   it("parses anomalies", () => {
-    expect(ENTRIES.length).toBeGreaterThanOrEqual(12);
+    expect(ENTRIES.length).toBeGreaterThanOrEqual(10);
   });
 
   for (const e of ENTRIES) {

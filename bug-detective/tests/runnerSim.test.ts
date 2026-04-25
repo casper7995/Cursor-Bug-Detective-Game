@@ -149,7 +149,7 @@ describe("runner sim", () => {
     const rng = () => 0.5;
     const { planks } = generateInitialPlanks(rng, "daily", 40, 12000, 0);
     const maxNormal = maxGapForSpeed(RUNNER_SPEED_BASE);
-    const maxBoostReach = horizontalJumpRange(RUNNER_SPEED_BOOST_MAX) - 16;
+    const maxBoostReach = horizontalJumpRange(RUNNER_SPEED_BOOST_MAX) - 24;
     let sawDeath = false;
     for (let i = 0; i < planks.length - 1; i++) {
       const a = planks[i]!;

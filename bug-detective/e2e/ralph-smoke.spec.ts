@@ -4,7 +4,9 @@ import { expect, test } from "@playwright/test";
 const RalphUrl =
   "/?fastIntro=1&seed=1&date=2026-04-21#anomaly=calendar-tomorrow";
 
-async function bootToDesk(page: import("@playwright/test").Page): Promise<void> {
+async function bootToDesk(
+  page: import("@playwright/test").Page,
+): Promise<void> {
   await page.goto(RalphUrl, { waitUntil: "domcontentloaded" });
   await page.keyboard.press("Space");
   await expect(page.locator("#hud")).toBeVisible({ timeout: 90_000 });
@@ -17,10 +19,8 @@ const TAG_LIST = [
   "monitor-screen",
   "case-file",
   "evidence-envelope",
-  "lamp-shadow",
   "coffee-steam",
   "keyboard",
-  "plant",
   "lamp",
   "desk",
 ] as const;
@@ -28,7 +28,9 @@ const TAG_LIST = [
 async function resolveHoverPts(
   page: import("@playwright/test").Page,
   tags: readonly (typeof TAG_LIST)[number][] = TAG_LIST,
-): Promise<Partial<Record<(typeof TAG_LIST)[number], { x: number; y: number }>>> {
+): Promise<
+  Partial<Record<(typeof TAG_LIST)[number], { x: number; y: number }>>
+> {
   return page.evaluate((tagSubset) => {
     const w = window as unknown as {
       __bdResolveAllHovers?: () => Record<
@@ -50,7 +52,9 @@ async function resolveHoverPts(
       }
       out[t] = p;
     }
-    return out as Partial<Record<(typeof TAG_LIST)[number], { x: number; y: number }>>;
+    return out as Partial<
+      Record<(typeof TAG_LIST)[number], { x: number; y: number }>
+    >;
   }, tags);
 }
 
@@ -86,8 +90,12 @@ test.describe("Ralph-loop smoke (Chromium)", () => {
     await page.goto("/?forceNoWebGL=1", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("WebGL is required")).toBeVisible();
 
-    await page.goto("/?mobile=1&fastIntro=1", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: /Best played on desktop/i })).toBeVisible();
+    await page.goto("/?mobile=1&fastIntro=1", {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(
+      page.getByRole("heading", { name: /Best played on desktop/i }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Play simplified" }).click();
     await expect(page.locator("#hud")).toBeVisible({ timeout: 90_000 });
 
@@ -112,9 +120,7 @@ test.describe("Ralph-loop smoke (Chromium)", () => {
     }
 
     const mon =
-      hoverPts["monitor-screen"] ??
-      probe!.hit_monitor ??
-      probe!.monitor;
+      hoverPts["monitor-screen"] ?? probe!.hit_monitor ?? probe!.monitor;
     expect(mon).toBeTruthy();
     await page.mouse.click(mon!.x, mon!.y);
     await expect(page.locator("#bd-runner-tutorial")).toBeVisible({

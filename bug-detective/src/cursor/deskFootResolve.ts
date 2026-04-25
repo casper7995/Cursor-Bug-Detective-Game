@@ -23,8 +23,8 @@ export function resolveFeetAgainstDeskObstacles(
     readonly iterations?: number;
   },
 ): void {
-  const agentR = opts?.agentRadius ?? 0.14;
-  const iterations = opts?.iterations ?? 6;
+  const agentR = opts?.agentRadius ?? 0.19;
+  const iterations = opts?.iterations ?? 8;
   for (let pass = 0; pass < iterations; pass++) {
     for (const c of obstacles) {
       const dx = feet.x - c.x;

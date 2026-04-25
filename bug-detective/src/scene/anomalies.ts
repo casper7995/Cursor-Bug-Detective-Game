@@ -17,11 +17,9 @@ export type AnomalyId =
   | "photo-self"
   | "sticky-warning"
   | "pen-floating"
-  | "lamp-shadow-wrong"
   | "steam-down"
   | "blank-book"
-  | "keyboard-extra-key"
-  | "plant-glitching";
+  | "keyboard-extra-key";
 
 export interface AnomalyDef {
   readonly id: AnomalyId;
@@ -55,7 +53,7 @@ export interface PickedAnomaly {
 }
 
 // ---------------------------------------------------------------------
-// Anomaly pool — 12 entries (ships 12, spec target = 10 minimum).
+// Anomaly pool — 10 entries (spec target = 10 minimum).
 // ---------------------------------------------------------------------
 
 export const ANOMALIES: readonly AnomalyDef[] = [
@@ -255,37 +253,6 @@ export const ANOMALIES: readonly AnomalyDef[] = [
     },
   },
   {
-    id: "lamp-shadow-wrong",
-    targetTag: "lamp-shadow",
-    gameClueWords: {
-      runner: "TOWARD",
-      sentence: "BEACON",
-      errand: "INVERT",
-      tamper: "REACH",
-    },
-    tooltipHint: "shadow — wrong direction",
-    revealText: "The shadow points TOWARD the light, not away from it.",
-    correctChoice: "Shadow points the wrong way",
-    distractorPool: [
-      "Shadow is too long",
-      "Shadow is missing entirely",
-      "Shadow is the wrong color",
-      "Shadow has a different shape",
-      "Shadow leans into the light",
-      "Shadow belongs to another object",
-    ],
-    apply: (o) => {
-      const lx = o.lamp.position.x;
-      const dxS = o.lampShadowStandee.position.x - lx;
-      o.lampShadowStandee.position.x = lx - dxS + 1.45;
-      o.lampShadowProp.scale.x = -Math.abs(
-        o.lampShadowProp.scale.x === 0 ? 1 : o.lampShadowProp.scale.x,
-      );
-      const dxP = o.lampShadowProp.position.x - lx;
-      o.lampShadowProp.position.x = lx - dxP + 1.15;
-    },
-  },
-  {
     id: "steam-down",
     targetTag: "coffee-steam",
     gameClueWords: {
@@ -364,34 +331,6 @@ export const ANOMALIES: readonly AnomalyDef[] = [
       extraKey.castShadow = true;
       extraKey.userData.tag = "keyboard";
       o.keyboard.add(extraKey);
-    },
-  },
-  {
-    id: "plant-glitching",
-    targetTag: "plant",
-    gameClueWords: {
-      runner: "STUTTER",
-      sentence: "GREEN",
-      errand: "FRAME",
-      tamper: "JITTER",
-    },
-    tooltipHint: "plant — leaves twitching",
-    revealText: "The plant's leaves twitch and snap as if rendered wrong.",
-    correctChoice: "Plant is glitching",
-    distractorPool: [
-      "Plant is wilting",
-      "Plant has no leaves",
-      "Plant is the wrong color",
-      "Plant keeps skipping when you look",
-      "Plant looks pixelated up close",
-      "Plant is in the corner by itself",
-    ],
-    apply: (o) => {
-      // Set the flag; the diorama's step() applies jitter on the main
-      // render loop. (Previously this kicked off a parallel
-      // requestAnimationFrame loop that leaked across restartRound's
-      // diorama swaps.)
-      o.plant.userData.glitching = true;
     },
   },
 ];

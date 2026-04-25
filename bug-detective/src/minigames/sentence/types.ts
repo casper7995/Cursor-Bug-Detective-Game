@@ -4,7 +4,13 @@ export type PickColor = "blue" | "purple" | "orange";
 
 export interface SentenceSlot {
   readonly prefix: string;
-  readonly options: { readonly blue: string; readonly purple: string; readonly orange: string };
+  readonly options: {
+    readonly blue: string;
+    readonly purple: string;
+    readonly orange: string;
+  };
+  /** Visible top-to-bottom order of the three suggestion rows for this slot. */
+  readonly rowOrder: readonly [PickColor, PickColor, PickColor];
   readonly suffix: string;
 }
 
@@ -24,11 +30,12 @@ export type EndingKind =
   | "improv"
   | "typewriter-wrote-it";
 
-export const SENTENCE_SLOTS_PER_TEMPLATE = 4;
+export const SENTENCE_SLOTS_PER_TEMPLATE = 8;
 
 export const SENTENCE_SCORE = {
-  BLUE: 250,
-  PURPLE: 150,
+  /** Eight perfect blues hit the 1000 cap. */
+  BLUE: 125,
+  PURPLE: 70,
   ORANGE: 0,
-  IDLE: -50,
+  IDLE: -25,
 } as const;

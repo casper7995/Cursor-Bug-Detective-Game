@@ -4,6 +4,26 @@ import {
   CASE_FILE_TAGLINE,
 } from "../ui/gameInstructions";
 
+/** Base width for case-file art; real canvas scales by DPR (max 2×) so the peel looks sharp on Retina. */
+const CASE_FILE_TEX_BASE_W = 1024;
+const CASE_FILE_TEX_MAX_W = 4096;
+
+function caseFileTexturePixelSize(
+  baseW: number,
+  baseH: number,
+): { w: number; h: number } {
+  const dpr =
+    typeof window !== "undefined"
+      ? Math.min(2, window.devicePixelRatio || 1)
+      : 1;
+  const w = Math.min(
+    CASE_FILE_TEX_MAX_W,
+    Math.max(CASE_FILE_TEX_BASE_W, Math.round(baseW * dpr)),
+  );
+  const h = Math.max(1, Math.floor((w * baseH) / baseW));
+  return { w, h };
+}
+
 function drawFingerprintEvidenceCard(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -118,64 +138,65 @@ function drawClueTagEvidenceCard(
  * then peeled away to reveal the diorama.
  */
 export function makeFakePageTexture(
-  width: number,
-  height: number,
+  baseW: number,
+  baseH: number,
 ): THREE.CanvasTexture {
+  const { w: cw, h: ch } = caseFileTexturePixelSize(baseW, baseH);
   const c = document.createElement("canvas");
-  c.width = width;
-  c.height = height;
-  const ctx = c.getContext("2d");
+  c.width = cw;
+  c.height = ch;
+  const ctx = c.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("2d context unavailable for fake page texture");
 
   // Page background — warm off-white.
   ctx.fillStyle = "#f7f4ed";
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, cw, ch);
 
   // Top nav bar
-  const navH = Math.max(48, height * 0.08);
+  const navH = Math.max(48, ch * 0.08);
   ctx.fillStyle = "#1f2330";
-  ctx.fillRect(0, 0, width, navH);
+  ctx.fillRect(0, 0, cw, navH);
   ctx.fillStyle = "#e8efff";
   ctx.font = `${Math.floor(navH * 0.42)}px ui-sans-serif, system-ui, sans-serif`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-  ctx.fillText("case-file.html", width * 0.04, navH / 2);
+  ctx.fillText("case-file.html", cw * 0.04, navH / 2);
   ctx.textAlign = "right";
   ctx.font = `${Math.floor(navH * 0.34)}px ui-sans-serif, system-ui, sans-serif`;
   const navItems = ["evidence", "timeline", "notes", "archive"];
-  let nx = width * 0.96;
+  let nx = cw * 0.96;
   for (let i = navItems.length - 1; i >= 0; i--) {
-    const w = ctx.measureText(navItems[i] ?? "").width;
+    const tw = ctx.measureText(navItems[i] ?? "").width;
     ctx.fillText(navItems[i] ?? "", nx, navH / 2);
-    nx -= w + width * 0.03;
+    nx -= tw + cw * 0.03;
   }
 
   // Big serif headline
-  const headlineY = navH + height * 0.18;
+  const headlineY = navH + ch * 0.18;
   ctx.fillStyle = "#1f2330";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  ctx.font = `700 ${Math.floor(height * 0.078)}px Georgia, "Times New Roman", serif`;
-  ctx.fillText("OPEN INVESTIGATION", width * 0.07, headlineY);
+  ctx.font = `700 ${Math.floor(ch * 0.078)}px Georgia, "Times New Roman", serif`;
+  ctx.fillText("OPEN INVESTIGATION", cw * 0.07, headlineY);
 
   // Subtitle
   ctx.fillStyle = "#6f7080";
-  ctx.font = `400 ${Math.floor(height * 0.024)}px ui-sans-serif, sans-serif`;
-  ctx.fillText(CASE_FILE_TAGLINE, width * 0.07, headlineY + height * 0.042);
+  ctx.font = `400 ${Math.floor(ch * 0.024)}px ui-sans-serif, sans-serif`;
+  ctx.fillText(CASE_FILE_TAGLINE, cw * 0.07, headlineY + ch * 0.042);
 
   // How to play + flavor (shared copy with optional DOM modal)
-  let ly = headlineY + height * 0.09;
-  const lineStep = height * 0.026;
-  const marginX = width * 0.07;
+  let ly = headlineY + ch * 0.09;
+  const lineStep = ch * 0.026;
+  const marginX = cw * 0.07;
   for (let i = 0; i < CASE_FILE_BODY_LINES.length; i++) {
     const line = CASE_FILE_BODY_LINES[i] ?? "";
     if (line === "HOW TO PLAY") {
       ctx.fillStyle = "#c45a18";
-      ctx.font = `700 ${Math.floor(height * 0.024)}px ui-sans-serif, sans-serif`;
+      ctx.font = `700 ${Math.floor(ch * 0.024)}px ui-sans-serif, sans-serif`;
       ctx.fillText(line, marginX, ly);
       ly += lineStep * 1.05;
       ctx.fillStyle = "#2a2d36";
-      ctx.font = `400 ${Math.floor(height * 0.019)}px ui-sans-serif, sans-serif`;
+      ctx.font = `400 ${Math.floor(ch * 0.019)}px ui-sans-serif, sans-serif`;
       continue;
     }
     if (line.length === 0) {
@@ -183,35 +204,28 @@ export function makeFakePageTexture(
       continue;
     }
     ctx.fillStyle = "#2a2d36";
-    ctx.font = `400 ${Math.floor(height * 0.019)}px ui-sans-serif, sans-serif`;
+    ctx.font = `400 ${Math.floor(ch * 0.019)}px ui-sans-serif, sans-serif`;
     ctx.fillText(line, marginX, ly);
     ly += lineStep;
   }
 
   // Evidence-style thumbnails (same footprint as former placeholders)
-  const cardY = ly + height * 0.028;
-  const cardW = width * 0.4;
-  const cardH = height * 0.12;
-  const gap = width * 0.04;
-  const leftX = width * 0.07;
-  drawFingerprintEvidenceCard(ctx, leftX, cardY, cardW, cardH, height);
-  drawClueTagEvidenceCard(
-    ctx,
-    leftX + cardW + gap,
-    cardY,
-    cardW,
-    cardH,
-    height,
-  );
+  const cardY = ly + ch * 0.028;
+  const cardW = cw * 0.4;
+  const cardH = ch * 0.12;
+  const gap = cw * 0.04;
+  const leftX = cw * 0.07;
+  drawFingerprintEvidenceCard(ctx, leftX, cardY, cardW, cardH, ch);
+  drawClueTagEvidenceCard(ctx, leftX + cardW + gap, cardY, cardW, cardH, ch);
 
   // Footer
-  const footerY = height - height * 0.05;
+  const footerY = ch - ch * 0.05;
   ctx.fillStyle = "#9aa0b0";
-  ctx.font = `${Math.floor(height * 0.018)}px ui-sans-serif, sans-serif`;
+  ctx.font = `${Math.floor(ch * 0.018)}px ui-sans-serif, sans-serif`;
   ctx.textAlign = "center";
   ctx.fillText(
     "Cursor Detective · case jacket (discard after peel)",
-    width / 2,
+    cw / 2,
     footerY,
   );
 
@@ -225,33 +239,34 @@ export function makeFakePageTexture(
  * Ruled blank sheet for the `blank-book` anomaly (retargeted to desk case file).
  */
 export function makeCaseFileBlankDeskTexture(
-  width: number,
-  height: number,
+  baseW: number,
+  baseH: number,
 ): THREE.CanvasTexture {
+  const { w: cw, h: ch } = caseFileTexturePixelSize(baseW, baseH);
   const c = document.createElement("canvas");
-  c.width = width;
-  c.height = height;
-  const ctx = c.getContext("2d");
+  c.width = cw;
+  c.height = ch;
+  const ctx = c.getContext("2d", { alpha: false });
   if (!ctx) throw new Error("2d context unavailable");
   ctx.fillStyle = "#f7f4ed";
-  ctx.fillRect(0, 0, width, height);
-  const navH = Math.max(40, height * 0.07);
+  ctx.fillRect(0, 0, cw, ch);
+  const navH = Math.max(40, ch * 0.07);
   ctx.fillStyle = "#1f2330";
-  ctx.fillRect(0, 0, width, navH);
+  ctx.fillRect(0, 0, cw, navH);
   ctx.fillStyle = "#e8efff";
   ctx.font = `${Math.floor(navH * 0.38)}px ui-sans-serif, sans-serif`;
   ctx.textBaseline = "middle";
-  ctx.fillText("case-file.html", width * 0.04, navH / 2);
+  ctx.fillText("case-file.html", cw * 0.04, navH / 2);
   ctx.fillStyle = "#9aa0b0";
-  ctx.font = `${Math.floor(height * 0.022)}px ui-sans-serif, sans-serif`;
-  ctx.fillText("No body copy — strangely silent.", width * 0.06, navH + 36);
+  ctx.font = `${Math.floor(ch * 0.022)}px ui-sans-serif, sans-serif`;
+  ctx.fillText("No body copy — strangely silent.", cw * 0.06, navH + 36);
   const lineTop = navH + 56;
-  const lineBot = height - 24;
+  const lineBot = ch - 24;
   const n = 22;
   for (let i = 0; i < n; i++) {
     const y = lineTop + (i / (n - 1)) * (lineBot - lineTop);
     ctx.fillStyle = "rgba(42, 45, 54, 0.14)";
-    ctx.fillRect(width * 0.06, y, width * 0.88, 1.2);
+    ctx.fillRect(cw * 0.06, y, cw * 0.88, 1.2);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;

@@ -15,19 +15,12 @@ export function applyPropFlavor(tag: string, o: DioramaObjects): string | null {
     case "mug":
       o.mug.userData.flavorEndMs = end;
       return "Cold brew. The mug insists it was hot a minute ago.";
-    case "plant":
-      o.plant.userData.flavorEndMs = end;
-      return "The succulent judges your commit messages.";
     case "keyboard":
       o.keyboard.userData.flavorEndMs = end;
       return "Mechanical. Loud. Secretly a linter.";
     case "coffee-steam":
       o.coffeeSteam.userData.flavorEndMs = end;
       return "Steam rises — unless the anomaly says otherwise.";
-    case "lamp-shadow":
-      o.lampShadowStandee.userData.flavorEndMs = end;
-      o.lampShadowProp.userData.flavorEndMs = end;
-      return "The shadow remembers a different light source.";
     case "lamp":
       o.lamp.userData.flavorEndMs = end;
       return "Desk lamp, warm CCT, mild judgment.";
@@ -43,10 +36,8 @@ export function isFlavorTag(tag: string): boolean {
   return (
     tag === "calendar" ||
     tag === "mug" ||
-    tag === "plant" ||
     tag === "keyboard" ||
     tag === "coffee-steam" ||
-    tag === "lamp-shadow" ||
     tag === "lamp" ||
     tag === "desk"
   );

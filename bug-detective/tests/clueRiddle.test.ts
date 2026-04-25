@@ -36,7 +36,8 @@ function parseAnomalies(): readonly CipherEntry[] {
   // and distractorPool array. The rest of the anomaly object (apply, reveal,
   // etc.) is ignored.
   const entries: CipherEntry[] = [];
-  const anomalyRe = /\{\s*id:\s*"([^"]+)",[\s\S]*?gameClueWords:\s*\{\s*runner:\s*"([^"]+)",\s*sentence:\s*"([^"]+)",\s*errand:\s*"([^"]+)",\s*tamper:\s*"([^"]+)",\s*\}[\s\S]*?correctChoice:\s*"([^"]+)",\s*distractorPool:\s*\[([\s\S]*?)\]/g;
+  const anomalyRe =
+    /\{\s*id:\s*"([^"]+)",[\s\S]*?gameClueWords:\s*\{\s*runner:\s*"([^"]+)",\s*sentence:\s*"([^"]+)",\s*errand:\s*"([^"]+)",\s*tamper:\s*"([^"]+)",\s*\}[\s\S]*?correctChoice:\s*"([^"]+)",\s*distractorPool:\s*\[([\s\S]*?)\]/g;
 
   for (const m of src.matchAll(anomalyRe)) {
     const [, id, runner, sentence, errand, tamper, correctChoice, pool] = m;
@@ -70,8 +71,8 @@ function parseAnomalies(): readonly CipherEntry[] {
 const ENTRIES = parseAnomalies();
 
 describe("clue cipher rubric", () => {
-  it("parses at least 12 anomalies from source", () => {
-    expect(ENTRIES.length).toBeGreaterThanOrEqual(12);
+  it("parses at least 10 anomalies from source", () => {
+    expect(ENTRIES.length).toBeGreaterThanOrEqual(10);
   });
 
   for (const e of ENTRIES) {

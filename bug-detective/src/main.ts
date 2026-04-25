@@ -165,6 +165,12 @@ function bootGameInner(simplified: boolean): void {
   // Game-time camera pose (used during investigation phase).
   const GAME_CAMERA_POS = new THREE.Vector3(3.2, 2.4, 5.2);
   const GAME_CAMERA_LOOKAT = new THREE.Vector3(-0.2, 0.3, -0.4);
+  const INVEST_DEFAULT_CAMERA_DIST =
+    GAME_CAMERA_POS.distanceTo(GAME_CAMERA_LOOKAT);
+  /** Nudge a HUD line about scroll/−+ when closer than this to the desk look target. */
+  const DESK_ZOOM_HINT_BELOW_DIST = INVEST_DEFAULT_CAMERA_DIST * 0.66;
+  const tmpWheelAnchor = new THREE.Vector3();
+  const tmpDirScratch = new THREE.Vector3();
 
   const diorama = createDesktopDiorama();
 
@@ -219,10 +225,8 @@ function bootGameInner(simplified: boolean): void {
       "monitor-screen",
       "case-file",
       "evidence-envelope",
-      "lamp-shadow",
       "coffee-steam",
       "keyboard",
-      "plant",
       "lamp",
       "desk",
     ] as const;
@@ -436,10 +440,8 @@ function bootGameInner(simplified: boolean): void {
       "monitor-screen",
       "case-file",
       "evidence-envelope",
-      "lamp-shadow",
       "coffee-steam",
       "keyboard",
-      "plant",
       "lamp",
       "desk",
       "monitor",
@@ -521,6 +523,8 @@ function bootGameInner(simplified: boolean): void {
   function syncCursorDeskNav(d: ReturnType<typeof createDesktopDiorama>): void {
     cursorTracker.setFootObstacles(d.mascotFootObstacles);
     cursorTracker.setDeskBounds(4, 2);
+    mascotController.setFootObstacles(d.mascotFootObstacles);
+    mascotController.setDeskBounds(4, 2);
   }
 
   // ---------------------------------------------------------------------
@@ -964,31 +968,43 @@ function bootGameInner(simplified: boolean): void {
   const inspectBox = new THREE.Box3();
   let inspectZoomActive = false;
   let inspectZoomCooldownUntil = 0;
+  let lastDeskZoomHint: string | null = null;
 
-  /** Keep inspect dollying from crossing inside this radius around the focus. */
-  const INSPECT_MIN_DIST_FROM_FOCUS = 1.12;
+  /**
+   * Inspect framing: stay far enough from props to avoid clipping / huge
+   * texels, but not so far that the shot reads as a wide room view.
+   */
+  const INSPECT_MIN_DIST_FROM_FOCUS = 1.55;
+  const INSPECT_MAX_DIST_FROM_FOCUS = 3.25;
 
-  function clampInspectCamToMinDistance(
+  /** Default investigation scroll (distance to desk look target). */
+  const INVEST_WHEEL_MIN_DIST = 2.15;
+  const INVEST_WHEEL_MAX_DIST = 10.5;
+
+  function clampInspectCamDistance(
     camPos: THREE.Vector3,
     focus: THREE.Vector3,
   ): void {
-    const d = camPos.distanceTo(focus);
-    if (d >= INSPECT_MIN_DIST_FROM_FOCUS) return;
-    camPos
-      .subVectors(camPos, focus)
-      .normalize()
-      .multiplyScalar(INSPECT_MIN_DIST_FROM_FOCUS)
-      .add(focus);
+    tmpDirScratch.subVectors(camPos, focus);
+    const d0 = tmpDirScratch.length();
+    if (d0 < 1e-5) {
+      tmpDirScratch.set(0.55, 0.3, 0.75);
+    } else {
+      tmpDirScratch.multiplyScalar(1 / d0);
+    }
+    const dClamped = THREE.MathUtils.clamp(
+      d0 < 1e-5 ? INSPECT_MIN_DIST_FROM_FOCUS : d0,
+      INSPECT_MIN_DIST_FROM_FOCUS,
+      INSPECT_MAX_DIST_FROM_FOCUS,
+    );
+    camPos.copy(focus).add(tmpDirScratch.multiplyScalar(dClamped));
   }
 
-  function anomalyInspectFraming(tag: string): {
+  function anomalyInspectFraming(_tag: string): {
     lerp: number;
     yLift: number;
     durationMs: number;
   } {
-    if (tag === "lamp-shadow") {
-      return { lerp: 0.26, yLift: 0.38, durationMs: 520 };
-    }
     return { lerp: 0.36, yLift: 0.24, durationMs: 580 };
   }
 
@@ -1017,7 +1033,7 @@ function bootGameInner(simplified: boolean): void {
       look: new THREE.Vector3(),
     };
     cameraRig.copyLookAtInto(flavorInspectReturn.look);
-    hud.setInspectCaption(`${caption} · Esc to exit`);
+    hud.setInspectCaption(`${caption} · Esc / Wider / scroll`);
     hitObject.updateMatrixWorld(true);
     inspectBox.setFromObject(hitObject);
     inspectBox.getCenter(inspectAnomalyPos);
@@ -1027,7 +1043,7 @@ function bootGameInner(simplified: boolean): void {
       0.45,
     );
     inspectCamPos.y += 0.24;
-    clampInspectCamToMinDistance(inspectCamPos, inspectAnomalyPos);
+    clampInspectCamDistance(inspectCamPos, inspectAnomalyPos);
     void cameraRig.scriptedTo(inspectCamPos, inspectAnomalyPos, 500);
     if (flavorInspectTimer) clearTimeout(flavorInspectTimer);
     flavorInspectTimer = window.setTimeout(() => {
@@ -1045,25 +1061,105 @@ function bootGameInner(simplified: boolean): void {
     void cameraRig.scriptedTo(inspectReturnPos, inspectReturnLook, durationMs);
   }
 
+  function applyInvestigationWheelDelta(rawDeltaY: number): void {
+    if (state.phase.kind !== "investigating") return;
+    if (runnerSession || deskMinigame) return;
+    if (flavorInspectReturn || inspectZoomActive) {
+      cameraRig.copyLookAtInto(tmpWheelAnchor);
+    } else {
+      tmpWheelAnchor.copy(GAME_CAMERA_LOOKAT);
+    }
+    const d = cameraRig.camera.position.distanceTo(tmpWheelAnchor);
+    if (d < 1e-4) return;
+    const step = Math.sign(rawDeltaY) * Math.min(120, Math.abs(rawDeltaY));
+    const next = THREE.MathUtils.clamp(
+      d * (1 + step * 0.0009),
+      flavorInspectReturn || inspectZoomActive
+        ? INSPECT_MIN_DIST_FROM_FOCUS
+        : INVEST_WHEEL_MIN_DIST,
+      flavorInspectReturn || inspectZoomActive
+        ? INSPECT_MAX_DIST_FROM_FOCUS
+        : INVEST_WHEEL_MAX_DIST,
+    );
+    cameraRig.setDistanceFromAnchor(tmpWheelAnchor, next);
+  }
+
+  /**
+   * Snap back to the default desk framing and clear flavor / hover inspect.
+   * Does not run the short return tween from exitInspectZoom / endFlavorInspect.
+   */
+  function resetInvestigationCameraToDefault(): void {
+    if (state.phase.kind !== "investigating") return;
+    if (runnerSession || deskMinigame) return;
+    if (flavorInspectTimer) {
+      clearTimeout(flavorInspectTimer);
+      flavorInspectTimer = null;
+    }
+    flavorInspectReturn = null;
+    if (inspectZoomActive) {
+      inspectZoomActive = false;
+      inspectZoomCooldownUntil = performance.now() + 800;
+    }
+    hud.setInspectCaption(null);
+    mascotController.setFrozen(false);
+    void cameraRig.scriptedTo(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT, 420);
+  }
+
   hud.onInspectExit(() => {
     if (state.phase.kind !== "investigating") return;
     if (inspectZoomActive) exitInspectZoom(420);
     else endFlavorInspectNow();
   });
+  hud.onInspectWider(() => {
+    if (state.phase.kind !== "investigating") return;
+    if (runnerSession || deskMinigame) return;
+    applyInvestigationWheelDelta(100);
+  });
+  hud.onInspectResetView(() => {
+    resetInvestigationCameraToDefault();
+  });
 
-  /** Escape always exits hover inspect / flavor zoom (desk minis + runner keep their own Esc). */
+  /** Escape exits inspect; +/− dolly; trackpad pinch uses wheel+ctrl (handled, not ignored). */
   document.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
-      if (e.code !== "Escape" || e.repeat) return;
       if (state.phase.kind !== "investigating") return;
       if (runnerSession || deskMinigame) return;
+      const t = e.target;
+      if (
+        t instanceof HTMLInputElement ||
+        t instanceof HTMLTextAreaElement ||
+        t instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      if (e.code === "Minus" || e.code === "NumpadSubtract") {
+        e.preventDefault();
+        applyInvestigationWheelDelta(120);
+        return;
+      }
+      if (e.code === "NumpadAdd" || (e.code === "Equal" && e.shiftKey)) {
+        e.preventDefault();
+        applyInvestigationWheelDelta(-120);
+        return;
+      }
+      if (e.code !== "Escape" || e.repeat) return;
       e.preventDefault();
       if (inspectZoomActive) exitInspectZoom(420);
       else endFlavorInspectNow();
     },
     { capture: true },
   );
+
+  function handleInvestigationWheel(ev: WheelEvent): void {
+    if (state.phase.kind !== "investigating") return;
+    if (runnerSession || deskMinigame) return;
+    applyInvestigationWheelDelta(ev.deltaY);
+    ev.preventDefault();
+  }
+  renderer.domElement.addEventListener("wheel", handleInvestigationWheel, {
+    passive: false,
+  });
 
   function placeMascotAtDefaultDesk(deskTopY: number): void {
     mascot.group.position.set(
@@ -1357,10 +1453,9 @@ function bootGameInner(simplified: boolean): void {
   caseFileCta.setAttribute("role", "status");
   caseFileCta.setAttribute("aria-live", "polite");
   caseFileCta.innerHTML =
-    "<div>Press Space, Enter, or click to lift the page</div>" +
+    "<div>Press Space, Enter, or click to continue</div>" +
     "<div style=\"margin-top:8px;font:500 12px 'Cursor Gothic',ui-sans-serif,sans-serif;opacity:0.82;line-height:1.4;\">" +
-    "After the peel, <strong>hover the desk</strong> to locate the live bug. " +
-    "Then clear the <strong>monitor, envelope, tray, and lamp</strong> for four cipher clues before you make the call.</div>";
+    "After the peel: <strong>hover the desk</strong>, then the <strong>four props</strong> from the case file.</div>";
   caseFileCta.style.cssText =
     "position:fixed;left:50%;bottom:32px;transform:translateX(-50%);max-width:min(92vw,520px);padding:12px 22px;border-radius:12px;background:rgba(26,24,18,0.88);color:#efe7d7;border:1px solid rgba(245,78,0,0.45);font:600 14px 'Cursor Gothic',ui-sans-serif,sans-serif;letter-spacing:0.03em;text-align:center;opacity:0;pointer-events:none;transition:opacity 650ms ease;z-index:60;box-shadow:0 8px 28px rgba(0,0,0,0.45)";
   root.appendChild(caseFileCta);
@@ -1630,16 +1725,7 @@ function bootGameInner(simplified: boolean): void {
               runnerSession.restartSameMode();
             }
           }
-          const progress =
-            mode === "endless"
-              ? Math.min(
-                  1,
-                  runnerEndlessDeathTimer / RUNNER_ENDLESS_RESTART_DELAY_S,
-                )
-              : 0;
-          runnerSession.step(dtSec, false, false, {
-            restartProgress01: progress,
-          });
+          runnerSession.step(dtSec, false, false);
         } else {
           runnerEndlessDeathTimer = 0;
           const jump = input.consumePress(Action.RunnerJump);
@@ -1764,14 +1850,9 @@ function bootGameInner(simplified: boolean): void {
           lerp,
         );
         inspectCamPos.y += yLift;
+        clampInspectCamDistance(inspectCamPos, inspectAnomalyPos);
         void cameraRig.scriptedTo(inspectCamPos, inspectAnomalyPos, durationMs);
-        if (hover.tag === "lamp-shadow") {
-          hud.setInspectCaption(
-            "Shadow — does it point the right way? Esc to exit",
-          );
-        } else {
-          hud.setInspectCaption("Inspecting — Esc to exit");
-        }
+        hud.setInspectCaption("Inspecting — Esc / Wider / scroll to zoom out");
       } else if (!isAnomalyTarget && inspectZoomActive) {
         exitInspectZoom(420);
       }
@@ -1800,11 +1881,33 @@ function bootGameInner(simplified: boolean): void {
         lastHoverTag = null;
       }
 
+      {
+        const lim = inspectZoomActive || flavorInspectReturn;
+        const dist = cameraRig.camera.position.distanceTo(GAME_CAMERA_LOOKAT);
+        const nextHint =
+          lim || dist >= DESK_ZOOM_HINT_BELOW_DIST
+            ? null
+            : "Zoomed in — scroll, two-finger scroll, or − to widen · + to tighten";
+        if (nextHint !== lastDeskZoomHint) {
+          lastDeskZoomHint = nextHint;
+          hud.setViewZoomHint(nextHint);
+        }
+      }
+
       if (input.consumePress(Action.Submit)) {
         enterAnsweringNow(now);
       }
     } else {
       mascot.setStride(0, 0);
+    }
+
+    {
+      const deskExplore =
+        state.phase.kind === "investigating" && !deskMinigame && !runnerSession;
+      if (!deskExplore && lastDeskZoomHint !== null) {
+        lastDeskZoomHint = null;
+        hud.setViewZoomHint(null);
+      }
     }
 
     if (
@@ -1956,8 +2059,6 @@ function bootGameInner(simplified: boolean): void {
         return "reagent tray";
       case "lamp":
         return "lamp";
-      case "lamp-shadow":
-        return "shadow";
       case "coffee-steam":
         return "steam";
       case "calendar":
@@ -1968,8 +2069,6 @@ function bootGameInner(simplified: boolean): void {
         return "case file";
       case "keyboard":
         return "keyboard";
-      case "plant":
-        return "plant";
       case "desk":
         return "desk";
       default:

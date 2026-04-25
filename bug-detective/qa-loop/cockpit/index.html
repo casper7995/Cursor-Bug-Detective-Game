@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bug Detective — QA Cockpit</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Bug Detective QA Cockpit</h1>
+      <p>
+        Local loop: cloud record → list/download SDK artifacts → Gemini analyze
+        → send findings to Cursor (plan agent) → approve → implement. Keys only
+        on the server (<code>.env</code>).
+      </p>
+    </header>
+    <div class="layout">
+      <aside>
+        <h2>Runs</h2>
+        <button type="button" id="newRun">New run</button>
+        <ul id="runList"></ul>
+      </aside>
+      <main>
+        <section id="currentRun" class="panel" hidden>
+          <h2 id="runTitle"></h2>
+          <pre id="runMeta"></pre>
+          <p class="hint">
+            <strong>Agent ID</strong> for list/download: use
+            <code>recordAgentId</code> after cloud record completes (or paste a
+            <code>bc-…</code> id from the dashboard).
+          </p>
+          <input
+            type="text"
+            id="agentId"
+            placeholder="bc-… (cloud agent with artifacts)"
+            size="48"
+          />
+          <div class="row">
+            <button type="button" id="btnCloudRecord">Start cloud record</button>
+            <button type="button" id="btnListArtifacts">List artifacts (SDK)</button>
+            <button type="button" id="btnDownloadArtifacts">Download to disk</button>
+            <button type="button" id="btnPlan">Start plan agent (wait)</button>
+          </div>
+          <div class="row">
+            <button type="button" id="btnAnalyze">Analyze (Gemini)</button>
+            <button type="button" id="btnShare">Write share bundle</button>
+            <button type="button" id="btnSend">Send findings to plan agent</button>
+          </div>
+          <div class="row">
+            <button type="button" id="btnApprove">Approve (manifest)</button>
+            <button type="button" id="btnImplement">Approve + run implement</button>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>Timeline / log</h2>
+          <pre id="log"></pre>
+        </section>
+        <section class="panel">
+          <h2>Video previews (local paths)</h2>
+          <div id="videos" class="videos"></div>
+        </section>
+        <section class="panel">
+          <h2>Last API response</h2>
+          <pre id="raw"></pre>
+        </section>
+      </main>
+    </div>
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

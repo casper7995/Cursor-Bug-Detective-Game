@@ -3,26 +3,42 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "Bug Detective — Vibe Jam 2026 single-case 3D detective puzzle.",
+  "description": "Bug Detective \u2014 Vibe Jam 2026 single-case 3D detective puzzle.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsc -p tsconfig.qa.json --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
+    "e2e:demo": "playwright test --project=demo",
     "verify": "npm test && npm run e2e && npm run build && bash scripts/check-jam-widget.sh",
-    "worker:deploy": "cd worker && wrangler deploy"
+    "worker:deploy": "cd worker && wrangler deploy",
+    "qa:record": "tsx qa-loop/cli.ts record",
+    "qa:assess": "tsx qa-loop/cli.ts assess",
+    "qa:plan": "tsx qa-loop/cli.ts plan",
+    "qa:approve": "tsx qa-loop/cli.ts approve",
+    "qa:iterate": "tsx qa-loop/cli.ts iterate",
+    "qa:share": "tsx qa-loop/cli.ts share",
+    "qa:cockpit": "tsx qa-loop/cockpitServer.ts",
+    "qa:typecheck": "tsc --noEmit -p tsconfig.qa.json",
+    "qa": "tsx qa-loop/cli.ts",
+    "qa:status": "tsx qa-loop/cli.ts status"
   },
   "devDependencies": {
+    "dotenv": "^16.4.5",
     "@playwright/test": "^1.51.1",
+    "@types/node": "^22.0.0",
     "@types/three": "^0.184.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.6.3",
     "vite": "^6.0.5",
     "vitest": "^4.1.4",
     "wrangler": "^4.83.0"
   },
   "dependencies": {
+    "@cursor/february": "^1.0.5",
+    "@google/generative-ai": "^0.24.1",
     "three": "^0.184.0"
   }
 }

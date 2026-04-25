@@ -37,7 +37,7 @@ describe("pickAnomaly determinism (algorithmic shape)", () => {
   // Re-derive the picker algorithm without importing the three.js-bound
   // anomalies module. The test asserts that a Fisher-Yates-and-pick using
   // the same RNG and the same input arrays produces a stable result.
-  const POOL_SIZE = 12;
+  const POOL_SIZE = 10;
 
   function pickIndex(seed: number): number {
     const rng = makeSeededRng(seed);

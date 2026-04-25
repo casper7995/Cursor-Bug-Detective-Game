@@ -2,7 +2,7 @@
 
 import { makeSeededRng } from "../../api/seedClient";
 import type { AnomalyId } from "../../scene/anomalies";
-import type { SentenceSlot, SentenceTemplate } from "./types";
+import type { PickColor, SentenceSlot, SentenceTemplate } from "./types";
 
 /** Each slot lists 1 blue (right), 3 purple (funny), 1 orange (mistake). */
 interface SlotBank {
@@ -16,6 +16,39 @@ interface SlotBank {
 interface TemplateBank {
   readonly id: string;
   readonly slots: readonly SlotBank[];
+}
+
+const THREE_COLS: [PickColor, PickColor, PickColor] = [
+  "blue",
+  "purple",
+  "orange",
+];
+
+/**
+ * Shuffles display row order per slot using a sub-seed of `templateSeed` so
+ * the row layout does not depend on how many `rng()` calls the purple pass
+ * uses elsewhere.
+ */
+function shuffleRowOrder(
+  templateSeed: number,
+  slotIndex: number,
+): [PickColor, PickColor, PickColor] {
+  const mix = (templateSeed + (slotIndex + 1) * 0x9e3779b1) >>> 0;
+  const rng = makeSeededRng(mix);
+  const order: PickColor[] = [...THREE_COLS];
+  for (let i = 2; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1));
+    [order[i], order[j]] = [order[j]!, order[i]!];
+  }
+  return [order[0]!, order[1]!, order[2]!];
+}
+
+/** Stable API for tests; matches `rowOrder` fields from `pickTemplate` for the same seed. */
+export function getSuggestionRowOrder(
+  templateSeed: number,
+  slotIndex: number,
+): [PickColor, PickColor, PickColor] {
+  return shuffleRowOrder(templateSeed, slotIndex);
 }
 
 const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
@@ -50,6 +83,34 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         orange: "looks normal",
         suffix: " across it.",
       },
+      {
+        prefix: "The meeting listed on that square was at ",
+        blue: "a time that had not happened yet",
+        purples: ["dawn", "lunch", "midnight"],
+        orange: "the usual standup",
+        suffix: ".",
+      },
+      {
+        prefix: "I looked for a paper trail and found only ",
+        blue: "a sticky with tomorrow's plan",
+        purples: ["an HR flyer", "a cat meme", "a meeting link"],
+        orange: "a clean desk",
+        suffix: ".",
+      },
+      {
+        prefix: "I checked the app sync, and the bug read ",
+        blue: "offset by one",
+        purples: ["cursed", "vibes only", "optimistic"],
+        orange: "current",
+        suffix: " — classic.",
+      },
+      {
+        prefix: "I wrote: ",
+        blue: "CALENDAR SUSPECT WINS",
+        purples: ["RIP TIME", "OK COOL", "I QUIT DATES"],
+        orange: "no notes",
+        suffix: " in the margin.",
+      },
     ],
   },
   "mug-name": {
@@ -81,6 +142,34 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         blue: "TARGETED",
         purples: ["RUDE", "BREWED WITH MALICE", "WHO DRINKS THIS"],
         orange: "uneventful",
+        suffix: ".",
+      },
+      {
+        prefix: "The handle was warm, like it had been ",
+        blue: "used minutes ago",
+        purples: ["microwaved", "argued with", "signed by a ghost"],
+        orange: "sitting cold all day",
+        suffix: ".",
+      },
+      {
+        prefix: "The inside ring had a ",
+        blue: "tiny ring stain",
+        purples: ["love note", "QR code", "lipstick mark"],
+        orange: "clean rim",
+        suffix: " — too perfect.",
+      },
+      {
+        prefix: "I cross-referenced the font: it matched ",
+        blue: "the company brand",
+        purples: ["Comic Sans", "wingdings", "hieroglyphs"],
+        orange: "a random system font",
+        suffix: ".",
+      },
+      {
+        prefix: "I circled the clue: ",
+        blue: "MAYBE IT'S FOR YOU",
+        purples: ["DRINK ME", "FREE PIZZA", "HELLO"],
+        orange: "nothing",
         suffix: ".",
       },
     ],
@@ -116,6 +205,34 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         orange: "nothing",
         suffix: " three times.",
       },
+      {
+        prefix: "The second hand twitched, then did a ",
+        blue: "full backward tick",
+        purples: ["dance", "hiccup", "salute"],
+        orange: "normal sweep",
+        suffix: ".",
+      },
+      {
+        prefix: "I matched the hand angle to a ",
+        blue: "sweep across midnight",
+        purples: ["pizza cut", "compass rose", "bad haircut"],
+        orange: "3 o'clock on the dot",
+        suffix: " — it didn't fit.",
+      },
+      {
+        prefix: "The glass had a smudge shaped like a ",
+        blue: "counter-clockwise hook",
+        purples: ["lightning", "grin", "question mark"],
+        orange: "clean streak",
+        suffix: ".",
+      },
+      {
+        prefix: "I stamped the report: ",
+        blue: "TIME WENT THE WRONG WAY",
+        purples: ["NO THANKS", "CLOCKY NO", "WEIRD REVERSE"],
+        orange: "no stamp",
+        suffix: ".",
+      },
     ],
   },
   "monitor-reflection": {
@@ -147,6 +264,34 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         blue: "GHOST ROOM IN GLASS",
         purples: ["MIRRORED VIBES", "BIG NOPE", "REAL ESTATE FRAUD"],
         orange: "all clear",
+        suffix: ".",
+      },
+      {
+        prefix: "The bezel had a ",
+        blue: "fingerprint smear on the wrong side",
+        purples: ["sticker", "fruit sticker", "hair"],
+        orange: "clean edge",
+        suffix: ".",
+      },
+      {
+        prefix: "The taskbar in the reflection was ",
+        blue: "from a different OS",
+        purples: ["Linux with confidence", "CLI only", "games only"],
+        orange: "identical",
+        suffix: ".",
+      },
+      {
+        prefix: "I angled the panel and saw ",
+        blue: "the room's layout flip",
+        purples: ["a cat", "my lunch", "nothing fun"],
+        orange: "no change",
+        suffix: ".",
+      },
+      {
+        prefix: "I labeled the monitor: ",
+        blue: "LIAR GLASS",
+        purples: ["CUTE THO", "NO REFUNDS", "OK FINE"],
+        orange: "fine",
         suffix: ".",
       },
     ],
@@ -182,6 +327,34 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         orange: "nothing",
         suffix: ".",
       },
+      {
+        prefix: "The ID badge in the photo ",
+        blue: "matched mine",
+        purples: ["said 'intern'", "was pixel soup", "was upside down"],
+        orange: "was blank",
+        suffix: ".",
+      },
+      {
+        prefix: "The timestamp in the EXIF was ",
+        blue: "tonight, before I took the case",
+        purples: ["1999", "lunch o'clock", "bugbot o'clock"],
+        orange: "missing",
+        suffix: ".",
+      },
+      {
+        prefix: "I zoomed: the background had ",
+        blue: "this very desk",
+        purples: ["a theme park", "a barn", "the moon"],
+        orange: "a stock photo",
+        suffix: ".",
+      },
+      {
+        prefix: "I circled: ",
+        blue: "PORTRAIT IS THE DETECTIVE",
+        purples: ["HI MOM", "CUTE SUS", "RUDE PAPER"],
+        orange: "boring",
+        suffix: ".",
+      },
     ],
   },
   "sticky-warning": {
@@ -214,6 +387,34 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         purples: ["RUDE", "OMINOUS BUT POLITE", "WHO LEFT THIS"],
         orange: "all good",
         suffix: " and circled it.",
+      },
+      {
+        prefix: "The sticky glue was ",
+        blue: "still tacky",
+        purples: ["maple syrup", "hope", "expired"],
+        orange: "dry as dust",
+        suffix: ".",
+      },
+      {
+        prefix: "The handwriting matched ",
+        blue: "the case file header",
+        purples: ["Comic Sans", "a child's pen", "my left hand"],
+        orange: "nobody's",
+        suffix: ".",
+      },
+      {
+        prefix: "I held it to the light: the paper was ",
+        blue: "watermarked 'evidence'",
+        purples: ["origami paper", "receipt paper", "napkin"],
+        orange: "plain copy",
+        suffix: ".",
+      },
+      {
+        prefix: "I filed it under ",
+        blue: "CREEPY BUT TRUE",
+        purples: ["MAYBE JOKE", "HR WILL LOVE", "NOPE"],
+        orange: "spam",
+        suffix: ".",
       },
     ],
   },
@@ -248,37 +449,32 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         orange: "looks fine",
         suffix: " in the margin.",
       },
-    ],
-  },
-  "lamp-shadow-wrong": {
-    id: "lamp-shadow-wrong",
-    slots: [
       {
-        prefix: "The lamp threw a ",
-        blue: "shadow",
-        purples: ["mood", "smell", "tantrum"],
-        orange: "light",
-        suffix: " across the desk.",
-      },
-      {
-        prefix: "The shadow pointed ",
-        blue: "the wrong way",
-        purples: ["at my mug", "directly at me", "northward, suspiciously"],
-        orange: "as expected",
+        prefix: "The paper's edge cast a ",
+        blue: "shadow on the desk that didn't line up",
+        purples: ["heart", "emoji", "ghost"],
+        orange: "normal shadow",
         suffix: ".",
       },
       {
-        prefix: "Light, last I checked, makes shadows ",
-        blue: "fall away from it",
-        purples: ["mind their business", "behave", "pay rent"],
-        orange: "huddle near it",
+        prefix: "I blew gently: the sheet ",
+        blue: "didn't flutter",
+        purples: ["applauded", "flew away", "yelled"],
+        orange: "fell",
+        suffix: " — wrong physics.",
+      },
+      {
+        prefix: "The clip at the top was ",
+        blue: "hovering in mid-air",
+        purples: ["a banana clip", "stolen", "cosplaying"],
+        orange: "on the paper",
         suffix: ".",
       },
       {
-        prefix: "I scribbled ",
-        blue: "PHYSICS BROKEN",
-        purples: ["LAMP IS LYING", "SHADOW NEEDS NOTES", "REAL CRIME"],
-        orange: "nothing weird",
+        prefix: "I tagged the anomaly: ",
+        blue: "DESK ANTIGRAV",
+        purples: ["SPOOKY", "CUTE LIFT", "NAH"],
+        orange: "skip",
         suffix: ".",
       },
     ],
@@ -314,6 +510,34 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         orange: "smelled fine",
         suffix: " in capitals.",
       },
+      {
+        prefix: "The mug lip had condensate that ",
+        blue: "clung upward",
+        purples: ["sparkled", "hummed", "judged me"],
+        orange: "dripped normally",
+        suffix: " — wrong.",
+      },
+      {
+        prefix: "I held a match near the plume: the draft ",
+        blue: "pulled it toward the floor",
+        purples: ["whistled", "applauded", "vanished"],
+        orange: "lifted it up",
+        suffix: " like usual.",
+      },
+      {
+        prefix: "The beans smelled fine, but the thermodynamics was ",
+        blue: "inverted",
+        purples: ["gassy", "poetic", "canceled"],
+        orange: "normal",
+        suffix: ".",
+      },
+      {
+        prefix: "I circled: ",
+        blue: "HOT COLD BACKWARDS",
+        purples: ["WEIRDO COFFEE", "NO TIPS", "OW"],
+        orange: "ok",
+        suffix: ".",
+      },
     ],
   },
   "blank-book": {
@@ -345,6 +569,34 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         blue: "EVIDENCE ERASED",
         purples: ["SHY PAGE", "PAPER WITH SECRETS", "LOUD QUIET"],
         orange: "page intact",
+        suffix: ".",
+      },
+      {
+        prefix: "I flipped the page: the other side was ",
+        blue: "empty too, but the fold felt wrong",
+        purples: ["a crossword", "a cat drawing", "a recipe"],
+        orange: "blank but normal",
+        suffix: ".",
+      },
+      {
+        prefix: "I rubbed a pencil sideways: the paper was ",
+        blue: "too smooth to hold a ghost letter",
+        purples: ["sandpaper", "fuzzy", "damp"],
+        orange: "rough with indent",
+        suffix: ".",
+      },
+      {
+        prefix: "I scanned it: the PDF export came back ",
+        blue: "one blank page, zero text layer",
+        purples: ["with memes", "in wingdings", "in emoji"],
+        orange: "with full text",
+        suffix: ".",
+      },
+      {
+        prefix: "I filed: ",
+        blue: "TEXT WAS TAKEN",
+        purples: ["SPOOKY", "CUTE BLANK", "FINE I GUESS"],
+        orange: "boring",
         suffix: ".",
       },
     ],
@@ -380,37 +632,32 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
         orange: "nothing weird",
         suffix: ".",
       },
-    ],
-  },
-  "plant-glitching": {
-    id: "plant-glitching",
-    slots: [
       {
-        prefix: "The plant in the corner was ",
-        blue: "glitching",
-        purples: ["doing the worm", "buffering", "vibrating with rage"],
-        orange: "thriving",
+        prefix: "The keycap font didn't match: it read ",
+        blue: "RUN",
+        purples: ["EJECT", "BEANS", "HELLO"],
+        orange: "Enter",
+        suffix: " — rude.",
+      },
+      {
+        prefix: "I lifted the board: the switch stem under it was ",
+        blue: "not soldered, just... sitting there",
+        purples: ["a spring", "a pebble", "a jelly bean"],
+        orange: "properly mounted",
         suffix: ".",
       },
       {
-        prefix: "Its leaves snapped like ",
-        blue: "bad geometry",
-        purples: ["a tiny rave", "tiny applause", "sad clapping"],
-        orange: "cardboard",
+        prefix: "The travel felt ",
+        blue: "too deep for this chassis",
+        purples: ["mushy", "clicky", "judgmental"],
+        orange: "like the others",
         suffix: ".",
       },
       {
-        prefix: "I poked the pot ",
-        blue: "and it lagged",
-        purples: ["and it sneezed", "and it argued", "with a pen"],
-        orange: "and watered it",
-        suffix: ".",
-      },
-      {
-        prefix: "I wrote ",
-        blue: "RENDERING WRONG",
-        purples: ["PLANT NEEDS PATCH", "HAUNTED FERN", "LEAFY CRIME"],
-        orange: "fine plant",
+        prefix: "I tagged the board: ",
+        blue: "EXTRA IO PORT",
+        purples: ["DO NOT PRESS", "CUTE", "RUDE USB"],
+        orange: "skip",
         suffix: ".",
       },
     ],
@@ -418,11 +665,14 @@ const TEMPLATE_BANKS: Record<AnomalyId, TemplateBank> = {
 };
 
 /** Pick a deterministic concrete template (one purple per slot) for the day. */
-export function pickTemplate(seed: number, anomalyId: AnomalyId): SentenceTemplate {
+export function pickTemplate(
+  seed: number,
+  anomalyId: AnomalyId,
+): SentenceTemplate {
   const bank = TEMPLATE_BANKS[anomalyId];
   if (!bank) throw new Error(`no template bank for ${anomalyId}`);
   const rng = makeSeededRng(seed);
-  const slots: SentenceSlot[] = bank.slots.map((s) => {
+  const slots: SentenceSlot[] = bank.slots.map((s, slotIndex) => {
     const idx = Math.floor(rng() * s.purples.length);
     return {
       prefix: s.prefix,
@@ -431,6 +681,7 @@ export function pickTemplate(seed: number, anomalyId: AnomalyId): SentenceTempla
         purple: s.purples[idx % s.purples.length] as string,
         orange: s.orange,
       },
+      rowOrder: shuffleRowOrder(seed, slotIndex),
       suffix: s.suffix,
     };
   });

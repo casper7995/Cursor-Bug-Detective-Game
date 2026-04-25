@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+
+artifacts/qa-runs
+test-results
+playwright-report

@@ -124,7 +124,6 @@ describe("cockpit API core", () => {
     manifest.cloud = { planAgentId: "agent-plan-1" };
     manifest.assessmentPath = "artifacts/qa-runs/run-1/assessment.json";
     await saveManifest(runDir, manifest);
-    await saveManifest(runDir, manifest);
     await import("node:fs/promises").then(({ writeFile }) =>
       writeFile(
         join(runDir, "assessment.json"),

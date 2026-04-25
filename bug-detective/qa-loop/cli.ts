@@ -312,13 +312,27 @@ async function cmdRecord(): Promise<void> {
       REPO,
       manifest.runId || runId,
     );
+    const rid = manifest.runId || runId;
     manifest = {
       ...manifest,
-      runId: manifest.runId || runId,
+      runId: rid,
       cloud: { ...manifest.cloud, recordAgentId: agentId },
-      state: "blocked",
+      state: "cloud-recording",
+      cockpit: {
+        ...manifest.cockpit,
+        phase: "cloud-recording",
+        lastActionAt: nowIso(),
+      },
     };
+    await saveManifest(runDir, manifest);
     await waitRunDone(run);
+    manifest = await loadManifest(mPath);
+    manifest.state = "artifacts-ready";
+    manifest.cockpit = {
+      ...manifest.cockpit,
+      phase: "artifacts-ready",
+      lastActionAt: nowIso(),
+    };
   }
   await saveManifest(runDir, manifest);
   // eslint-disable-next-line no-console
@@ -333,8 +347,9 @@ async function cmdAssess(): Promise<void> {
   await runAssessForRunId(runId);
 }
 
-async function cmdPlan(): Promise<void> {
-  const runId = getArg("--run");
+/** @param runIdOverride When set (e.g. from `cmdIterate`), skips `--run` argv. */
+async function cmdPlan(runIdOverride?: string): Promise<void> {
+  const runId = runIdOverride ?? getArg("--run");
   if (!runId) throw new Error("Missing --run");
   const { agentId, run } = await startPlanCloudAgent(REPO, runId);
   const runDir = defaultArtifactsDir(REPO, runId);
@@ -431,7 +446,7 @@ async function cmdIterate(): Promise<void> {
   const { allPassed } = await runAssessForRunId(m.runId);
   if (!allPassed) {
     try {
-      await cmdPlan();
+      await cmdPlan(m.runId);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn("plan skipped (cloud/auth):", e);

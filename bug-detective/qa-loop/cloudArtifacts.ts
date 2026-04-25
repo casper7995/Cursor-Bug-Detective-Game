@@ -166,10 +166,10 @@ export async function downloadRunArtifacts(
     }
   }
 
+  const listedPaths = new Set(artifacts.map((a) => a.path));
   manifest.downloadedArtifacts = [
     ...(manifest.downloadedArtifacts ?? []).filter(
-      (existing) =>
-        !artifacts.some((artifact) => artifact.path === existing.path),
+      (existing) => !listedPaths.has(existing.path),
     ),
     ...downloaded,
     ...failed,

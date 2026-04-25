@@ -14,7 +14,12 @@ import { hitDeskHelpButton, TutorialGate } from "../desk/tutorialGate";
 import { makeSeededRng } from "../../api/seedClient";
 import type { AnomalyId } from "../../scene/anomalies";
 import { pickTemplate } from "./templates";
-import { injectName, scoreSentenceRun, shouldEmitOutcome } from "./scoring";
+import {
+  injectName,
+  scoreSentenceRun,
+  shouldEmitOutcome,
+  type SentenceResult,
+} from "./scoring";
 import {
   assembleParagraph,
   drawEditorScene,
@@ -99,6 +104,11 @@ export class SentenceSession {
   private readonly picks: PlayerPick[] = [];
   private phase: Phase = { kind: "intro", t: 0 };
   private outcome: MiniGameOutcome | null = null;
+  /** Filled when entering the result phase; avoids re-scoring every frame. */
+  private resultScreen: {
+    result: SentenceResult;
+    finalParagraph: string;
+  } | null = null;
   private pointerBound = false;
   private lastTypewriterTick = -1;
   private lastPickRow = -1;
@@ -351,6 +361,14 @@ export class SentenceSession {
   private advanceAfterPick(): void {
     const next = this.picks.length;
     if (next >= SENTENCE_SLOTS_PER_TEMPLATE) {
+      this.resultScreen = {
+        result: scoreSentenceRun(this.picks),
+        finalParagraph: assembleParagraph(
+          this.template.slots,
+          this.picks,
+          this.resolvedPrefixes,
+        ),
+      };
       this.phase = { kind: "result", t: 0 };
       return;
     }
@@ -497,13 +515,25 @@ export class SentenceSession {
         drawSuggestionPopover(ctx, rows, this.phase.selectedRowIndex, remain);
       }
     } else if (this.phase.kind === "result") {
-      const result = scoreSentenceRun(this.picks);
-      const finalParagraph = assembleParagraph(
-        this.template.slots,
-        this.picks,
-        this.resolvedPrefixes,
-      );
-      drawShareCard(ctx, W, H, result.ending, finalParagraph, result.score);
+      const screen = this.resultScreen;
+      if (screen) {
+        drawShareCard(
+          ctx,
+          W,
+          H,
+          screen.result.ending,
+          screen.finalParagraph,
+          screen.result.score,
+        );
+      } else {
+        const result = scoreSentenceRun(this.picks);
+        const finalParagraph = assembleParagraph(
+          this.template.slots,
+          this.picks,
+          this.resolvedPrefixes,
+        );
+        drawShareCard(ctx, W, H, result.ending, finalParagraph, result.score);
+      }
     }
 
     this.drawProgressDots(ctx);

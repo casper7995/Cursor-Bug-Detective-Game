@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { DioramaObjects } from "../scene/desktopDiorama";
 import type { NotebookState } from "../game/notebook";
+import type { SessionScoreboardView } from "../game/sessionScoreboard";
 import { CURSOR } from "./cursorTheme";
 
 export interface HudHoverInfo {
@@ -18,6 +19,11 @@ export interface Hud {
   setTimer(remainingMs: number): void;
   hideTimer(): void;
   setNotebook(nb: NotebookState): void;
+  /**
+   * Personal in-session minigame bests (not the shared daily leaderboard).
+   * Call from main after recording a score or clearing the session.
+   */
+  setSessionScores(view: SessionScoreboardView): void;
   /** Primary action — only enabled with four evidence pages. */
   onMakeTheCall(handler: (() => void) | null): void;
   setStatusText(text: string | null): void;
@@ -42,9 +48,9 @@ export interface Hud {
 }
 
 const STYLE_STATUS =
-  "position:absolute;left:50%;transform:translateX(-50%);top:14px;color:#efe7d7;font:600 14px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,0.7);letter-spacing:0.04em;";
+  "position:relative;width:100%;margin:0;padding:0;color:#efe7d7;font:600 14px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,0.7);letter-spacing:0.04em;text-align:center;";
 const STYLE_EXPLORATION =
-  "position:absolute;left:50%;transform:translateX(-50%);top:42px;max-width:min(92vw,560px);text-align:center;color:rgba(239,231,215,0.78);font:500 12px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,0.65);line-height:1.35;";
+  "position:relative;width:100%;margin:6px 0 0;padding:0;max-width:100%;text-align:center;color:rgba(239,231,215,0.78);font:500 12px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,0.65);line-height:1.35;";
 const STYLE_TOOLTIP =
   "position:absolute;pointer-events:none;background:rgba(26,24,18,0.94);color:#edecec;border:1px solid rgba(245,78,0,0.35);border-radius:14px;padding:6px 12px;font:12px ui-sans-serif,sans-serif;transform:translate(-50%,calc(-100% - 14px));white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,0.5);transition:opacity 80ms;";
 const STYLE_LOUPE =
@@ -99,6 +105,29 @@ export function createHud(
     cardRow.appendChild(c);
   }
   evidencePanel.appendChild(cardRow);
+
+  const sessionWrap = document.createElement("div");
+  sessionWrap.style.cssText = `margin-top:4px;max-width:min(96vw,520px);border:1px solid rgba(192,133,50,0.3);border-radius:8px;padding:6px 8px;background:rgba(20,18,11,0.5);pointer-events:none;`;
+  const sessionTitleEl = document.createElement("div");
+  sessionTitleEl.style.cssText = `font:600 9px 'Cursor Gothic',sans-serif;letter-spacing:0.1em;color:${CURSOR.gold};opacity:0.9;margin-bottom:4px;`;
+  sessionTitleEl.textContent = "TODAY · YOU";
+  const sessionBodyEl = document.createElement("div");
+  sessionBodyEl.style.cssText = "display:flex;flex-direction:column;gap:3px;";
+  sessionWrap.appendChild(sessionTitleEl);
+  sessionWrap.appendChild(sessionBodyEl);
+  evidencePanel.appendChild(sessionWrap);
+
+  function setSessionScores(view: SessionScoreboardView): void {
+    sessionTitleEl.textContent = view.title.toUpperCase();
+    sessionBodyEl.textContent = "";
+    for (const r of view.rows) {
+      const line = document.createElement("div");
+      line.style.cssText = `font:500 9px 'Cursor Mono',ui-monospace,monospace;color:rgba(237,236,236,0.9);line-height:1.25;word-break:break-word;`;
+      line.textContent = `${r.label}  ${r.line}`;
+      sessionBodyEl.appendChild(line);
+    }
+  }
+
   wrapper.appendChild(evidencePanel);
 
   const makeCallBtn = document.createElement("button");
@@ -120,14 +149,56 @@ export function createHud(
   `;
   wrapper.appendChild(styleBreathing);
 
+  /** Top status + objective sit in this column so they never cover the evidence cards. */
+  const topMessageColumn = document.createElement("div");
+  topMessageColumn.style.cssText =
+    "position:absolute;left:0;right:0;top:0;pointer-events:none;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;";
+
+  const topMessageInner = document.createElement("div");
+  topMessageInner.style.cssText =
+    "width:100%;max-width:min(92vw,520px);text-align:center;box-sizing:border-box;";
+
   const statusEl = document.createElement("div");
   statusEl.style.cssText = STYLE_STATUS;
-  wrapper.appendChild(statusEl);
-
   const explorationEl = document.createElement("div");
   explorationEl.style.cssText = STYLE_EXPLORATION;
   explorationEl.style.opacity = "0";
-  wrapper.appendChild(explorationEl);
+  topMessageInner.appendChild(statusEl);
+  topMessageInner.appendChild(explorationEl);
+  topMessageColumn.appendChild(topMessageInner);
+  wrapper.appendChild(topMessageColumn);
+
+  const refreshTopMessageInset = (): void => {
+    const c = container.getBoundingClientRect();
+    const ev = evidencePanel.getBoundingClientRect();
+    const rightPad = 56;
+    const minCenter = 200;
+    const leftGap = 10;
+    const proposedLeft = Math.max(12, ev.right - c.left + leftGap);
+    if (c.width - proposedLeft - rightPad < minCenter) {
+      topMessageColumn.style.paddingLeft = "12px";
+      topMessageColumn.style.paddingRight = `${rightPad}px`;
+      topMessageColumn.style.paddingTop = `${Math.max(12, ev.bottom - c.top + 8)}px`;
+    } else {
+      topMessageColumn.style.paddingTop = "14px";
+      topMessageColumn.style.paddingLeft = `${proposedLeft}px`;
+      topMessageColumn.style.paddingRight = `${rightPad}px`;
+    }
+  };
+  window.addEventListener("resize", refreshTopMessageInset);
+  const topLayoutObs =
+    typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => {
+          requestAnimationFrame(refreshTopMessageInset);
+        })
+      : null;
+  if (topLayoutObs) {
+    topLayoutObs.observe(evidencePanel);
+    topLayoutObs.observe(container);
+  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(refreshTopMessageInset);
+  });
 
   const tooltipEl = document.createElement("div");
   tooltipEl.style.cssText = STYLE_TOOLTIP;
@@ -149,7 +220,8 @@ export function createHud(
   const inspectWiderBtn = document.createElement("button");
   inspectWiderBtn.type = "button";
   inspectWiderBtn.textContent = "Wider";
-  inspectWiderBtn.title = "Zoom the camera out (same as scroll down or −)";
+  inspectWiderBtn.title =
+    "Pull back one step (scroll down or −). On the desk: switches to wide view when close.";
   inspectWiderBtn.style.cssText = `padding:6px 12px;border-radius:8px;border:1px solid rgba(32,32,32,0.2);background:rgba(255,255,255,0.88);color:${CURSOR.ink};font:600 12px 'Cursor Gothic',ui-sans-serif,sans-serif;cursor:pointer;`;
   const inspectResetBtn = document.createElement("button");
   inspectResetBtn.type = "button";
@@ -325,6 +397,7 @@ export function createHud(
       makeCallBtn.classList.remove("bd-call-ready");
     }
     syncExplorationFromNotebook(nb);
+    requestAnimationFrame(refreshTopMessageInset);
   }
 
   function onMakeTheCall(handler: (() => void) | null): void {
@@ -333,15 +406,18 @@ export function createHud(
 
   function setStatusText(text: string | null): void {
     statusEl.textContent = text ?? "";
+    requestAnimationFrame(refreshTopMessageInset);
   }
   function setExplorationHint(text: string | null): void {
     if (text === null || text === "") {
       explorationEl.textContent = "";
       explorationEl.style.opacity = "0";
+      requestAnimationFrame(refreshTopMessageInset);
       return;
     }
     explorationEl.textContent = text;
     explorationEl.style.opacity = "1";
+    requestAnimationFrame(refreshTopMessageInset);
   }
   function setInspectCaption(text: string | null): void {
     if (text) {
@@ -426,6 +502,8 @@ export function createHud(
     container.removeEventListener("pointermove", onPointerMove);
     container.removeEventListener("pointerdown", onPointerDown);
     window.removeEventListener("resize", refreshRect);
+    window.removeEventListener("resize", refreshTopMessageInset);
+    topLayoutObs?.disconnect();
     wrapper.remove();
   }
 
@@ -436,6 +514,7 @@ export function createHud(
     setTimer,
     hideTimer,
     setNotebook,
+    setSessionScores,
     onMakeTheCall,
     setStatusText,
     setExplorationHint,

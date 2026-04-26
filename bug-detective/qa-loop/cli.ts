@@ -16,7 +16,11 @@ import {
   saveManifest,
 } from "./runStore.js";
 import { assessOneVideoWithGemini } from "./geminiAssess.js";
-import { getAssessModel, getGeminiApiKey } from "./env.js";
+import {
+  getAssessModel,
+  getGeminiApiKey,
+  isQaLoopDebugIngestEnabled,
+} from "./env.js";
 import {
   startRecordingCloudAgent,
   startPlanCloudAgent,
@@ -148,17 +152,100 @@ function mergeAssessments(
   };
 }
 
+/** Merge new Gemini slice(s) into an existing assessment (other minigames unchanged). */
+function mergeAssessmentWithUpdates(
+  runId: string,
+  existing: QaAssessmentDocument | undefined,
+  partialDocs: QaAssessmentDocument[],
+  threshold: number,
+  model: string,
+): QaAssessmentDocument {
+  const baseBy: Record<MinigameKey, MinigameAssessment> = Object.fromEntries(
+    MINIGAMES.map(
+      (k) => [k, existing?.byMinigame[k] ?? missingPlaceholder(k)] as const,
+    ),
+  ) as Record<MinigameKey, MinigameAssessment>;
+  for (const p of partialDocs) {
+    for (const k of MINIGAMES) {
+      const b = p.byMinigame[k];
+      if (b && b.minigame === k) baseBy[k] = b;
+    }
+  }
+  const failing: MinigameKey[] = [];
+  for (const s of MINIGAMES) {
+    if (baseBy[s].score100 < threshold) failing.push(s);
+  }
+  return {
+    version: 1,
+    runId,
+    model,
+    createdAt: nowIso(),
+    byMinigame: baseBy,
+    gate: {
+      passThreshold: threshold,
+      allPassed: failing.length === 0,
+      failing,
+    },
+  };
+}
+
 export async function runAssessForRunId(
   runId: string,
   repoRoot: string = REPO,
+  options?: {
+    extraInstructions?: string;
+    model?: string;
+    /** When set, only these minigames are sent to Gemini; others stay as in existing assessment.json. */
+    includeMinigames?: MinigameKey[];
+  },
 ): Promise<{ allPassed: boolean }> {
   const runDir = defaultArtifactsDir(repoRoot, runId);
   const mPath = join(runDir, MANIFEST_FILE);
   const manifest = await loadManifest(mPath);
   const key = getGeminiApiKey();
-  const model = getAssessModel();
+  const model = options?.model?.trim() || getAssessModel();
+  if (isQaLoopDebugIngestEnabled()) {
+    fetch("http://127.0.0.1:7875/ingest/9f55c4b0-3327-449a-8e13-27f476aac9ad", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "7c3848",
+      },
+      body: JSON.stringify({
+        sessionId: "7c3848",
+        runId,
+        hypothesisId: "H3,H4",
+        location: "cli.ts:162",
+        message: "runAssessForRunId resolved Gemini model",
+        data: {
+          optionModel: options?.model ?? null,
+          finalModel: model,
+          hasExtraInstructions: Boolean(options?.extraInstructions?.trim()),
+          videoSlots: Object.keys(manifest.videos ?? {}).filter((k) =>
+            Boolean(manifest.videos[k as MinigameKey]),
+          ),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
+  const restrictSlots =
+    options?.includeMinigames && options.includeMinigames.length > 0
+      ? MINIGAMES.filter((s) => options.includeMinigames!.includes(s))
+      : [...MINIGAMES];
+
+  if (options?.includeMinigames?.length) {
+    for (const slot of restrictSlots) {
+      if (!manifest.videos[slot]) {
+        throw new Error(
+          `[qa-loop] No video in manifest for ${slot}; record or download before slot-only assessment.`,
+        );
+      }
+    }
+  }
+
   const toAssess: { slot: MinigameKey; vp: string }[] = [];
-  for (const slot of MINIGAMES) {
+  for (const slot of restrictSlots) {
     const vp = manifest.videos[slot];
     if (!vp) {
       // eslint-disable-next-line no-console
@@ -169,6 +256,7 @@ export async function runAssessForRunId(
   }
   if (toAssess.length === 0)
     throw new Error("No videos in manifest to assess (record clips first).");
+  const inst = options?.extraInstructions?.trim() ?? "";
   const parts = await Promise.all(
     toAssess.map(({ slot, vp }) =>
       assessOneVideoWithGemini({
@@ -177,16 +265,27 @@ export async function runAssessForRunId(
         runId: manifest.runId,
         videoPath: vp,
         minigame: slot,
+        ...(inst ? { extraInstructions: inst } : {}),
       }),
     ),
   );
-  const merged = mergeAssessments(
-    manifest.runId,
-    parts,
-    manifest.passThreshold,
-    model,
-  );
   const out = join(runDir, "assessment.json");
+  let existingAssessment: QaAssessmentDocument | undefined;
+  try {
+    existingAssessment = await loadAssessment(out);
+  } catch {
+    existingAssessment = undefined;
+  }
+  const merged =
+    options?.includeMinigames && options.includeMinigames.length > 0
+      ? mergeAssessmentWithUpdates(
+          manifest.runId,
+          existingAssessment,
+          parts,
+          manifest.passThreshold,
+          model,
+        )
+      : mergeAssessments(manifest.runId, parts, manifest.passThreshold, model);
   await writeFile(out, JSON.stringify(merged, null, 2) + "\n", "utf8");
   for (const s of MINIGAMES) {
     const b = merged.byMinigame[s];

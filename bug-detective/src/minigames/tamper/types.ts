@@ -14,8 +14,20 @@ export interface TamperSpot {
    * panel). Each round has exactly one tampered spot.
    */
   readonly tampered: boolean;
-  /** Short label for legend / accessibility. */
+  /** ORIGINAL diff line (left / top block). */
   readonly label: string;
+  /**
+   * TONIGHT line when **this** spot is the round’s real tamper. Other rows
+   * match `label` in both panels so the player can spot the one real change.
+   */
+  readonly tonightIfThisTampered: string;
+  /** Key for `drawPropSketch` icon on ORIGINAL and on TONIGHT when not tampered. */
+  readonly sketchKey: string;
+  /**
+   * Optional icon key for TONIGHT when this row is the real tamper — must be
+   * a branch in `drawPropSketch` for a visible difference.
+   */
+  readonly tonightSketchKey?: string;
 }
 
 export interface TamperScene {

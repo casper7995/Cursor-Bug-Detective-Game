@@ -125,11 +125,10 @@ export class GameState {
     return true;
   }
 
-  /** Player picked a choice. Compute score and transition to results. */
-  submit(choiceIndex: number, correctIndex: number): void {
+  /** Player submitted final accusation (typed or legacy index match). */
+  submit(correct: boolean): void {
     if (this.phase.kind !== "answering") return;
     const ans = this.phase;
-    const correct = choiceIndex === correctIndex;
     const { score, breakdown } = computeScore({
       correct,
       elapsedMs: ans.elapsedMs,

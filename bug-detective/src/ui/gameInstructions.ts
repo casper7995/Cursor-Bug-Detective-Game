@@ -13,7 +13,7 @@ export const CASE_FILE_BODY_LINES: readonly string[] = [
   "HOW TO PLAY",
   "• Hover the desk first — one prop is wrong today.",
   "• Open the monitor, envelope, reagent tray, and lamp; each pays a clue word into Evidence.",
-  "• At 4/4 Evidence, make the call. Esc / Exit / Wider / scroll leave inspect zoom; − + dolly; X closes a desk mini.",
+  "• At 4/4 Evidence, make the call. Esc / Exit / Wider / scroll leave inspect zoom; − / + or scroll switch wide ↔ close desk view; X closes a desk mini.",
   "",
   "Peel the page, then hunt the live bug on the desk.",
 ];
@@ -41,7 +41,7 @@ export const HOWTO_MODAL_STEPS: readonly {
   },
   {
     title: "Controls",
-    body: "Click to open stations or inspect flavor props. Esc, Wider, Reset view, scroll (or trackpad pinch), or − / + adjust the camera; Exit on the bar matches Esc. Code run jumps with Space. After you clear the daily monitor run, Shift+click the monitor to practice daily again; normal click opens endless.",
+    body: "Click to open stations or inspect flavor props. Esc, Wider, Reset view, scroll, or − / + — desk view is two levels (wide vs close), not a free dolly. Exit on the bar matches Esc. Code run jumps with Space. After you clear the daily monitor run, Shift+click the monitor to practice daily again; normal click opens endless.",
     icon: "⌨",
   },
 ];

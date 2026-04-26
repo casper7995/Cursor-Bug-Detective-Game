@@ -1,7 +1,6 @@
 /**
- * Canvas rendering for "Bugbot review" — Spot the Tampering rendered as a
- * Cursor IDE side-panel: a stacked ORIGINAL/TONIGHT diff card on the left,
- * a Bugbot chat bubble + Approve/Reject/Suggest-fix buttons on the right.
+ * Canvas rendering for "Bugbot review" — spot-the-difference: stacked
+ * ORIGINAL/TONIGHT on the left; Bugbot chat + Agree/Disagree/Point on the right.
  */
 
 import { CURSOR_AI } from "../../ui/cursorAiTheme";
@@ -144,10 +143,11 @@ export function drawDiffCard(
       oy,
       L.diffW - 24,
       L.rowH,
+      "original",
       false,
       false,
     );
-    const isHighlighted = pointAtSpotId === spot.id;
+    const bugbotHere = pointAtSpotId !== null && pointAtSpotId === spot.id;
     const isReveal = showRealTamper && spot.tampered;
     drawSpotRow(
       ctx,
@@ -156,7 +156,8 @@ export function drawDiffCard(
       ty,
       L.diffW - 24,
       L.rowH,
-      isHighlighted,
+      "tonight",
+      bugbotHere,
       isReveal,
     );
     if (pickingSpot) {
@@ -196,31 +197,56 @@ function drawSpotRow(
   y: number,
   w: number,
   h: number,
-  highlighted: boolean,
+  half: "original" | "tonight",
+  bugbotPointsHere: boolean,
   revealRealTamper: boolean,
 ): void {
+  const lineText =
+    half === "tonight" && spot.tampered
+      ? spot.tonightIfThisTampered
+      : spot.label;
+  const sketchKey =
+    half === "tonight" && spot.tampered && spot.tonightSketchKey
+      ? spot.tonightSketchKey
+      : spot.sketchKey;
   ctx.save();
-  if (highlighted) {
-    ctx.fillStyle = CURSOR_AI.accentMute;
-    ctx.fillRect(x, y, w, h);
-  }
   if (revealRealTamper) {
     ctx.fillStyle = CURSOR_AI.greenMute;
     ctx.fillRect(x, y, w, h);
   }
-  drawPropSketch(ctx, spot.label, x + 12, y + h / 2, 8);
+  if (bugbotPointsHere && half === "tonight") {
+    ctx.strokeStyle = "rgba(245,78,0,0.7)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + h);
+    ctx.stroke();
+  }
+  drawPropSketch(ctx, sketchKey, x + 12, y + h / 2, 9);
   ctx.fillStyle = CURSOR_AI.ink;
-  ctx.font = "500 11px 'Cursor Mono', ui-monospace, monospace";
+  ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textBaseline = "middle";
-  ctx.fillText(spot.label, x + 28, y + h / 2 + 1);
-  if (highlighted) {
-    ctx.fillStyle = CURSOR_AI.accent;
-    ctx.font = "700 9px 'Cursor Mono', ui-monospace, monospace";
+  const textX = x + 28;
+  const maxW = w - 34 - (bugbotPointsHere && half === "tonight" ? 42 : 0);
+  let short = lineText;
+  if (ctx.measureText(short).width > maxW) {
+    for (let n = lineText.length; n >= 1; n--) {
+      const cand = n < lineText.length ? `${lineText.slice(0, n)}…` : lineText;
+      if (n === 1 || ctx.measureText(cand).width <= maxW) {
+        short = cand;
+        break;
+      }
+    }
+  }
+  ctx.fillText(short, textX, y + h / 2 + 1);
+  if (bugbotPointsHere && half === "tonight") {
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "8px 'Cursor Mono', ui-monospace, monospace";
     ctx.textAlign = "right";
-    ctx.fillText("← bugbot", x + w - 4, y + h / 2 + 1);
+    ctx.fillText("bot", x + w - 4, y + h / 2 + 1);
   } else if (revealRealTamper) {
     ctx.fillStyle = CURSOR_AI.green;
-    ctx.font = "700 9px 'Cursor Mono', ui-monospace, monospace";
+    ctx.font = "700 8px 'Cursor Mono', ui-monospace, monospace";
     ctx.textAlign = "right";
     ctx.fillText("real", x + w - 4, y + h / 2 + 1);
   }
@@ -241,6 +267,7 @@ export interface ChatHits {
 export function drawChatCard(
   ctx: CanvasRenderingContext2D,
   call: TamperCall | null,
+  scene: TamperScene | null,
   hover: "approve" | "reject" | "suggestFix" | null,
   secondsLeft01: number,
   pickingSpot: boolean,
@@ -257,15 +284,17 @@ export function drawChatCard(
   ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillText("code review · daily", L.chatX + 42, L.chatY + 33);
 
-  // Claim line
+  // Claim line — which row Bugbot is talking about
   if (call) {
+    const rowIdx = scene
+      ? scene.spots.findIndex((s) => s.id === call.bugbotPointsAtSpotId)
+      : -1;
+    const rowLead = rowIdx >= 0 ? `Row ${rowIdx + 1} — ` : "";
     const claim =
-      call.bugbotClaim === "tampered" ? "Looks tampered." : "Looks clean.";
-    const target = "code line";
-    void target;
+      call.bugbotClaim === "tampered" ? "says TAMPERED" : "says CLEAN";
     ctx.fillStyle = CURSOR_AI.ink;
     ctx.font = "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText(claim, L.chatX + 14, L.chatY + 60);
+    ctx.fillText(`${rowLead}${claim}`, L.chatX + 14, L.chatY + 60);
     // Quip
     ctx.fillStyle = CURSOR_AI.inkMute;
     ctx.font = "500 11px 'Cursor Gothic', sans-serif";
@@ -297,23 +326,30 @@ export function drawChatCard(
   const approve: Rect = { x: bx, y: approveY, w: bw, h: bh };
   const reject: Rect = { x: bx, y: rejectY, w: bw, h: bh };
   const suggestFix: Rect = { x: bx, y: suggestY, w: bw, h: bh };
-  const claimWasTampered = call?.bugbotClaim === "tampered";
-  drawAiButton(ctx, approve, claimWasTampered ? "Approve fix" : "Approve", {
+  drawAiButton(ctx, approve, "Agree", {
     tone: "approve",
     leading: "✓",
     hovered: hover === "approve",
+    font: "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
   });
-  drawAiButton(ctx, reject, claimWasTampered ? "Reject fix" : "Reject", {
+  drawAiButton(ctx, reject, "Disagree", {
     tone: "reject",
     leading: "✗",
     hovered: hover === "reject",
+    font: "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
   });
-  drawAiButton(ctx, suggestFix, pickingSpot ? "Pick a row…" : "Suggest fix", {
-    tone: "ghost",
-    leading: "→",
-    hovered: hover === "suggestFix",
-    disabled: pickingSpot,
-  });
+  drawAiButton(
+    ctx,
+    suggestFix,
+    pickingSpot ? "Pick TONIGHT row…" : "Point to change",
+    {
+      tone: "ghost",
+      leading: "→",
+      hovered: hover === "suggestFix",
+      disabled: pickingSpot,
+      font: "600 11px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
+    },
+  );
 
   // Slim timer line at the very bottom of the card
   drawAiProgressLine(
@@ -376,20 +412,20 @@ export function drawIntroCard(
   drawAiAvatar(ctx, x + 32, y + 38, { size: 28 });
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "700 14px 'Cursor Gothic', sans-serif";
-  ctx.fillText("Bugbot review", x + 60, y + 32);
+  ctx.fillText("Spot the real change", x + 60, y + 32);
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
-  ctx.fillText(`scene · ${scene.displayName}`, x + 60, y + 50);
+  ctx.fillText(`scene · ${scene.displayName} · Bugbot review`, x + 60, y + 50);
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
   ctx.fillText(
-    "Bugbot reviews 6 calls. Read the confidence, then trust yourself.",
+    "Compare ORIGINAL vs TONIGHT. One row really changed. Bugbot can be wrong.",
     x + 24,
     y + 82,
   );
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.fillText(
-    "Approve or Reject fast. Suggest fix only when you're ready to point at the lie.",
+    "Agree/Disagree with Bugbot. If Bugbot is lying, Point to the changed TONIGHT row.",
     x + 24,
     y + 100,
   );
@@ -436,27 +472,111 @@ export function drawResultCard(
 // ---------------------------------------------------------------------
 // Tutorial diagram
 // ---------------------------------------------------------------------
+export interface TamperTutorialDiagramLayout {
+  readonly centerY: number;
+  readonly avatar: {
+    readonly cx: number;
+    readonly cy: number;
+    readonly size: number;
+  };
+  readonly label: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly labelEndX: number;
+  readonly agree: Rect;
+  readonly disagree: Rect;
+}
+
+const TAMPER_TUTORIAL_LABEL = "Match panels";
+const TAMPER_TUTORIAL_LABEL_WIDTH = 74;
+const TAMPER_TUTORIAL_AVATAR_SIZE = 16;
+const TAMPER_TUTORIAL_ICON_GAP = 10;
+const TAMPER_TUTORIAL_LABEL_GAP = 12;
+const TAMPER_TUTORIAL_BUTTON_GAP = 8;
+const TAMPER_TUTORIAL_BUTTON_H = 26;
+const TAMPER_TUTORIAL_AGREE_W = 68;
+const TAMPER_TUTORIAL_DISAGREE_W = 82;
+
+export function getTamperTutorialDiagramLayout(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  labelWidth = TAMPER_TUTORIAL_LABEL_WIDTH,
+): TamperTutorialDiagramLayout {
+  const centerY = y + h / 2;
+  const rowW =
+    TAMPER_TUTORIAL_AVATAR_SIZE +
+    TAMPER_TUTORIAL_ICON_GAP +
+    labelWidth +
+    TAMPER_TUTORIAL_LABEL_GAP +
+    TAMPER_TUTORIAL_AGREE_W +
+    TAMPER_TUTORIAL_BUTTON_GAP +
+    TAMPER_TUTORIAL_DISAGREE_W;
+  const rowX = x + Math.max(0, (w - rowW) / 2);
+  const labelX = rowX + TAMPER_TUTORIAL_AVATAR_SIZE + TAMPER_TUTORIAL_ICON_GAP;
+  const labelEndX = labelX + labelWidth;
+  const agreeX = labelEndX + TAMPER_TUTORIAL_LABEL_GAP;
+  const disagreeX =
+    agreeX + TAMPER_TUTORIAL_AGREE_W + TAMPER_TUTORIAL_BUTTON_GAP;
+  const buttonY = centerY - TAMPER_TUTORIAL_BUTTON_H / 2;
+
+  return {
+    centerY,
+    avatar: {
+      cx: rowX + TAMPER_TUTORIAL_AVATAR_SIZE / 2,
+      cy: centerY,
+      size: TAMPER_TUTORIAL_AVATAR_SIZE,
+    },
+    label: { x: labelX, y: centerY },
+    labelEndX,
+    agree: {
+      x: agreeX,
+      y: buttonY,
+      w: TAMPER_TUTORIAL_AGREE_W,
+      h: TAMPER_TUTORIAL_BUTTON_H,
+    },
+    disagree: {
+      x: disagreeX,
+      y: buttonY,
+      w: TAMPER_TUTORIAL_DISAGREE_W,
+      h: TAMPER_TUTORIAL_BUTTON_H,
+    },
+  };
+}
+
 export function drawTamperTutorialDiagram(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  _w: number,
+  w: number,
   h: number,
 ): void {
   ctx.save();
-  const cy = y + h / 2;
-  drawAiAvatar(ctx, x + 12, cy, { size: 16 });
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
   ctx.textBaseline = "middle";
-  ctx.fillText("Bugbot →", x + 28, cy);
-  drawAiButton(ctx, { x: x + 86, y: cy - 14, w: 60, h: 24 }, "Approve", {
+  const layout = getTamperTutorialDiagramLayout(
+    x,
+    y,
+    w,
+    h,
+    ctx.measureText(TAMPER_TUTORIAL_LABEL).width,
+  );
+  drawAiAvatar(ctx, layout.avatar.cx, layout.avatar.cy, {
+    size: layout.avatar.size,
+  });
+  ctx.fillText(TAMPER_TUTORIAL_LABEL, layout.label.x, layout.label.y);
+  drawAiButton(ctx, layout.agree, "Agree", {
     tone: "approve",
     leading: "✓",
+    font: "600 10px 'Cursor Gothic', sans-serif",
   });
-  drawAiButton(ctx, { x: x + 152, y: cy - 14, w: 60, h: 24 }, "Reject", {
+  drawAiButton(ctx, layout.disagree, "Disagree", {
     tone: "reject",
     leading: "✗",
+    font: "600 10px 'Cursor Gothic', sans-serif",
   });
   ctx.textBaseline = "alphabetic";
   ctx.restore();
@@ -467,7 +587,7 @@ export function drawTamperTutorialDiagram(
 // ---------------------------------------------------------------------
 function drawPropSketch(
   ctx: CanvasRenderingContext2D,
-  label: string,
+  sketchKey: string,
   cx: number,
   cy: number,
   size: number,
@@ -477,15 +597,23 @@ function drawPropSketch(
   ctx.lineWidth = 1.2;
   ctx.strokeStyle = CURSOR_AI.ink;
   ctx.fillStyle = CURSOR_AI.ink;
-  switch (label) {
+  switch (sketchKey) {
     case "stamp":
+    case "stamp_offset":
       ctx.strokeRect(-size * 0.5, -size * 0.4, size, size * 0.8);
       ctx.fillStyle = CURSOR_AI.accent;
       ctx.beginPath();
-      ctx.arc(0, 0, size * 0.22, 0, Math.PI * 2);
+      ctx.arc(
+        sketchKey === "stamp_offset" ? size * 0.12 : 0,
+        0,
+        size * 0.22,
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
       break;
     case "photo":
+    case "photo_glare":
       ctx.strokeRect(-size * 0.5, -size * 0.4, size, size * 0.8);
       ctx.beginPath();
       ctx.arc(-size * 0.2, -size * 0.1, size * 0.12, 0, Math.PI * 2);
@@ -495,15 +623,30 @@ function drawPropSketch(
       ctx.lineTo(0, -size * 0.05);
       ctx.lineTo(size * 0.5, size * 0.3);
       ctx.stroke();
+      if (sketchKey === "photo_glare") {
+        ctx.strokeStyle = "rgba(245,78,0,0.5)";
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.45, -size * 0.35);
+        ctx.lineTo(size * 0.4, size * 0.25);
+        ctx.stroke();
+      }
       break;
     case "pen":
+    case "pen_smudge":
       ctx.beginPath();
       ctx.moveTo(-size * 0.4, -size * 0.4);
       ctx.lineTo(size * 0.5, size * 0.3);
       ctx.stroke();
       ctx.fillRect(size * 0.35, size * 0.18, size * 0.18, size * 0.18);
+      if (sketchKey === "pen_smudge") {
+        ctx.fillStyle = "rgba(20,18,11,0.4)";
+        ctx.beginPath();
+        ctx.arc(-size * 0.1, -size * 0.1, size * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
       break;
     case "paperclip":
+    case "staple":
       ctx.beginPath();
       ctx.moveTo(-size * 0.3, -size * 0.4);
       ctx.lineTo(-size * 0.3, size * 0.3);
@@ -512,8 +655,15 @@ function drawPropSketch(
       ctx.quadraticCurveTo(size * 0.05, -size * 0.45, -size * 0.1, -size * 0.2);
       ctx.lineTo(-size * 0.1, size * 0.1);
       ctx.stroke();
+      if (sketchKey === "staple") {
+        ctx.beginPath();
+        ctx.moveTo(size * 0.15, -size * 0.35);
+        ctx.lineTo(-size * 0.1, size * 0.2);
+        ctx.stroke();
+      }
       break;
     case "signature":
+    case "signature_loopy":
       ctx.beginPath();
       ctx.moveTo(-size * 0.5, size * 0.1);
       ctx.bezierCurveTo(
@@ -525,31 +675,54 @@ function drawPropSketch(
         -size * 0.05,
       );
       ctx.stroke();
+      if (sketchKey === "signature_loopy") {
+        ctx.beginPath();
+        ctx.arc(-size * 0.2, 0, size * 0.1, 0, Math.PI * 1.2);
+        ctx.stroke();
+      }
       break;
     case "vial":
+    case "vial_empty":
       ctx.beginPath();
       ctx.moveTo(-size * 0.25, -size * 0.5);
       ctx.lineTo(-size * 0.25, size * 0.3);
       ctx.quadraticCurveTo(0, size * 0.55, size * 0.25, size * 0.3);
       ctx.lineTo(size * 0.25, -size * 0.5);
       ctx.stroke();
-      ctx.fillStyle = CURSOR_AI.green;
-      ctx.fillRect(-size * 0.22, 0, size * 0.44, size * 0.3);
+      if (sketchKey === "vial") {
+        ctx.fillStyle = CURSOR_AI.green;
+        ctx.fillRect(-size * 0.22, 0, size * 0.44, size * 0.3);
+      } else {
+        ctx.fillStyle = "rgba(24, 68, 40, 0.2)";
+        ctx.fillRect(-size * 0.22, 0, size * 0.44, size * 0.12);
+      }
       break;
     case "tag":
+    case "tag_torn":
       ctx.beginPath();
-      ctx.moveTo(-size * 0.4, -size * 0.3);
-      ctx.lineTo(size * 0.2, -size * 0.3);
-      ctx.lineTo(size * 0.5, 0);
-      ctx.lineTo(size * 0.2, size * 0.3);
-      ctx.lineTo(-size * 0.4, size * 0.3);
-      ctx.closePath();
+      if (sketchKey === "tag_torn") {
+        ctx.moveTo(-size * 0.4, -size * 0.32);
+        ctx.lineTo(size * 0.2, -size * 0.28);
+        ctx.lineTo(size * 0.5, 0);
+        ctx.lineTo(size * 0.2, size * 0.3);
+        ctx.lineTo(-size * 0.4, size * 0.3);
+        ctx.closePath();
+      } else {
+        ctx.moveTo(-size * 0.4, -size * 0.3);
+        ctx.lineTo(size * 0.2, -size * 0.3);
+        ctx.lineTo(size * 0.5, 0);
+        ctx.lineTo(size * 0.2, size * 0.3);
+        ctx.lineTo(-size * 0.4, size * 0.3);
+        ctx.closePath();
+      }
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(size * 0.18, 0, size * 0.06, 0, Math.PI * 2);
       ctx.stroke();
       break;
     case "key":
+    case "key_bent":
+      if (sketchKey === "key_bent") ctx.rotate(0.25);
       ctx.beginPath();
       ctx.arc(-size * 0.25, 0, size * 0.18, 0, Math.PI * 2);
       ctx.stroke();
@@ -564,6 +737,7 @@ function drawPropSketch(
       break;
     case "boot":
     case "boot print":
+    case "boot_smear":
       ctx.beginPath();
       ctx.moveTo(-size * 0.4, size * 0.3);
       ctx.lineTo(-size * 0.4, -size * 0.3);
@@ -572,8 +746,23 @@ function drawPropSketch(
       ctx.lineTo(size * 0.5, size * 0.3);
       ctx.closePath();
       ctx.stroke();
+      if (sketchKey === "boot_smear") {
+        ctx.fillStyle = "rgba(20,18,11,0.3)";
+        ctx.beginPath();
+        ctx.ellipse(
+          size * 0.15,
+          size * 0.25,
+          size * 0.2,
+          size * 0.08,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+      }
       break;
     case "ledger":
+    case "ledger_fold":
       ctx.strokeRect(-size * 0.4, -size * 0.4, size * 0.8, size * 0.8);
       ctx.beginPath();
       for (let i = 1; i < 4; i++) {
@@ -581,9 +770,17 @@ function drawPropSketch(
         ctx.lineTo(size * 0.3, -size * 0.4 + i * size * 0.2);
       }
       ctx.stroke();
+      if (sketchKey === "ledger_fold") {
+        ctx.beginPath();
+        ctx.moveTo(size * 0.25, -size * 0.4);
+        ctx.lineTo(size * 0.35, -size * 0.25);
+        ctx.lineTo(size * 0.25, -size * 0.1);
+        ctx.stroke();
+      }
       break;
     case "shade":
     case "lampshade":
+    case "lampshade_tape":
       ctx.beginPath();
       ctx.moveTo(-size * 0.5, size * 0.4);
       ctx.lineTo(-size * 0.3, -size * 0.4);
@@ -591,29 +788,92 @@ function drawPropSketch(
       ctx.lineTo(size * 0.5, size * 0.4);
       ctx.closePath();
       ctx.stroke();
+      if (sketchKey === "lampshade_tape") {
+        ctx.fillStyle = "rgba(245,78,0,0.35)";
+        ctx.fillRect(-size * 0.15, -size * 0.35, size * 0.12, size * 0.1);
+      }
       break;
     case "switch":
+    case "switch_scuff":
       ctx.strokeRect(-size * 0.3, -size * 0.4, size * 0.6, size * 0.8);
       ctx.fillStyle = CURSOR_AI.ink;
       ctx.fillRect(-size * 0.18, -size * 0.05, size * 0.36, size * 0.18);
+      if (sketchKey === "switch_scuff") {
+        ctx.strokeStyle = "rgba(20,18,11,0.45)";
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.2, -size * 0.35);
+        ctx.lineTo(size * 0.15, size * 0.25);
+        ctx.moveTo(size * 0.1, -size * 0.32);
+        ctx.lineTo(-size * 0.12, size * 0.2);
+        ctx.stroke();
+        ctx.strokeStyle = CURSOR_AI.ink;
+      }
       break;
     case "wire":
-      ctx.beginPath();
-      ctx.moveTo(-size * 0.5, -size * 0.3);
-      for (let i = 0; i <= 4; i++) {
-        const xx = -size * 0.5 + (i * size) / 4;
-        const yy = i % 2 === 0 ? -size * 0.3 : size * 0.3;
-        ctx.lineTo(xx, yy);
+    case "wire_cut":
+      if (sketchKey === "wire_cut") {
+        // Two zigzag segments with a visible gap in the middle.
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.5, -size * 0.3);
+        for (let i = 0; i <= 2; i++) {
+          const xx = -size * 0.5 + (i * size) / 4;
+          const yy = i % 2 === 0 ? -size * 0.3 : size * 0.3;
+          ctx.lineTo(xx, yy);
+        }
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(size * 0.05, -size * 0.3);
+        for (let i = 0; i <= 2; i++) {
+          const xx = size * 0.05 + (i * size) / 4;
+          const yy = i % 2 === 0 ? -size * 0.3 : size * 0.3;
+          ctx.lineTo(xx, yy);
+        }
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.05, 0);
+        ctx.lineTo(size * 0.05, 0);
+        ctx.moveTo(0, -size * 0.05);
+        ctx.lineTo(0, size * 0.05);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.5, -size * 0.3);
+        for (let i = 0; i <= 4; i++) {
+          const xx = -size * 0.5 + (i * size) / 4;
+          const yy = i % 2 === 0 ? -size * 0.3 : size * 0.3;
+          ctx.lineTo(xx, yy);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
       break;
     case "puddle":
-      ctx.fillStyle = "rgba(20,18,11,0.55)";
-      ctx.beginPath();
-      ctx.ellipse(0, size * 0.1, size * 0.55, size * 0.25, 0, 0, Math.PI * 2);
-      ctx.fill();
+    case "puddle_oil": {
+      const fill =
+        sketchKey === "puddle_oil"
+          ? "rgba(192, 96, 32, 0.55)"
+          : "rgba(20,18,11,0.55)";
+      ctx.fillStyle = fill;
+      if (sketchKey === "puddle_oil") {
+        ctx.beginPath();
+        ctx.ellipse(0, size * 0.1, size * 0.55, size * 0.25, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255, 200, 80, 0.2)";
+        ctx.beginPath();
+        ctx.ellipse(-size * 0.1, 0, size * 0.2, size * 0.1, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.ellipse(0, size * 0.1, size * 0.55, size * 0.25, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       break;
+    }
     case "book":
+    case "book_shifted":
+      if (sketchKey === "book_shifted") {
+        ctx.translate(size * 0.06, -size * 0.04);
+        ctx.rotate(0.08);
+      }
       ctx.strokeRect(-size * 0.4, -size * 0.3, size * 0.8, size * 0.6);
       ctx.beginPath();
       ctx.moveTo(0, -size * 0.3);
@@ -624,7 +884,7 @@ function drawPropSketch(
       ctx.fillStyle = CURSOR_AI.ink;
       ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
       ctx.textAlign = "center";
-      ctx.fillText(label.charAt(0).toUpperCase(), 0, size * 0.3);
+      ctx.fillText(sketchKey.charAt(0).toUpperCase(), 0, size * 0.3);
       break;
   }
   ctx.restore();

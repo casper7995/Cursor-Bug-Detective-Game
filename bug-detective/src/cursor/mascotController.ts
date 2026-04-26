@@ -54,6 +54,7 @@ export class MascotController {
     this.landingActive = false;
     this.landingT = 0;
     this.hasFeetTarget = false;
+    this.lastIdleAt = performance.now();
     this.group.position.copy(this.pos);
     this.group.rotation.y = this.yaw;
   }

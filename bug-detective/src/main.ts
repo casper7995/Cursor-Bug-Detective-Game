@@ -22,8 +22,8 @@ import {
 } from "./api/scoreClient";
 import { renderShareCard, tweetIntent, shareCardBlob } from "./ui/shareCard";
 import { renderLeaderboardPanel } from "./ui/leaderboard";
-import { createCountdown } from "./ui/countdown";
 import { createPostFx } from "./three/postFx";
+import { gradeFinalAccusation } from "./game/answerGrader";
 import {
   type AmbientContext,
   setAmbientContext,
@@ -37,7 +37,13 @@ import {
   sfxWrong,
   toggleMute,
 } from "./audio/audio";
-import { formatGameScoresDetail } from "./game/score";
+import { formatGameScoresDetail, GAME_SCORE_LABEL } from "./game/score";
+import {
+  clearSessionScores,
+  getSessionScoreboardView,
+  recordMinigameScore,
+  recordRunnerEndlessClimb,
+} from "./game/sessionScoreboard";
 import { GameState, assertNever, type RunnerMode } from "./game/gameState";
 import { SentenceSession } from "./minigames/sentence/sentenceSession";
 import { ErrandSession } from "./minigames/errand/errandSession";
@@ -167,8 +173,14 @@ function bootGameInner(simplified: boolean): void {
   const GAME_CAMERA_LOOKAT = new THREE.Vector3(-0.2, 0.3, -0.4);
   const INVEST_DEFAULT_CAMERA_DIST =
     GAME_CAMERA_POS.distanceTo(GAME_CAMERA_LOOKAT);
-  /** Nudge a HUD line about scroll/−+ when closer than this to the desk look target. */
-  const DESK_ZOOM_HINT_BELOW_DIST = INVEST_DEFAULT_CAMERA_DIST * 0.66;
+  /**
+   * Investigation desk zoom: exactly two levels on the same view ray — default
+   * wide framing and one closer "detail" step (no continuous dolly).
+   */
+  const INVEST_ZOOM_TIGHT_DIST = Math.max(
+    2.35,
+    INVEST_DEFAULT_CAMERA_DIST * 0.55,
+  );
   const tmpWheelAnchor = new THREE.Vector3();
   const tmpDirScratch = new THREE.Vector3();
 
@@ -595,6 +607,7 @@ function bootGameInner(simplified: boolean): void {
   const state = new GameState();
   const caseFileIntroStartMs = performance.now();
   const hud = createHud(root, diorama);
+  hud.setSessionScores(getSessionScoreboardView());
   hud.element.style.display = "none"; // hidden during intro
   const answerPanel = createAnswerPanel(root);
   const resultsPanel = createResultsPanel(root);
@@ -696,7 +709,6 @@ function bootGameInner(simplified: boolean): void {
     }
     disposeDeskMiniOnly();
     deskMiniCamReturn = null;
-    diorama.flags.envelopeOpen = false;
     diorama.flags.reagentActive = false;
     diorama.flags.lampActive = false;
     removeRunnerTutorialOverlays();
@@ -725,7 +737,6 @@ function bootGameInner(simplified: boolean): void {
   }
 
   function endDeskMiniFromOverlay(): void {
-    diorama.flags.envelopeOpen = false;
     diorama.flags.reagentActive = false;
     diorama.flags.lampActive = false;
     const ret = deskMiniCamReturn;
@@ -947,9 +958,25 @@ function bootGameInner(simplified: boolean): void {
   function handleDeskPointerDown(e: PointerEvent): void {
     if (deskMinigame || runnerSession) return;
     if (state.phase.kind !== "investigating") return;
-    if (inspectZoomActive) exitInspectZoom(200);
-    if (flavorInspectReturn) endFlavorInspectNow();
     const hit = pickDeskInteractionHit(e.clientX, e.clientY);
+    const tag = hit?.object?.userData?.tag;
+    const isMonitor = tag === "monitor" || tag === "monitor-screen";
+    if (inspectZoomActive || flavorInspectReturn) {
+      if (hit?.object && isMonitor) {
+        if (inspectZoomActive) exitInspectZoom(200);
+        else endFlavorInspectNow();
+        dispatchDeskInteractionFromHit(hit, e);
+        return;
+      }
+      if (inspectZoomActive) {
+        exitInspectZoom(200);
+        return;
+      }
+      if (flavorInspectReturn) {
+        endFlavorInspectNow();
+        return;
+      }
+    }
     if (!hit?.object) return;
     dispatchDeskInteractionFromHit(hit, e);
   }
@@ -969,6 +996,9 @@ function bootGameInner(simplified: boolean): void {
   let inspectZoomActive = false;
   let inspectZoomCooldownUntil = 0;
   let lastDeskZoomHint: string | null = null;
+  /** Desk exploration only: 0 = default wide, 1 = single close step. */
+  let investigationZoomLevel: 0 | 1 = 0;
+  let lastDiscreteDeskZoomMs = 0;
 
   /**
    * Inspect framing: stay far enough from props to avoid clipping / huge
@@ -976,10 +1006,6 @@ function bootGameInner(simplified: boolean): void {
    */
   const INSPECT_MIN_DIST_FROM_FOCUS = 1.55;
   const INSPECT_MAX_DIST_FROM_FOCUS = 3.25;
-
-  /** Default investigation scroll (distance to desk look target). */
-  const INVEST_WHEEL_MIN_DIST = 2.15;
-  const INVEST_WHEEL_MAX_DIST = 10.5;
 
   function clampInspectCamDistance(
     camPos: THREE.Vector3,
@@ -1064,24 +1090,59 @@ function bootGameInner(simplified: boolean): void {
   function applyInvestigationWheelDelta(rawDeltaY: number): void {
     if (state.phase.kind !== "investigating") return;
     if (runnerSession || deskMinigame) return;
+    if (Math.abs(rawDeltaY) < 1.5) return;
+    const now = performance.now();
+    if (now - lastDiscreteDeskZoomMs < 90) return;
+    const zoomIn = rawDeltaY < 0;
+    const zoomOut = rawDeltaY > 0;
+    if (!zoomIn && !zoomOut) return;
     if (flavorInspectReturn || inspectZoomActive) {
+      lastDiscreteDeskZoomMs = now;
       cameraRig.copyLookAtInto(tmpWheelAnchor);
-    } else {
-      tmpWheelAnchor.copy(GAME_CAMERA_LOOKAT);
+      if (zoomIn) {
+        cameraRig.setDistanceFromAnchor(
+          tmpWheelAnchor,
+          INSPECT_MIN_DIST_FROM_FOCUS,
+        );
+      } else {
+        cameraRig.setDistanceFromAnchor(
+          tmpWheelAnchor,
+          INSPECT_MAX_DIST_FROM_FOCUS,
+        );
+      }
+      return;
     }
-    const d = cameraRig.camera.position.distanceTo(tmpWheelAnchor);
-    if (d < 1e-4) return;
-    const step = Math.sign(rawDeltaY) * Math.min(120, Math.abs(rawDeltaY));
-    const next = THREE.MathUtils.clamp(
-      d * (1 + step * 0.0009),
-      flavorInspectReturn || inspectZoomActive
-        ? INSPECT_MIN_DIST_FROM_FOCUS
-        : INVEST_WHEEL_MIN_DIST,
-      flavorInspectReturn || inspectZoomActive
-        ? INSPECT_MAX_DIST_FROM_FOCUS
-        : INVEST_WHEEL_MAX_DIST,
-    );
-    cameraRig.setDistanceFromAnchor(tmpWheelAnchor, next);
+    if (zoomIn) {
+      if (investigationZoomLevel === 1) return;
+      lastDiscreteDeskZoomMs = now;
+      investigationZoomLevel = 1;
+      cameraRig.setDistanceFromAnchor(
+        GAME_CAMERA_LOOKAT,
+        INVEST_ZOOM_TIGHT_DIST,
+      );
+      return;
+    }
+    if (investigationZoomLevel === 0) return;
+    lastDiscreteDeskZoomMs = now;
+    investigationZoomLevel = 0;
+    void cameraRig.scriptedTo(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT, 220);
+  }
+
+  function deskZoomWideFromClose(): void {
+    if (investigationZoomLevel === 0) return;
+    investigationZoomLevel = 0;
+    void cameraRig.scriptedTo(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT, 220);
+  }
+
+  /** Keep the discrete level aligned with the camera after scripted moves (e.g. inspect exit). */
+  function syncInvestigationZoomLevelFromCamera(): void {
+    if (state.phase.kind !== "investigating") return;
+    if (runnerSession || deskMinigame) return;
+    if (flavorInspectReturn || inspectZoomActive) return;
+    if (cameraRig.isDollying()) return;
+    const d = cameraRig.camera.position.distanceTo(GAME_CAMERA_LOOKAT);
+    const mid = (INVEST_DEFAULT_CAMERA_DIST + INVEST_ZOOM_TIGHT_DIST) / 2;
+    investigationZoomLevel = d < mid ? 1 : 0;
   }
 
   /**
@@ -1100,6 +1161,7 @@ function bootGameInner(simplified: boolean): void {
       inspectZoomActive = false;
       inspectZoomCooldownUntil = performance.now() + 800;
     }
+    investigationZoomLevel = 0;
     hud.setInspectCaption(null);
     mascotController.setFrozen(false);
     void cameraRig.scriptedTo(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT, 420);
@@ -1119,7 +1181,7 @@ function bootGameInner(simplified: boolean): void {
     resetInvestigationCameraToDefault();
   });
 
-  /** Escape exits inspect; +/− dolly; trackpad pinch uses wheel+ctrl (handled, not ignored). */
+  /** Escape exits inspect or desk close-zoom; +/− step between two levels. */
   document.addEventListener(
     "keydown",
     (e: KeyboardEvent) => {
@@ -1146,7 +1208,8 @@ function bootGameInner(simplified: boolean): void {
       if (e.code !== "Escape" || e.repeat) return;
       e.preventDefault();
       if (inspectZoomActive) exitInspectZoom(420);
-      else endFlavorInspectNow();
+      else if (flavorInspectReturn) endFlavorInspectNow();
+      else deskZoomWideFromClose();
     },
     { capture: true },
   );
@@ -1170,9 +1233,15 @@ function bootGameInner(simplified: boolean): void {
     mascotController.resetAt(mascot.group.position.clone(), 0);
   }
 
-  answerPanel.onSubmit((choiceIndex) => {
+  answerPanel.onSubmitText((text) => {
+    const g = gradeFinalAccusation(text, picked);
+    if (g.kind === "vague" || g.kind === "ambiguous") {
+      answerPanel.setFormHint(g.message);
+      return;
+    }
     sfxUiClick();
-    state.submit(choiceIndex, picked.correctIndex);
+    const correct = g.kind === "correct";
+    state.submit(correct);
     answerPanel.hide();
     if (state.phase.kind === "results") {
       const phase = state.phase;
@@ -1221,7 +1290,6 @@ function bootGameInner(simplified: boolean): void {
   resultsPanel.onBackToDesk(() => {
     if (!state.resumeInvestigatingFromResults(performance.now())) return;
     resultsPanel.hide();
-    countdown.stop();
     lastResults = null;
     if (state.phase.kind !== "investigating") return;
     hud.setNotebook(state.phase.notebook);
@@ -1233,9 +1301,6 @@ function bootGameInner(simplified: boolean): void {
     void cameraRig.scriptedTo(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT, 380);
     mascotController.setFrozen(false);
   });
-
-  const countdown = createCountdown();
-  resultsPanel.setCountdownSlot(countdown.element);
 
   let lastResults: {
     score: number;
@@ -1337,19 +1402,21 @@ function bootGameInner(simplified: boolean): void {
       });
       resultsPanel.setLeaderboardSlot(node);
     });
-    countdown.start();
   }
 
   function startInvestigating(now: number): void {
+    // Case file + envelope flap are shown when the desk first appears (mascot walk);
+    // keep visible here for skip-intro and any path that calls startInvestigating alone.
     diorama.caseFileSheet.visible = true;
     state.enterInvestigating(now);
+    clearSessionScores();
+    hud.setSessionScores(getSessionScoreboardView());
     hud.hideTimer();
     hud.setNotebook({});
     hud.onMakeTheCall(() => enterAnsweringNow(performance.now()));
     hud.setStatusText("sweep the desk — hover props and trust your tooltip");
     resultsPanel.hide();
     answerPanel.hide();
-    countdown.stop();
     lastResults = null;
   }
 
@@ -1365,11 +1432,7 @@ function bootGameInner(simplified: boolean): void {
       .map((p) => p?.clueToken.toUpperCase())
       .filter(Boolean)
       .join(" · ");
-    answerPanel.show(
-      "Make the call — which anomaly is live?",
-      picked.choices,
-      ev,
-    );
+    answerPanel.show("Make the call — which anomaly is live?", ev);
   }
 
   function restartRound(): void {
@@ -1448,16 +1511,24 @@ function bootGameInner(simplified: boolean): void {
   let mascotIntroSpawnedOnDesk = false;
   let introHopBaseY = 0;
   const introLandingFeet = new THREE.Vector3();
+  /**
+   * Case sheet on the desk + 3D envelope flap — as soon as the diorama and mascot
+   * appear, not only after the walk-in finishes.
+   */
+  function revealDeskCaseReadables(): void {
+    diorama.caseFileSheet.visible = true;
+    diorama.flags.envelopeOpen = true;
+  }
   const caseFileCta = document.createElement("div");
   caseFileCta.id = "bd-casefile-cta";
   caseFileCta.setAttribute("role", "status");
   caseFileCta.setAttribute("aria-live", "polite");
   caseFileCta.innerHTML =
     "<div>Press Space, Enter, or click to continue</div>" +
-    "<div style=\"margin-top:8px;font:500 12px 'Cursor Gothic',ui-sans-serif,sans-serif;opacity:0.82;line-height:1.4;\">" +
+    "<div style=\"margin-top:12px;font:500 12px 'Cursor Gothic',ui-sans-serif,sans-serif;opacity:0.82;line-height:1.45;\">" +
     "After the peel: <strong>hover the desk</strong>, then the <strong>four props</strong> from the case file.</div>";
   caseFileCta.style.cssText =
-    "position:fixed;left:50%;bottom:32px;transform:translateX(-50%);max-width:min(92vw,520px);padding:12px 22px;border-radius:12px;background:rgba(26,24,18,0.88);color:#efe7d7;border:1px solid rgba(245,78,0,0.45);font:600 14px 'Cursor Gothic',ui-sans-serif,sans-serif;letter-spacing:0.03em;text-align:center;opacity:0;pointer-events:none;transition:opacity 650ms ease;z-index:60;box-shadow:0 8px 28px rgba(0,0,0,0.45)";
+    "position:fixed;left:50%;bottom:36px;transform:translateX(-50%);max-width:min(92vw,520px);padding:14px 24px 16px;border-radius:12px;background:rgba(26,24,18,0.88);color:#efe7d7;border:1px solid rgba(245,78,0,0.45);font:600 14px 'Cursor Gothic',ui-sans-serif,sans-serif;letter-spacing:0.03em;text-align:center;opacity:0;pointer-events:none;transition:opacity 650ms ease;z-index:60;box-shadow:0 8px 28px rgba(0,0,0,0.45)";
   root.appendChild(caseFileCta);
   renderer.domElement.addEventListener("pointerdown", () => {
     if (state.phase.kind === "intro" && introStep === "waiting") {
@@ -1511,6 +1582,7 @@ function bootGameInner(simplified: boolean): void {
         // the landing step walk it to the default spot.
         if (dioramaRevealed && !mascotIntroSpawnedOnDesk) {
           mascotIntroSpawnedOnDesk = true;
+          revealDeskCaseReadables();
           mascot.group.scale.setScalar(MASCOT_GAME_SCALE);
           const landY =
             diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE;
@@ -1532,6 +1604,7 @@ function bootGameInner(simplified: boolean): void {
             diorama.root.visible = true;
             dioramaRevealed = true;
             mascotIntroSpawnedOnDesk = true;
+            revealDeskCaseReadables();
             mascot.group.scale.setScalar(MASCOT_GAME_SCALE);
             const landY =
               diorama.deskTopY + MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE;
@@ -1590,7 +1663,16 @@ function bootGameInner(simplified: boolean): void {
           hud.element.style.display = "block";
           settings.setVisible(true);
           postFx.setBloomEnabled(true);
-          placeMascotAtDefaultDesk(diorama.deskTopY);
+          // Preserve the walk’s end pose when we land near home; only snap to
+          // the default spot if the long fallback timeout fired while still far.
+          if (close) {
+            mascotController.resetAt(
+              mascot.group.position.clone(),
+              mascot.group.rotation.y,
+            );
+          } else {
+            placeMascotAtDefaultDesk(diorama.deskTopY);
+          }
           startInvestigating(now);
           setIntroStep("done", now);
         }
@@ -1693,22 +1775,7 @@ function bootGameInner(simplified: boolean): void {
     } else if (state.phase.kind === "runner") {
       if (runnerSession && runnerOverlay) {
         const mode = runnerSession.mode;
-        if (input.consumePress(Action.MenuBack)) {
-          if (runnerSession.isGameOver()) {
-            runnerSession.exitFromGameOverToDesktop();
-          } else {
-            void endRunnerSessionAsync(now).then(() => {
-              const phase = state.returnToInvestigatingFromRunner({});
-              if (phase?.monitorDailyClear) {
-                hud.setStatusText(
-                  "Shift+click monitor — daily practice · click monitor — endless",
-                );
-              } else {
-                hud.setStatusText("find the bug — hover to investigate");
-              }
-            });
-          }
-        } else if (runnerSession.isGameOver()) {
+        if (runnerSession.isGameOver()) {
           if (mode === "endless") {
             runnerEndlessDeathTimer += dtSec;
             if (runnerEndlessDeathTimer >= RUNNER_ENDLESS_RESTART_DELAY_S) {
@@ -1728,44 +1795,94 @@ function bootGameInner(simplified: boolean): void {
           runnerSession.step(dtSec, false, false);
         } else {
           runnerEndlessDeathTimer = 0;
-          const jump = input.consumePress(Action.RunnerJump);
-          const wantBoost = input.isDown(Action.RunnerBoost);
-          runnerSession.step(dtSec, jump, wantBoost);
+          if (
+            runnerSession.isDailyCleared() &&
+            input.consumePress(Action.RunnerRetry)
+          ) {
+            runnerSession.restartSameMode();
+          } else {
+            const jump = input.consumePress(Action.RunnerJump);
+            const wantBoost = input.isDown(Action.RunnerBoost);
+            runnerSession.step(dtSec, jump, wantBoost);
+          }
+        }
+
+        if (
+          state.phase.kind === "runner" &&
+          runnerSession.isDailyCleared() &&
+          !state.phase.notebook.runner
+        ) {
+          const peakM = Math.floor(runnerSession.getPeakHeightM());
+          const gs = Math.min(1000, peakM * 5);
+          const tMs = performance.now();
+          if (gs >= 500) {
+            const { newBest: runnerClueNewBest } = recordMinigameScore(
+              "runner",
+              gs,
+              tMs,
+            );
+            state.pinNotebookPage("runner", {
+              clueToken: picked.def.gameClueWords.runner.toUpperCase(),
+              gameScore: gs,
+              solvedAtMs: tMs,
+            });
+            sfxClueFound();
+            if (state.phase.kind === "runner") {
+              hud.setNotebook(state.phase.notebook);
+              hud.setSessionScores(getSessionScoreboardView());
+              hud.setStatusText(
+                `runner clue locked · ${picked.def.gameClueWords.runner.toUpperCase()}${runnerClueNewBest ? " · RUN new best" : ""} · endless: click monitor · daily replay: Shift+click`,
+              );
+            }
+          } else if (state.phase.kind === "runner") {
+            hud.setStatusText(
+              `daily line cleared — reach score 500+ to lock the runner clue (now ${gs}) · Shift+click to retry daily`,
+            );
+          }
+        }
+
+        if (input.consumePress(Action.MenuBack)) {
+          if (runnerSession.isGameOver()) {
+            runnerSession.exitFromGameOverToDesktop();
+          } else {
+            void endRunnerSessionAsync(now).then(() => {
+              const p = state.phase;
+              const runnerUnlocked =
+                p.kind === "runner" && p.notebook.runner !== undefined;
+              const phase = state.returnToInvestigatingFromRunner(
+                runnerUnlocked ? { monitorDailyClear: true } : {},
+              );
+              if (phase?.monitorDailyClear) {
+                hud.setStatusText(
+                  "Shift+click monitor — daily practice · click monitor — endless",
+                );
+              } else {
+                hud.setStatusText("find the bug — hover to investigate");
+              }
+            });
+          }
         }
 
         const out = runnerSession.getOutcome();
         if (out) {
           const captured = out;
-          const peakM = Math.floor(runnerSession.getPeakHeightM());
           void endRunnerSessionAsync(now).then(() => {
-            if (captured.kind === "daily_clear") {
-              const gs = Math.min(1000, peakM * 5);
-              if (state.phase.kind === "runner") {
-                state.pinNotebookPage("runner", {
-                  clueToken: picked.def.gameClueWords.runner.toUpperCase(),
-                  gameScore: gs,
-                  solvedAtMs: performance.now(),
-                });
-              }
-              const phase = state.returnToInvestigatingFromRunner({
-                monitorDailyClear: true,
-              });
-              sfxClueFound();
-              if (phase) hud.setNotebook(phase.notebook);
-              hud.setStatusText(
-                `runner clue locked · ${picked.def.gameClueWords.runner.toUpperCase()} · endless: click monitor · daily replay: Shift+click`,
-              );
-            } else if (captured.kind === "daily_fail") {
+            if (captured.kind === "daily_fail") {
               state.returnToInvestigatingFromRunner({});
               hud.setStatusText(
                 "runner failed — sweep the desk again or click monitor to retry the clue run",
               );
             } else {
+              const climbNew = recordRunnerEndlessClimb(
+                Math.floor(captured.score),
+                performance.now(),
+              );
               state.returnToInvestigatingFromRunner({
                 monitorDailyClear: true,
               });
+              hud.setSessionScores(getSessionScoreboardView());
               hud.setStatusText(
-                `endless complete — best ${captured.score}m · click monitor (endless) · Shift+click (daily)`,
+                `endless complete — best ${captured.score}m${climbNew.newBest ? " · new climb best (session)" : ""} · click monitor (endless) · Shift+click (daily)`,
               );
               void postScore(
                 {
@@ -1802,6 +1919,11 @@ function bootGameInner(simplified: boolean): void {
             : kind === "errand"
               ? "errand"
               : "tamper";
+        const { newBest: deskNewBest } = recordMinigameScore(
+          slot,
+          out.score,
+          now,
+        );
         state.pinNotebookPage(slot, {
           clueToken: out.clueToken,
           gameScore: out.score,
@@ -1809,6 +1931,10 @@ function bootGameInner(simplified: boolean): void {
         });
         if (state.phase.kind === "investigating") {
           hud.setNotebook(state.phase.notebook);
+          hud.setSessionScores(getSessionScoreboardView());
+          hud.setStatusText(
+            `clue locked · ${out.clueToken.toUpperCase()}${deskNewBest ? ` · ${GAME_SCORE_LABEL[slot]} new best` : ""} — sweep the desk`,
+          );
         }
         sfxClueFound();
         endDeskMiniFromOverlay();
@@ -1817,8 +1943,10 @@ function bootGameInner(simplified: boolean): void {
     } else if (state.phase.kind === "investigating") {
       if (input.consumePress(Action.MenuBack)) {
         if (inspectZoomActive) exitInspectZoom(420);
-        else endFlavorInspectNow();
+        else if (flavorInspectReturn) endFlavorInspectNow();
+        else deskZoomWideFromClose();
       }
+      syncInvestigationZoomLevelFromCamera();
       cursorTracker.updateFeetTarget();
       const hasFeet = cursorTracker.hasFeetHit;
       if (hasFeet) cursorTracker.copyFeetWorldTo(tmpFeet);
@@ -1883,11 +2011,10 @@ function bootGameInner(simplified: boolean): void {
 
       {
         const lim = inspectZoomActive || flavorInspectReturn;
-        const dist = cameraRig.camera.position.distanceTo(GAME_CAMERA_LOOKAT);
         const nextHint =
-          lim || dist >= DESK_ZOOM_HINT_BELOW_DIST
+          lim || investigationZoomLevel === 0
             ? null
-            : "Zoomed in — scroll, two-finger scroll, or − to widen · + to tighten";
+            : "Close view — Esc, scroll down, or − (wide · + is closer)";
         if (nextHint !== lastDeskZoomHint) {
           lastDeskZoomHint = nextHint;
           hud.setViewZoomHint(nextHint);
@@ -1992,6 +2119,7 @@ function bootGameInner(simplified: boolean): void {
     caseFileCta.remove();
     pagePeel.mesh.visible = false;
     diorama.caseFileSheet.visible = true;
+    diorama.flags.envelopeOpen = true;
     diorama.root.visible = true;
     cameraRig.setStatic(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT);
     cursorTracker.setTarget(diorama.desk);

@@ -164,29 +164,47 @@ export function makeFakePageTexture(
   ctx.textAlign = "right";
   ctx.font = `${Math.floor(navH * 0.34)}px ui-sans-serif, system-ui, sans-serif`;
   const navItems = ["evidence", "timeline", "notes", "archive"];
-  let nx = cw * 0.96;
+  const navLinkGap = cw * 0.028;
+  const navRightMargin = cw * 0.06;
+  let nx = cw - navRightMargin;
   for (let i = navItems.length - 1; i >= 0; i--) {
     const tw = ctx.measureText(navItems[i] ?? "").width;
     ctx.fillText(navItems[i] ?? "", nx, navH / 2);
-    nx -= tw + cw * 0.03;
+    nx -= tw + navLinkGap;
   }
 
-  // Big serif headline
+  // Big serif headline — fit to ~7% margins left/right (max width 86% of canvas)
+  const marginXL = cw * 0.07;
+  const maxHeadlineWidth = cw * 0.86;
+  const HEADLINE = "OPEN INVESTIGATION";
+  let headlineFontPx = Math.floor(ch * 0.078);
+  const minHeadlinePx = Math.max(20, Math.floor(ch * 0.042));
   const headlineY = navH + ch * 0.18;
   ctx.fillStyle = "#1f2330";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  ctx.font = `700 ${Math.floor(ch * 0.078)}px Georgia, "Times New Roman", serif`;
-  ctx.fillText("OPEN INVESTIGATION", cw * 0.07, headlineY);
+  for (;;) {
+    ctx.font = `700 ${headlineFontPx}px Georgia, "Times New Roman", serif`;
+    if (ctx.measureText(HEADLINE).width <= maxHeadlineWidth) break;
+    headlineFontPx -= 1;
+    if (headlineFontPx < minHeadlinePx) {
+      ctx.font = `700 ${minHeadlinePx}px Georgia, "Times New Roman", serif`;
+      headlineFontPx = minHeadlinePx;
+      break;
+    }
+  }
+  ctx.fillText(HEADLINE, marginXL, headlineY);
 
-  // Subtitle
+  // Subtitle — gap scales slightly with final headline size
+  const subY =
+    headlineY + Math.max(ch * 0.048, headlineFontPx * 0.72 + ch * 0.02);
   ctx.fillStyle = "#6f7080";
   ctx.font = `400 ${Math.floor(ch * 0.024)}px ui-sans-serif, sans-serif`;
-  ctx.fillText(CASE_FILE_TAGLINE, cw * 0.07, headlineY + ch * 0.042);
+  ctx.fillText(CASE_FILE_TAGLINE, marginXL, subY);
 
   // How to play + flavor (shared copy with optional DOM modal)
-  let ly = headlineY + ch * 0.09;
-  const lineStep = ch * 0.026;
+  let ly = subY + ch * 0.055;
+  const lineStep = ch * 0.032;
   const marginX = cw * 0.07;
   for (let i = 0; i < CASE_FILE_BODY_LINES.length; i++) {
     const line = CASE_FILE_BODY_LINES[i] ?? "";
@@ -194,13 +212,13 @@ export function makeFakePageTexture(
       ctx.fillStyle = "#c45a18";
       ctx.font = `700 ${Math.floor(ch * 0.024)}px ui-sans-serif, sans-serif`;
       ctx.fillText(line, marginX, ly);
-      ly += lineStep * 1.05;
+      ly += lineStep * 1.25;
       ctx.fillStyle = "#2a2d36";
       ctx.font = `400 ${Math.floor(ch * 0.019)}px ui-sans-serif, sans-serif`;
       continue;
     }
     if (line.length === 0) {
-      ly += lineStep * 0.35;
+      ly += lineStep * 0.6;
       continue;
     }
     ctx.fillStyle = "#2a2d36";
@@ -210,7 +228,7 @@ export function makeFakePageTexture(
   }
 
   // Evidence-style thumbnails (same footprint as former placeholders)
-  const cardY = ly + ch * 0.028;
+  const cardY = ly + ch * 0.042;
   const cardW = cw * 0.4;
   const cardH = ch * 0.12;
   const gap = cw * 0.04;
@@ -218,11 +236,15 @@ export function makeFakePageTexture(
   drawFingerprintEvidenceCard(ctx, leftX, cardY, cardW, cardH, ch);
   drawClueTagEvidenceCard(ctx, leftX + cardW + gap, cardY, cardW, cardH, ch);
 
-  // Footer
-  const footerY = ch - ch * 0.05;
+  // Footer — always below the cards, and (when there is room) high enough to clear the fixed CTA
+  const cardBottom = cardY + cardH;
+  const minBelowCards = cardBottom + ch * 0.038;
+  const targetClearCta = ch * 0.796;
+  const footerY = Math.min(ch * 0.88, Math.max(minBelowCards, targetClearCta));
   ctx.fillStyle = "#9aa0b0";
   ctx.font = `${Math.floor(ch * 0.018)}px ui-sans-serif, sans-serif`;
   ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
   ctx.fillText(
     "Cursor Detective · case jacket (discard after peel)",
     cw / 2,

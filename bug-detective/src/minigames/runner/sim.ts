@@ -62,10 +62,23 @@ export interface RunnerSimState {
   readonly projectiles: readonly RunnerProjectile[];
   /** `elapsedMs` when the next gap projectile may spawn. */
   readonly nextProjectileSpawnAtMs: number;
+  /**
+   * Daily: scroll has crossed the goal line; sim keeps running. Does not set `finished`
+   * so the player can keep going (and we can append more course).
+   */
+  readonly dailyLineCrossed: boolean;
 }
+
+/** Default world-scroll distance to count as the daily “finish line” (HUD + score). */
+export const DEFAULT_DAILY_GOAL_SCROLL = 4000;
 
 const PLAYER_W = 44;
 const PLAYER_H = 52;
+/**
+ * Support uses a narrow underfoot band (not full body width) so a visible gap
+ * between snippets is not bridged by the mascot’s full hit box.
+ */
+const SUPPORT_FOOT_W = 20;
 /** Screen-space x of player left edge; world x = scroll + this. */
 export const PLAYER_SCREEN_X = 96;
 const GRAVITY = 3200;
@@ -213,25 +226,115 @@ export function endlessTierFromMaxClimbM(maxClimbM: number): number {
 }
 
 /**
- * +5% horizontal speed per tier (uncapped — endless keeps speeding up).
+ * +7% horizontal speed per tier (uncapped — endless keeps speeding up).
  * Used for scroll speed and gap generation in step + plank gen.
  */
 export function effectiveSpeedBaseForTier(tier: number): number {
   const t = Math.max(0, tier);
-  return SPEED_BASE * (1 + 0.05 * t);
+  return SPEED_BASE * (1 + 0.07 * t);
 }
 
-/** Upper bound for normal (non–death-pit) gaps only — death gaps exceed this on purpose. */
+/**
+ * Full-boost horizontal speed at this tier. Scales the tier-0 ratio (540/228) so
+ * held-boost run speed is not hard-capped at 540 for the first ~20 tiers.
+ * At tier 0, equals {@link RUNNER_SPEED_BOOST_MAX}.
+ */
+export function boostSpeedForTier(tier: number): number {
+  return effectiveSpeedBaseForTier(tier) * (SPEED_BOOST_MAX / SPEED_BASE);
+}
+
+/**
+ * Horizontal scroll speed for one step. Boost never reduces speed when base tier
+ * already exceeds max boost (avoids negative lerp).
+ */
+export function horizontalRunSpeedPxPerSec(
+  rampTier: number,
+  boost01: number,
+  wantBoost: boolean,
+): number {
+  const speed0 = effectiveSpeedBaseForTier(rampTier);
+  if (!wantBoost || boost01 <= 0) return speed0;
+  const speedBoost = boostSpeedForTier(rampTier);
+  const boosted = speed0 + (speedBoost - speed0) * boost01;
+  return Math.max(speed0, boosted);
+}
+
+/** Pixels to leave under a raw jump-physics reach for “normal” gaps. */
+const GAP_BASE_MARGIN = 40;
+/** Stricter underfoot margin for “must boost” gap ceiling. */
+const GAP_BOOST_MARGIN = 32;
+
+/**
+ * Best-case horizontal travel (px) in one jump at `speed` (no extra slack).
+ * Used by generation + reachability tests.
+ */
+export function maxBaseReachPx(speed: number): number {
+  return Math.max(0, horizontalJumpRange(speed) - GAP_BASE_MARGIN);
+}
+
+/**
+ * Upper travel (px) in one hop at this tier’s full-boost speed.
+ * Death-gap ceilings and boost-gap generation use this.
+ */
+export function maxBoostReachForTier(tier: number): number {
+  return Math.max(
+    0,
+    horizontalJumpRange(boostSpeedForTier(tier)) - GAP_BOOST_MARGIN,
+  );
+}
+
+/**
+ * Tier-0 full-boost reach (back-compat with older tests / call sites).
+ * Prefer {@link maxBoostReachForTier} for tier-aware generation.
+ */
+export function maxBoostReachPx(): number {
+  return maxBoostReachForTier(0);
+}
+
+/**
+ * A boost-only gap should be this much wider than the base run’s normal max at least.
+ * (Otherwise it is not meaningfully a “hold boost” beat.)
+ */
+const BOOST_GAP_MIN_OVER_BASE = 5;
+
+/**
+ * Tighten horizontal span when the next platform is **higher** (smaller yTop).
+ * Long gaps + big upward steps are the main “no landing” failure mode; this keeps
+ * combined gap+step within what the one-airtime model supports.
+ */
+function tightenGapForClimbPx(
+  gap: number,
+  prevYTop: number,
+  nextYTop: number,
+  endlessTier: number,
+): number {
+  const climbPx = Math.max(0, prevYTop - nextYTop);
+  if (climbPx < 0.1) return gap;
+  const w = 0.018 + Math.min(0.012, endlessTier * 0.0012);
+  const f = 1 - w * Math.min(38, climbPx);
+  return Math.max(MIN_GAP, Math.floor(gap * f));
+}
+
+/** Upper bound for normal (non–death-pit) gaps only — never exceeds ~base jump. */
 export function maxGapForSpeed(speed: number): number {
-  return Math.min(100, horizontalJumpRange(speed) - 36);
+  return Math.min(100, maxBaseReachPx(speed));
+}
+
+/**
+ * 1.0 at tier 0, down to ~0.5 at very high endless tiers — shrinks the rng plank
+ * width while {@link snippetWidthForPlankId} + padding still sets a minimum.
+ */
+export function plankWidthTightenForEndlessTier(endlessTier: number): number {
+  return Math.max(0.5, 1 - 0.022 * Math.min(30, Math.max(0, endlessTier)));
 }
 
 /**
  * Gap after this plank id is wider than base-speed jump reach — player must boost.
- * `endlessTier` tightens cadence: period = max(3, 7 - min(tier, 4)) planks.
+ * Tightens cadence as tier increases (as early as every 2 planks in high tier).
  */
 export function isDeathGapAfterPlankId(sid: number, endlessTier = 0): boolean {
-  const period = Math.max(3, 7 - Math.min(Math.max(0, endlessTier), 4));
+  const t = Math.max(0, endlessTier);
+  const period = Math.max(2, 6 - Math.min(t, 4));
   return sid % period === 0 && sid > 3;
 }
 
@@ -257,13 +360,13 @@ export function deathGapPx(
   speedForReach: number,
   endlessTier: number,
 ): number {
-  const maxDeath = horizontalJumpRange(SPEED_BOOST_MAX) - 24;
-  const slackLo = endlessTier <= 1 ? 8 : 18;
-  const slackRng = endlessTier <= 1 ? 14 : 32;
-  const raw = Math.round(
-    horizontalJumpRange(speedForReach) + slackLo + rng() * slackRng,
-  );
-  return Math.min(raw, maxDeath);
+  const minNeed = maxBaseReachPx(speedForReach) + BOOST_GAP_MIN_OVER_BASE;
+  const cap = maxBoostReachForTier(endlessTier);
+  if (minNeed >= cap) return Math.max(MIN_GAP, cap);
+  const headroom = cap - minNeed;
+  const slackRng = endlessTier <= 1 ? 0.2 : 0.5;
+  const extra = headroom * rng() * slackRng;
+  return Math.min(cap, Math.max(MIN_GAP, minNeed, Math.floor(minNeed + extra)));
 }
 
 export function deriveRunnerSeed(dailySeed: number): number {
@@ -281,6 +384,16 @@ function isPlankSolid(
   return elapsedMs - p.bornAtMs < pristineLifeMs;
 }
 
+/** World x span under the feet (narrow) for support and landing, not full sprite width. */
+function footXRange(scroll: number): {
+  readonly fx0: number;
+  readonly fx1: number;
+} {
+  const cx = scroll + PLAYER_SCREEN_X + PLAYER_W * 0.5;
+  const half = SUPPORT_FOOT_W * 0.5;
+  return { fx0: cx - half, fx1: cx + half };
+}
+
 /**
  * Lowest walkable surface under the player (feet y), or +Infinity if none.
  * `pristineLifeMs` is from `pristineLifeMsForTier(tier)` for the active ramp.
@@ -291,12 +404,11 @@ export function supportYTop(
   elapsedMs: number,
   pristineLifeMs: number,
 ): number {
-  const px0 = scroll + PLAYER_SCREEN_X;
-  const px1 = px0 + PLAYER_W;
+  const { fx0, fx1 } = footXRange(scroll);
   let best = Number.POSITIVE_INFINITY;
   for (const p of planks) {
     if (!isPlankSolid(p, elapsedMs, pristineLifeMs)) continue;
-    if (px1 > p.x0 && px0 < p.x1) {
+    if (fx1 > p.x0 && fx0 < p.x1) {
       best = Math.min(best, p.yTop);
     }
   }
@@ -309,8 +421,14 @@ export interface GeneratePlanksOpts {
   readonly anomalyId?: AnomalyId;
   /** Endless ramp: death-gap frequency + gap sizing (default 0). */
   readonly endlessTier?: number;
-  /** Sim elapsed ms when planks are born (for pristine decay). */
+  /** Sim elapsed ms when the batch is allocated (pristine base for daily / shared start). */
   readonly nowMs?: number;
+  /**
+   * World scroll at generation time. When set (initial daily, endless, or stitched batches),
+   * each untouched plank’s `bornAtMs` is delayed by travel time from the player to that
+   * plank at full-boost speed so far-ahead snippets do not “fade out” before you arrive.
+   */
+  readonly scrollForPristine?: number;
   /** Current HUD max climb (m); endless warm-up uses this with plank id. */
   readonly maxClimbMForWarmup?: number;
 }
@@ -329,14 +447,22 @@ export function generateInitialPlanks(
   const anomalyId = opts?.anomalyId ?? "calendar-tomorrow";
   const endlessTier = opts?.endlessTier ?? 0;
   const maxClimbMForWarmup = opts?.maxClimbMForWarmup ?? 0;
-  const bornAtMs = opts?.nowMs ?? 0;
+  const nowBase = opts?.nowMs ?? 0;
+  const scrollRef = opts?.scrollForPristine;
   const speedForTier = effectiveSpeedBaseForTier(endlessTier);
   const targetEnd =
     mode === "daily"
       ? goalDistance + 400 + Math.floor(rng() * 400)
       : genCursor + 9000;
 
-  const maxGap = maxGapForSpeed(speedForTier);
+  const maxNormalGap = maxGapForSpeed(speedForTier);
+  const boostFloor = maxBaseReachPx(speedForTier) + BOOST_GAP_MIN_OVER_BASE;
+  const boostCeil = maxBoostReachForTier(endlessTier);
+  const travelRefSpeed = Math.max(
+    SPEED_BOOST_MAX,
+    boostSpeedForTier(endlessTier),
+  );
+  const widthTighten = plankWidthTightenForEndlessTier(endlessTier);
   let prevYTop =
     opts?.continueFromYTop ??
     clamp(280 - genCursor * 0.07 + (rng() - 0.5) * 36, 196, 270);
@@ -344,9 +470,11 @@ export function generateInitialPlanks(
   while (x < targetEnd) {
     const sid = nextId++;
     const textW = snippetWidthForPlankId(sid, anomalyId);
-    const w = Math.max(88 + Math.floor(rng() * 110), textW + 16);
-    const baseGap =
-      MIN_GAP + Math.floor(rng() * Math.max(1, maxGap - MIN_GAP + 1));
+    const wPad = 16;
+    const wRng = 88 + Math.floor(rng() * 110);
+    const w = Math.max(Math.ceil(wRng * widthTighten), textW + wPad);
+    const baseRngGap =
+      MIN_GAP + Math.floor(rng() * Math.max(1, maxNormalGap - MIN_GAP + 1));
     const wantDeathGap =
       isDeathGapAfterPlankId(sid, endlessTier) &&
       !shouldSuppressEndlessDeathGap(
@@ -355,9 +483,9 @@ export function generateInitialPlanks(
         sid,
         maxClimbMForWarmup,
       );
-    const gap = wantDeathGap
+    let gap = wantDeathGap
       ? deathGapPx(rng, speedForTier, endlessTier)
-      : baseGap;
+      : baseRngGap;
 
     const midX = x + w * 0.5;
     const climbBaseY = 280 - midX * 0.07;
@@ -369,8 +497,28 @@ export function generateInitialPlanks(
     const minNext = prevYTop - (MAX_JUMP_UP - 8);
     const maxNext = prevYTop + 40;
     yTop = clamp(yTop, minNext, maxNext);
-    // No upper cap — climb can keep rising; camera follows.
-    yTop = Math.max(80, yTop);
+    // minNext / maxNext bound vertical reach; no high screen-clamp (camera follows).
+
+    gap = tightenGapForClimbPx(gap, prevYTop, yTop, endlessTier);
+    if (wantDeathGap) {
+      gap = Math.min(gap, boostCeil);
+      gap = Math.max(gap, Math.min(boostFloor, boostCeil));
+    } else {
+      gap = Math.min(gap, maxNormalGap);
+    }
+
+    // Integer gap + advance keeps plank x0/x1 from float drift in gap checks.
+    gap = Math.max(MIN_GAP, Math.round(gap));
+
+    // Stagger pristine decay so far-ahead planks stay solid until the player can reach them.
+    let bornAtMs: number;
+    if (scrollRef != null) {
+      const dist = Math.max(0, x - (scrollRef + PLAYER_SCREEN_X));
+      const travelMs = (dist / travelRefSpeed) * 1000;
+      bornAtMs = Math.floor(nowBase + travelMs);
+    } else {
+      bornAtMs = nowBase;
+    }
 
     planks.push({
       id: sid,
@@ -395,6 +543,8 @@ export function createRunnerSim(
   const rng = makeSeededRng(deriveRunnerSeed(dailySeed));
   const gen = generateInitialPlanks(rng, mode, 40, cfg.dailyGoalDistance, 0, {
     anomalyId,
+    nowMs: 0,
+    scrollForPristine: 0,
   });
   const { planks, nextCursor, nextPlankId } = gen;
   return finalizeNewSim(mode, planks, nextCursor, nextPlankId, rng, anomalyId);
@@ -410,6 +560,8 @@ export function createRunnerSimWithSeed(
   const rng = makeSeededRng(deriveRunnerSeed(runSeed));
   const gen = generateInitialPlanks(rng, mode, 40, cfg.dailyGoalDistance, 0, {
     anomalyId,
+    nowMs: 0,
+    scrollForPristine: 0,
   });
   const { planks, nextCursor, nextPlankId } = gen;
   return finalizeNewSim(mode, planks, nextCursor, nextPlankId, rng, anomalyId);
@@ -451,6 +603,7 @@ function finalizeNewSim(
     anomalyId,
     projectiles: [],
     nextProjectileSpawnAtMs: mode === "endless" ? 5000 : 0,
+    dailyLineCrossed: false,
   };
 }
 
@@ -461,13 +614,12 @@ function findLandPlank(
   elapsedMs: number,
   pristineLifeMs: number,
 ): CodePlank | null {
-  const px0 = scroll + PLAYER_SCREEN_X;
-  const px1 = px0 + PLAYER_W;
+  const { fx0, fx1 } = footXRange(scroll);
   let best: CodePlank | null = null;
   let bestY = Number.POSITIVE_INFINITY;
   for (const p of planks) {
     if (!isPlankSolid(p, elapsedMs, pristineLifeMs)) continue;
-    if (px1 > p.x0 && px0 < p.x1 && p.yTop < bestY && feetY >= p.yTop - 4) {
+    if (fx1 > p.x0 && fx0 < p.x1 && p.yTop < bestY && feetY >= p.yTop - 4) {
       best = p;
       bestY = p.yTop;
     }
@@ -482,7 +634,8 @@ export function stepRunnerSim(
   wantBoost: boolean,
   cfg: RunnerSimConfig,
 ): RunnerSimState {
-  if (state.finished || state.failed) return state;
+  if (state.failed) return state;
+  if (state.finished) return state;
 
   const nextElapsed = state.elapsedMs + dtSec * 1000;
   const wasGrounded = state.grounded;
@@ -494,9 +647,7 @@ export function stepRunnerSim(
     state.mode,
     state.mode === "endless" ? state.maxClimbM : 0,
   );
-  const speed0 = effectiveSpeedBaseForTier(rampTier);
-  const speed =
-    speed0 + (SPEED_BOOST_MAX - speed0) * boost01 * (wantBoost ? 1 : 0);
+  const speed = horizontalRunSpeedPxPerSec(rampTier, boost01, wantBoost);
   const scroll = state.scroll + speed * dtSec;
 
   let playerVy = state.playerVy;
@@ -619,30 +770,18 @@ export function stepRunnerSim(
     };
   }
 
-  if (state.mode === "daily" && scroll >= cfg.dailyGoalDistance) {
-    return {
-      ...state,
-      finished: true,
-      scroll: cfg.dailyGoalDistance,
-      playerY,
-      playerVy: 0,
-      grounded: true,
-      maxScroll: Math.max(state.maxScroll, cfg.dailyGoalDistance),
-      elapsedMs: nextElapsed,
-      planks,
-      boost01,
-      lastGroundSurfaceY,
-      minFeetY,
-      maxClimbM,
-      projectiles,
-      nextProjectileSpawnAtMs: state.nextProjectileSpawnAtMs,
-    };
-  }
+  const nextDailyLineCrossed =
+    state.dailyLineCrossed ||
+    (state.mode === "daily" && scroll >= cfg.dailyGoalDistance);
 
   let genCursor = state.genCursor;
   let nextPlankId = state.nextPlankId;
   const rng = state.rng;
-  if (state.mode === "endless" && scroll + 1000 > genCursor) {
+  if (
+    (state.mode === "endless" ||
+      (state.mode === "daily" && nextDailyLineCrossed)) &&
+    scroll + 1000 > genCursor
+  ) {
     const lastPlank = planks.length > 0 ? planks[planks.length - 1] : null;
     const genTier = endlessTierFromMaxClimbM(maxClimbM);
     const add = generateInitialPlanks(
@@ -657,12 +796,14 @@ export function stepRunnerSim(
             anomalyId: state.anomalyId,
             endlessTier: genTier,
             nowMs: nextElapsed,
+            scrollForPristine: scroll,
             maxClimbMForWarmup: maxClimbM,
           }
         : {
             anomalyId: state.anomalyId,
             endlessTier: genTier,
             nowMs: nextElapsed,
+            scrollForPristine: scroll,
             maxClimbMForWarmup: maxClimbM,
           },
     );
@@ -712,7 +853,8 @@ export function stepRunnerSim(
     nextPlankId,
     rng,
     failed: false,
-    finished: state.finished,
+    finished: false,
+    dailyLineCrossed: nextDailyLineCrossed,
     elapsedMs: nextElapsed,
     boost01,
     lastGroundSurfaceY,

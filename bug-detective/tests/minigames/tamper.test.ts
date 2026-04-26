@@ -6,9 +6,46 @@ import {
   namespacedSeed,
   spotById,
 } from "../../src/minigames/tamper/round";
+import { getTamperTutorialDiagramLayout } from "../../src/minigames/tamper/draw";
 import { clueTokenForTamper } from "../../src/minigames/tamper/clueTokens";
 import { TAMPER_CALLS_PER_ROUND } from "../../src/minigames/tamper/types";
 import type { CallVerdict } from "../../src/minigames/tamper/types";
+import { TAMPER_SCENES } from "../../src/minigames/tamper/scenes";
+
+/** Keys used in `drawPropSketch` for tamper TONIGHT variants (keep in sync). */
+const TAMPER_TONIGHT_SKETCH_KEYS = new Set([
+  "stamp_offset",
+  "photo_glare",
+  "pen_smudge",
+  "staple",
+  "signature_loopy",
+  "vial_empty",
+  "tag_torn",
+  "key_bent",
+  "boot_smear",
+  "ledger_fold",
+  "lampshade_tape",
+  "switch_scuff",
+  "wire_cut",
+  "puddle_oil",
+  "book_shifted",
+]);
+
+describe("tamper scene spot-the-difference data", () => {
+  it("every scene row defines a text and icon variant for the tampered case", () => {
+    for (const scene of TAMPER_SCENES) {
+      for (const spot of scene.spots) {
+        expect(spot.tonightIfThisTampered.length).toBeGreaterThan(0);
+        expect(spot.tonightIfThisTampered).not.toBe(spot.label);
+        expect(spot.tonightSketchKey).toBeDefined();
+        expect(TAMPER_TONIGHT_SKETCH_KEYS.has(spot.tonightSketchKey!)).toBe(
+          true,
+        );
+        expect(spot.tonightSketchKey).not.toBe(spot.sketchKey);
+      }
+    }
+  });
+});
 
 describe("tamper round determinism", () => {
   it("same seed produces identical call list", () => {
@@ -31,6 +68,16 @@ describe("tamper round determinism", () => {
     expect(r.calls.length).toBe(TAMPER_CALLS_PER_ROUND);
     const tamperedCount = r.scene.spots.filter((s) => s.tampered).length;
     expect(tamperedCount).toBe(1);
+  });
+
+  it("many seeds each mark exactly one tampered spot", () => {
+    for (let seed = 0; seed < 64; seed++) {
+      const r = buildTamperRound(seed);
+      expect(r.scene.spots.filter((s) => s.tampered).length).toBe(1);
+      expect(r.tamperedSpotId).toBe(
+        r.scene.spots.find((s) => s.tampered)?.id ?? "",
+      );
+    }
   });
 });
 
@@ -133,5 +180,22 @@ describe("tamper helpers", () => {
     const first = r.scene.spots[0]!;
     expect(spotById(r.scene, first.id)?.id).toBe(first.id);
     expect(spotById(r.scene, "nope")).toBeNull();
+  });
+});
+
+describe("tamper tutorial diagram layout", () => {
+  it("keeps the sample row centered with comfortable button spacing", () => {
+    const layout = getTamperTutorialDiagramLayout(64, 140, 384, 40, 74);
+
+    expect(layout.avatar.cy).toBe(layout.centerY);
+    expect(layout.label.y).toBe(layout.centerY);
+    expect(layout.agree.y + layout.agree.h / 2).toBe(layout.centerY);
+    expect(layout.disagree.y + layout.disagree.h / 2).toBe(layout.centerY);
+
+    expect(layout.agree.x - layout.labelEndX).toBeGreaterThanOrEqual(12);
+    expect(layout.disagree.x - (layout.agree.x + layout.agree.w)).toBe(8);
+    expect(layout.agree.w).toBeGreaterThanOrEqual(68);
+    expect(layout.disagree.w).toBeGreaterThanOrEqual(82);
+    expect(layout.disagree.x + layout.disagree.w).toBeLessThanOrEqual(64 + 384);
   });
 });

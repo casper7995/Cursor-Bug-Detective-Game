@@ -46,10 +46,11 @@ export const SENTENCE_LAYOUT = {
   editorX: 16,
   editorY: 44,
   editorW: 480,
-  editorH: 196,
+  /** Slightly shorter so the pick popover + footer fit in 320px canvas. */
+  editorH: 172,
   /** Suggestion popover positioned beneath the editor. */
   popoverX: 28,
-  popoverY: 250,
+  popoverY: 220,
   popoverW: 358,
   popoverRowH: 22,
 } as const;
@@ -207,7 +208,9 @@ export function drawSuggestionPopover(
   const first = rows[0] as SuggestionRowRect;
   const last = rows[rows.length - 1] as SuggestionRowRect;
   const popW = first.w;
-  const popH = last.y + last.h - first.y + 24;
+  /** Space for hint line, gap, timer track, and bottom inset (fits 512×320). */
+  const FOOTER_PAD = 34;
+  const popH = last.y + last.h - first.y + FOOTER_PAD;
   // Soft popover card
   drawAiCard(ctx, first.x, first.y, popW, popH, { radius: 8 });
   // Each row
@@ -252,22 +255,24 @@ export function drawSuggestionPopover(
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
   }
+  const cardBottom = first.y + popH;
+  const trackH = 4;
+  const progressTop = cardBottom - 2 - trackH;
+  const hintBaseline = progressTop - 5;
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText(
-    "Tab cycles · Enter accepts · read the clue",
-    first.x + 8,
-    first.y + popH - 20,
-  );
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  let hint = "Tab cycles · Enter accepts · read the clue";
+  const hintMax = popW - 24;
+  if (ctx.measureText(hint).width > hintMax) {
+    hint = "Tab / Enter — read the clue";
+  }
+  ctx.fillText(hint, first.x + 8, hintBaseline);
   // Idle timer line at the bottom of the popover
-  drawAiProgressLine(
-    ctx,
-    first.x + 8,
-    first.y + popH - 10,
-    popW - 16,
-    secondsLeft01,
-    { tone: secondsLeft01 < 0.25 ? "alert" : "default" },
-  );
+  drawAiProgressLine(ctx, first.x + 8, progressTop, popW - 16, secondsLeft01, {
+    tone: secondsLeft01 < 0.25 ? "alert" : "default",
+  });
 }
 
 // ---------------------------------------------------------------------

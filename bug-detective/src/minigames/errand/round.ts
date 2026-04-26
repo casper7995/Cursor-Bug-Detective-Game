@@ -192,12 +192,14 @@ export function scoreErrandRun(t: ErrandTotals): number {
   return Math.max(0, Math.min(1000, base));
 }
 
-/** Desk clue: require at least two player-issued dispatches and one delivered clue. */
+/** Desk clue: 2+ clue picks, or 1 clue with zero traps. */
 export function errandEarnsDeskClue(
-  playerDispatched: number,
   clueCount: number,
+  trapCount: number,
 ): boolean {
-  return playerDispatched >= 2 && clueCount >= 1;
+  if (clueCount >= 2) return true;
+  if (clueCount === 1 && trapCount === 0) return true;
+  return false;
 }
 
 export function canAssignHelper(

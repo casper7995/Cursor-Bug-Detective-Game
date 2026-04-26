@@ -6,11 +6,10 @@ import {
   ENDLESS_DEATH_GAP_WARMUP_MIN_CLIMB_M,
   ENDLESS_DEATH_GAP_WARMUP_MIN_PLANK_ID,
   generateInitialPlanks,
-  horizontalJumpRange,
   isDeathGapAfterPlankId,
+  maxBoostReachForTier,
   maxGapForSpeed,
   RUNNER_SPEED_BASE,
-  RUNNER_SPEED_BOOST_MAX,
   shouldSuppressEndlessDeathGap,
 } from "../src/minigames/runner/sim";
 
@@ -67,11 +66,11 @@ describe("endless death-gap warm-up", () => {
   });
 
   it("low-tier death gaps stay within full-boost reach cap", () => {
-    const maxDeath = horizontalJumpRange(RUNNER_SPEED_BOOST_MAX) - 16;
     for (const tier of [0, 1, 2, 5] as const) {
-      const speed = RUNNER_SPEED_BASE * (1 + 0.05 * Math.max(0, tier));
+      const cap = maxBoostReachForTier(tier);
+      const speed = RUNNER_SPEED_BASE * (1 + 0.07 * Math.max(0, tier));
       const g = deathGapPx(() => 1, speed, tier);
-      expect(g).toBeLessThanOrEqual(maxDeath + 0.01);
+      expect(g).toBeLessThanOrEqual(cap + 0.01);
     }
   });
 });

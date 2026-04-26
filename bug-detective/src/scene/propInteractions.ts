@@ -24,21 +24,19 @@ export function applyPropFlavor(tag: string, o: DioramaObjects): string | null {
     case "lamp":
       o.lamp.userData.flavorEndMs = end;
       return "Desk lamp, warm CCT, mild judgment.";
-    case "desk":
-      o.desk.userData.flavorEndMs = end;
-      return "Solid surface. Holds the whole sprint.";
     default:
       return null;
   }
 }
 
 export function isFlavorTag(tag: string): boolean {
+  // The bare desk is hoverable for cursor projection, but it is not an
+  // investigable prop; clicking it must not start a camera focus tween.
   return (
     tag === "calendar" ||
     tag === "mug" ||
     tag === "keyboard" ||
     tag === "coffee-steam" ||
-    tag === "lamp" ||
-    tag === "desk"
+    tag === "lamp"
   );
 }

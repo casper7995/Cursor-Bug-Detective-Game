@@ -72,14 +72,16 @@ export function createDesktopDiorama(): DioramaObjects {
   const flags: DioramaFlags = {
     clockReverse: false,
     steamDownward: false,
-    envelopeOpen: false,
+    /** Desk starts with the case envelope already open (no flap-opening beat). */
+    envelopeOpen: true,
     reagentActive: false,
     lampActive: false,
   };
 
   const hoverables: THREE.Object3D[] = [];
   let deskHighlightTag: string | null = null;
-  let envelopeOpenLerp = 0;
+  /** 1 = open pose; lerp is kept for reagent/lamp but envelope flap is hidden. */
+  let envelopeOpenLerp = 1;
   let reagentActiveLerp = 0;
   let lampActiveLerp = 0;
   const GOLD_HEX = 0xc08532;
@@ -198,6 +200,22 @@ export function createDesktopDiorama(): DioramaObjects {
   monitor.add(monitorScreen);
   hoverables.push(monitorScreen);
 
+  // Invisible wider plane in front of bezel + screen — easier to click than the thin face.
+  const monitorHitMat = new THREE.MeshBasicMaterial({
+    visible: true,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  const monitorHit = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.38, 1.48),
+    monitorHitMat,
+  );
+  monitorHit.position.set(0, 1.0, 0.072);
+  monitorHit.userData.tag = "monitor-screen";
+  monitor.add(monitorHit);
+  hoverables.unshift(monitorHit);
+
   // Reflection layer — drawn slightly in front of the screen, multiplicative.
   // Hidden by default; the "monitor-reflection" anomaly enables it.
   const reflectionTex = makeReflectionTexture();
@@ -206,7 +224,7 @@ export function createDesktopDiorama(): DioramaObjects {
     new THREE.MeshBasicMaterial({
       map: reflectionTex,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.42,
       depthWrite: false,
       toneMapped: false,
     }),
@@ -479,6 +497,10 @@ export function createDesktopDiorama(): DioramaObjects {
   envelopeFlap.position.set(0, 0.1, 0.1);
   envelopeFlap.rotation.x = Math.PI * 0.5;
   flapPivot.add(envelopeFlap);
+  // Separate flap plane read as a second “envelope on top” when it animated open;
+  // the label face on `evidenceEnvelope` is enough; keep pivot for lerp in step() no-ops.
+  envelopeFlap.visible = false;
+  flapPivot.rotation.x = -1.15;
 
   const seal = new THREE.Mesh(
     new THREE.CircleGeometry(0.055, 20),
@@ -905,23 +927,42 @@ export function makeReflectionTexture(): THREE.CanvasTexture {
   c.height = 320;
   const ctx = c.getContext("2d");
   if (!ctx) throw new Error("2d context unavailable");
-  // Faint silhouette of a different room
-  const g = ctx.createRadialGradient(256, 200, 30, 256, 200, 250);
-  g.addColorStop(0, "rgba(255,210,170,0.7)");
-  g.addColorStop(0.6, "rgba(120,80,60,0.25)");
-  g.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = g;
+
+  // Soft "wrong room" reflection. Keep it luminous and ghosted so it reads
+  // as screen glare, not as a black grid or cast shadow.
+  const warmGlow = ctx.createRadialGradient(330, 190, 18, 320, 180, 210);
+  warmGlow.addColorStop(0, "rgba(255,225,180,0.78)");
+  warmGlow.addColorStop(0.48, "rgba(255,165,105,0.24)");
+  warmGlow.addColorStop(1, "rgba(255,165,105,0)");
+  ctx.fillStyle = warmGlow;
   ctx.fillRect(0, 0, c.width, c.height);
-  // Window-frame silhouette
-  ctx.strokeStyle = "rgba(0,0,0,0.4)";
-  ctx.lineWidth = 6;
-  ctx.strokeRect(180, 100, 160, 180);
+
+  const coolGlow = ctx.createRadialGradient(160, 95, 10, 150, 90, 150);
+  coolGlow.addColorStop(0, "rgba(190,225,255,0.34)");
+  coolGlow.addColorStop(1, "rgba(90,130,190,0)");
+  ctx.fillStyle = coolGlow;
+  ctx.fillRect(0, 0, c.width, c.height);
+
+  ctx.save();
+  ctx.translate(265, 175);
+  ctx.rotate(-0.16);
+  ctx.fillStyle = "rgba(255,238,205,0.18)";
+  ctx.fillRect(-130, -54, 260, 34);
+  ctx.fillStyle = "rgba(32,24,22,0.16)";
+  ctx.fillRect(-108, -18, 218, 12);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(350, 184);
+  ctx.rotate(0.18);
+  ctx.fillStyle = "rgba(255,235,190,0.18)";
   ctx.beginPath();
-  ctx.moveTo(260, 100);
-  ctx.lineTo(260, 280);
-  ctx.moveTo(180, 190);
-  ctx.lineTo(340, 190);
-  ctx.stroke();
+  ctx.ellipse(0, 0, 56, 22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(32,24,22,0.12)";
+  ctx.fillRect(-7, -74, 14, 70);
+  ctx.restore();
+
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;

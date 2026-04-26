@@ -115,7 +115,7 @@ describe("sentence scoring", () => {
     expect(classifyEnding(4, 0, 3)).toBe("typewriter-wrote-it");
   });
 
-  it("requires a full run and at least five blue picks to emit a clue", () => {
+  it("requires a full run and at least six blue picks to emit a clue", () => {
     expect(shouldEmitOutcome(picks("blue", "blue", "blue", "blue"))).toBe(
       false,
     );
@@ -126,7 +126,7 @@ describe("sentence scoring", () => {
           "blue",
           "blue",
           "blue",
-          "purple",
+          "blue",
           "purple",
           "orange",
           "idle",
@@ -135,16 +135,7 @@ describe("sentence scoring", () => {
     ).toBe(false);
     expect(
       shouldEmitOutcome(
-        picks(
-          "blue",
-          "blue",
-          "blue",
-          "blue",
-          "blue",
-          "purple",
-          "orange",
-          "idle",
-        ),
+        picks("blue", "blue", "blue", "blue", "blue", "blue", "orange", "idle"),
       ),
     ).toBe(true);
   });

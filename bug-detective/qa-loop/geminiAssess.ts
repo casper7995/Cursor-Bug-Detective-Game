@@ -1,7 +1,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { FileState, GoogleAIFileManager } from "@google/generative-ai/server";
 import { readFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, extname } from "node:path";
+import { isQaLoopDebugIngestEnabled } from "./env.js";
 import {
   MINIGAMES,
   type MinigameKey,
@@ -18,7 +19,12 @@ export interface AssessOptions {
   readonly runId: string;
   readonly videoPath: string;
   readonly minigame: MinigameKey;
+  /** Merged into the user text prompt after the default intro, before the schema hint. */
+  readonly extraInstructions?: string;
 }
+
+const INTRO =
+  "Assess a Bug Detective minigame screen recording (Cursor themed puzzle game).\n";
 
 const SCHEMA_HINT = `Return JSON only (no markdown fences) with this shape:
 {
@@ -28,14 +34,67 @@ const SCHEMA_HINT = `Return JSON only (no markdown fences) with this shape:
 }
 Only fill the byMinigame key for the minigame in the prompt. Use score100 0-100.`;
 
+/** Full text part sent with each video (matches server behavior). */
+export function buildGeminiAssessmentUserPromptText(opts: {
+  runId: string;
+  minigame: MinigameKey;
+  extraInstructions?: string;
+}): string {
+  const x = opts.extraInstructions?.trim();
+  const op = x ? `Additional direction from the QA operator:\n${x}\n\n` : "";
+  return (
+    INTRO +
+    op +
+    SCHEMA_HINT +
+    "\nRun id: " +
+    opts.runId +
+    " Minigame: " +
+    opts.minigame +
+    "\n"
+  );
+}
+
+/**
+ * Read-only explanation for the QA cockpit: fixed intro, schema (incl. score100 0–100),
+ * and how Focus notes and per-clip lines fit in.
+ */
+export function geminiAssessmentPromptOverviewForRun(runId: string): string {
+  return [
+    "Text prompt structure sent to Gemini (same order as the API; video bytes are attached separately):",
+    "",
+    "— Fixed intro —",
+    INTRO.trimEnd(),
+    "",
+    "— Focus notes (only if the box below is non-empty) —",
+    "Additional direction from the QA operator:",
+    "<your Focus notes>",
+    "",
+    "— Output contract (model must return JSON only; overall + dimension scores are 0–100) —",
+    SCHEMA_HINT,
+    "",
+    "— One line per analyzed clip (minigame changes when another slot has a video) —",
+    `Run id: ${runId} Minigame: <runner | sentence | errand | tamper>`,
+    "",
+    "Dimension fields (each 0–100 in JSON): clarity, controlFeel, fun, goalReadability, visualPolish, performanceSmoothness, cursorBrandFit. The gate uses passThreshold (90 in the contract above) when merging slots into assessment.json.",
+  ].join("\n");
+}
+
+export function mimeTypeForVideoPath(
+  videoPath: string,
+): "video/mp4" | "video/webm" {
+  return extname(videoPath).toLowerCase() === ".mp4"
+    ? "video/mp4"
+    : "video/webm";
+}
+
 export async function assessOneVideoWithGemini(
   opts: AssessOptions,
 ): Promise<QaAssessmentDocument> {
-  const { apiKey, model, runId, videoPath, minigame } = opts;
+  const { apiKey, model, runId, videoPath, minigame, extraInstructions } = opts;
   const fileManager = new GoogleAIFileManager(apiKey);
   const buf = await readFile(videoPath);
   const upload = await fileManager.uploadFile(buf, {
-    mimeType: "video/webm",
+    mimeType: mimeTypeForVideoPath(videoPath),
     displayName: basename(videoPath),
   });
   const name = upload.file.name;
@@ -61,6 +120,30 @@ export async function assessOneVideoWithGemini(
   }
   const gen = new GoogleGenerativeAI(apiKey);
   const mdl = gen.getGenerativeModel({ model });
+  if (isQaLoopDebugIngestEnabled()) {
+    fetch("http://127.0.0.1:7875/ingest/9f55c4b0-3327-449a-8e13-27f476aac9ad", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "7c3848",
+      },
+      body: JSON.stringify({
+        sessionId: "7c3848",
+        runId,
+        hypothesisId: "H4,H5",
+        location: "geminiAssess.ts:67",
+        message: "About to call Gemini generateContent",
+        data: {
+          model,
+          minigame,
+          videoBasename: basename(videoPath),
+          hasExtraInstructions: Boolean(extraInstructions?.trim()),
+          uploadMimeType: upload.file.mimeType,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }
   const result = await mdl.generateContent({
     contents: [
       {
@@ -73,14 +156,11 @@ export async function assessOneVideoWithGemini(
             },
           },
           {
-            text:
-              "Assess a Bug Detective minigame screen recording (Cursor themed puzzle game).\n" +
-              SCHEMA_HINT +
-              "\nRun id: " +
-              runId +
-              " Minigame: " +
-              minigame +
-              "\n",
+            text: buildGeminiAssessmentUserPromptText(
+              extraInstructions !== undefined
+                ? { runId, minigame, extraInstructions }
+                : { runId, minigame },
+            ),
           },
         ],
       },

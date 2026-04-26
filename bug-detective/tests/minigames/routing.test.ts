@@ -94,6 +94,12 @@ describe("full desk interaction routing", () => {
     });
   });
 
+  it("does not route bare desk clicks into flavor inspection", () => {
+    expect(routeDeskInteractionTag("desk", shared)).toEqual({
+      kind: "none",
+    });
+  });
+
   it("leaves unrelated tags alone", () => {
     expect(routeDeskInteractionTag("unknown-prop", shared)).toEqual({
       kind: "none",

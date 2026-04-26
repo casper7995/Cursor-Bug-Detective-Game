@@ -15,14 +15,15 @@ describe("desk mini clue gating helpers", () => {
     return colors.map((color, i) => ({ sentenceIdx: i, color }));
   }
 
-  it("errand requires ≥2 player dispatches and ≥1 clue", () => {
-    expect(errandEarnsDeskClue(0, 2)).toBe(false);
-    expect(errandEarnsDeskClue(1, 2)).toBe(false);
-    expect(errandEarnsDeskClue(2, 0)).toBe(false);
+  it("errand: 2+ clues, or 1 clue with no trap", () => {
+    expect(errandEarnsDeskClue(0, 0)).toBe(false);
+    expect(errandEarnsDeskClue(1, 1)).toBe(false);
+    expect(errandEarnsDeskClue(1, 0)).toBe(true);
+    expect(errandEarnsDeskClue(2, 0)).toBe(true);
     expect(errandEarnsDeskClue(2, 1)).toBe(true);
   });
 
-  it("sentence shouldEmitOutcome needs full round and at least 5 blues", () => {
+  it("sentence shouldEmitOutcome needs full round and at least 6 blues", () => {
     expect(shouldEmitOutcome(picks("blue"))).toBe(false);
     expect(
       shouldEmitOutcome(
@@ -40,16 +41,7 @@ describe("desk mini clue gating helpers", () => {
     ).toBe(false);
     expect(
       shouldEmitOutcome(
-        picks(
-          "orange",
-          "blue",
-          "purple",
-          "blue",
-          "blue",
-          "idle",
-          "blue",
-          "blue",
-        ),
+        picks("blue", "blue", "blue", "blue", "blue", "blue", "orange", "idle"),
       ),
     ).toBe(true);
     expect(

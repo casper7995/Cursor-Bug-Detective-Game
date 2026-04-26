@@ -16,6 +16,7 @@ import {
   namespacedSeed,
   scoreCall,
   scoreTamperRound,
+  tamperEarnsDeskClue,
 } from "./round";
 import {
   drawChatCard,
@@ -42,9 +43,13 @@ import {
 const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
 
-const INTRO_DURATION_S = 1.6;
-const CALL_DURATION_S = 4.2;
-const POINT_DURATION_S = 2.4;
+const INTRO_DURATION_S = 1.5;
+/** Quiet beat to read ORIGINAL / TONIGHT before timers start. */
+const READ_BEAT_S = 1.25;
+/** Per-call limit: must scan ORIGINAL + TONIGHT + Bugbot’s row claim, then act. */
+const CALL_DURATION_S = 4.25;
+/** After Disagree → point: player already knows the real change; short tap window. */
+const POINT_DURATION_S = 2.25;
 const VERDICT_FLASH_S = 0.6;
 const RESULT_AUTOCLOSE_S = 3.2;
 
@@ -60,6 +65,7 @@ type Hover = "approve" | "reject" | "suggestFix" | null;
 
 type Phase =
   | { kind: "intro"; t: number }
+  | { kind: "read"; t: number }
   | {
       kind: "call";
       callIndex: number;
@@ -93,12 +99,12 @@ export class TamperSession {
   /** Cached hit-rects from the most recent draw — re-used by pointer events. */
   private chatHits: ChatHits | null = null;
   private readonly gate = new TutorialGate({
-    title: "Bugbot review",
-    tagline: "Bugbot reviews the case file. Approve, reject, or suggest a fix.",
+    title: "Spot the difference",
+    tagline: "Compare ORIGINAL vs TONIGHT. Bugbot may be wrong about a row.",
     howToLines: [
-      "Bugbot calls 6 lines and gives a confidence score.",
-      "Approve when you agree, Reject when you disagree.",
-      "Suggest fix opens spot-pick mode — tap the real tampered row to catch a lie.",
+      "Find the one line that really changed in TONIGHT (label + icon).",
+      "Bugbot makes 6 row calls with a confidence % — Agree or Disagree.",
+      "If Bugbot is lying, use Point to change and tap the real changed TONIGHT row.",
     ],
     drawDiagram: drawTamperTutorialDiagram,
     storageKey: "bd:miniTutorial:tamper",
@@ -135,13 +141,21 @@ export class TamperSession {
     call: TamperRound["calls"][number];
     callIndex: number;
   } | null {
+    if (this.phase.kind === "read") {
+      return {
+        call: this.round.calls[0] as TamperRound["calls"][number],
+        callIndex: 0,
+      };
+    }
     if (
       this.phase.kind === "call" ||
       this.phase.kind === "disagree-point" ||
       this.phase.kind === "verdict"
     ) {
       return {
-        call: this.round.calls[this.phase.callIndex] as TamperRound["calls"][number],
+        call: this.round.calls[
+          this.phase.callIndex
+        ] as TamperRound["calls"][number],
         callIndex: this.phase.callIndex,
       };
     }
@@ -151,7 +165,8 @@ export class TamperSession {
   attachPointer(root: HTMLElement): void {
     if (this.pointerBound) return;
     this.pointerBound = true;
-    const overlayRect = (): DOMRect => this.overlayCtx.canvas.getBoundingClientRect();
+    const overlayRect = (): DOMRect =>
+      this.overlayCtx.canvas.getBoundingClientRect();
 
     const handleGatePointer = (p: { x: number; y: number }): boolean => {
       if (!this.gate.isBlocking()) return false;
@@ -281,10 +296,7 @@ export class TamperSession {
   }
 
   private commitVerdict(v: CallVerdict): void {
-    if (
-      this.phase.kind !== "call" &&
-      this.phase.kind !== "disagree-point"
-    )
+    if (this.phase.kind !== "call" && this.phase.kind !== "disagree-point")
       return;
     const callIndex = this.phase.callIndex;
     const call = this.round.calls[callIndex];
@@ -318,6 +330,10 @@ export class TamperSession {
   private finalizeOutcome(): void {
     if (this.outcome) return;
     const result = scoreTamperRound(this.round, this.verdicts);
+    if (!tamperEarnsDeskClue(result)) {
+      this.onExit();
+      return;
+    }
     this.outcome = {
       clueToken: clueTokenForTamper(this.clueWord),
       score: result.score,
@@ -333,6 +349,13 @@ export class TamperSession {
       case "intro": {
         this.phase = { kind: "intro", t: this.phase.t + dtSec };
         if (this.phase.t >= INTRO_DURATION_S) {
+          this.phase = { kind: "read", t: 0 };
+        }
+        break;
+      }
+      case "read": {
+        this.phase = { kind: "read", t: this.phase.t + dtSec };
+        if (this.phase.t >= READ_BEAT_S) {
           this.phase = { kind: "call", callIndex: 0, t: 0, hover: null };
         }
         break;
@@ -389,10 +412,10 @@ export class TamperSession {
     // Title strip
     ctx.fillStyle = CURSOR_AI.ink;
     ctx.font = "700 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText("Bugbot review", 18, 26);
+    ctx.fillText("Spot the change", 18, 26);
     ctx.fillStyle = CURSOR_AI.inkSubtle;
     ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
-    ctx.fillText(`· ${this.round.scene.displayName}`, 110, 26);
+    ctx.fillText(`· ${this.round.scene.displayName} · Bugbot`, 118, 26);
 
     const cur = this.currentCall();
     const showRealTamper =
@@ -409,6 +432,8 @@ export class TamperSession {
     let secsLeft01 = 0;
     if (this.phase.kind === "call") {
       secsLeft01 = Math.max(0, 1 - this.phase.t / CALL_DURATION_S);
+    } else if (this.phase.kind === "read") {
+      secsLeft01 = 1;
     } else if (this.phase.kind === "disagree-point") {
       secsLeft01 = Math.max(0, 1 - this.phase.t / POINT_DURATION_S);
     } else if (this.phase.kind === "verdict") {
@@ -418,6 +443,7 @@ export class TamperSession {
     this.chatHits = drawChatCard(
       ctx,
       cur?.call ?? null,
+      this.round.scene,
       hover,
       secsLeft01,
       pickingSpot,

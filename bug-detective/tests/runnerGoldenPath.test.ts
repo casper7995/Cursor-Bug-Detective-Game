@@ -14,7 +14,7 @@ import type { RunnerMode } from "../src/minigames/runner/types";
 const CFG: RunnerSimConfig = {
   canvasW: 512,
   canvasH: 320,
-  dailyGoalDistance: 2600,
+  dailyGoalDistance: 4000,
 };
 
 const DT = 1 / 120;
@@ -35,7 +35,7 @@ function tryDailyClear(seed: number): { ok: boolean; maxScroll: number } {
     if (state.failed) {
       return { ok: false, maxScroll: state.maxScroll };
     }
-    if (state.finished) {
+    if (state.dailyLineCrossed) {
       return {
         ok: state.maxScroll >= CFG.dailyGoalDistance,
         maxScroll: state.maxScroll,
@@ -46,7 +46,7 @@ function tryDailyClear(seed: number): { ok: boolean; maxScroll: number } {
 }
 
 describe("runner golden path (sim)", () => {
-  it("finds a seed that clears daily 2600m (scripted boost + jumps)", () => {
+  it("finds a seed that clears daily goal (scripted boost + jumps)", () => {
     let best = { seed: 0, maxScroll: 0 };
     for (let seed = 1; seed <= 20_000; seed++) {
       const r = tryDailyClear(seed);

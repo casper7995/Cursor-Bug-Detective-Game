@@ -78,7 +78,7 @@ export function classifyEnding(
 }
 
 /**
- * Desk / notebook gating: full 8-beat run and at least **five** case-correct (blue) picks.
+ * Desk / notebook gating: full 8-beat run and at least **six** case-correct (blue) picks.
  */
 export function shouldEmitOutcome(picks: readonly PlayerPick[]): boolean {
   if (picks.length < SENTENCE_SLOTS_PER_TEMPLATE) return false;
@@ -86,7 +86,7 @@ export function shouldEmitOutcome(picks: readonly PlayerPick[]): boolean {
   for (const p of picks) {
     if (p.color === "blue") blues++;
   }
-  return blues >= 5;
+  return blues >= 6;
 }
 
 /** Inject the player name into a prefix once 3 consecutive blues land. */

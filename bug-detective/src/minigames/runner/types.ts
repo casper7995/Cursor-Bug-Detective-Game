@@ -4,6 +4,5 @@ export type { RunnerMode } from "../../game/gameState";
 
 /** Result reported when a run ends (win or lose). */
 export type RunnerRunOutcome =
-  | { kind: "daily_clear" }
   | { kind: "daily_fail" }
   | { kind: "endless_stop"; score: number };

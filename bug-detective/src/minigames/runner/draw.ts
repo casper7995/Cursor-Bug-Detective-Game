@@ -41,7 +41,6 @@ const SNIPPET_BASELINE_OFFSET = 10;
 /** Top HUD bar height; clue strip sits directly under it (same y offset). */
 const RUNNER_HUD_TOP_PX = 36;
 const CLUE_STRIP_H = 22;
-const DAILY_GOAL_M = 2600;
 
 export interface DrawRunnerOpts {
   scroll: number;
@@ -61,6 +60,10 @@ export interface DrawRunnerOpts {
   tierRibbon?: { tier: number; ageMs: number };
   /** Endless gap hazards (error codes). */
   projectiles?: readonly RunnerProjectile[];
+  /** Daily distance goal met; stay on monitor until Esc or retry. */
+  dailyCleared?: boolean;
+  /** Daily: world scroll distance for the finish line (HUD goal %). */
+  dailyGoalScroll?: number;
   gameOver?: {
     peakHeightM: number;
     cluesSeen: readonly string[];
@@ -222,6 +225,9 @@ function drawChibiThreeQuarterMascot(
   ctx.fillRect(hx + 22, ry + 7, 7, 2);
 }
 
+/**
+ * Lays out token chips on the right, then fits the case hint in the center with ellipses.
+ */
 function drawClueStrip(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -231,53 +237,69 @@ function drawClueStrip(
   hintOverride: string | null,
 ): void {
   ctx.save();
-  ctx.fillStyle = "rgba(38,37,30,0.9)";
+  ctx.fillStyle = "rgba(22, 20, 16, 0.94)";
   ctx.fillRect(0, RUNNER_HUD_TOP_PX, w, CLUE_STRIP_H);
-  ctx.strokeStyle = "rgba(192,133,50,0.45)";
+  ctx.strokeStyle = "rgba(192,133,50,0.4)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, RUNNER_HUD_TOP_PX + CLUE_STRIP_H);
   ctx.lineTo(w, RUNNER_HUD_TOP_PX + CLUE_STRIP_H);
   ctx.stroke();
 
-  ctx.font = FONT_HUD_SM;
-  ctx.textBaseline = "middle";
   const midY = RUNNER_HUD_TOP_PX + CLUE_STRIP_H / 2;
-  ctx.fillStyle = CURSOR_GOLD;
-  ctx.textAlign = "left";
-  ctx.fillText("CLUE", 10, midY);
-
-  ctx.fillStyle = hintOverride ? CURSOR_ORANGE : CURSOR_TEXT_HI;
-  const hintX = 52;
-  const rawHint = hintOverride ?? tooltipHint;
-  const hint = rawHint.length > 52 ? `${rawHint.slice(0, 49)}…` : rawHint;
-  const hintLabel = `› ${hint}`;
-  ctx.fillText(hintLabel, hintX, midY);
-  const hintRightX = hintX + ctx.measureText(hintLabel).width;
-
-  ctx.textAlign = "right";
-  let rx = w - 10;
   const n = Math.min(activeTokens.length, clueSet.tokens.length);
+  const pad = 5;
+  type Chip = { x: number; w: number; tok: string; col: string };
+  const chips: Chip[] = [];
+  let rx = w - 10;
   for (let i = n - 1; i >= 0; i--) {
     const tok = activeTokens[i]!;
     const col = clueSet.palette[i % clueSet.palette.length]!;
     ctx.font = FONT_CLUE_CHIP;
     const tw = ctx.measureText(tok).width;
-    const pad = 6;
     const chipW = tw + pad * 2;
-    rx -= chipW;
-    if (rx < hintRightX + 20) break;
-    ctx.fillStyle = col;
+    const x = rx - chipW;
+    if (x < 120) break;
+    chips.push({ x, w: chipW, tok, col });
+    rx = x - 5;
+  }
+  const chipBlockLeft = rx;
+
+  ctx.font = FONT_HUD_SM;
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = CURSOR_GOLD;
+  ctx.textAlign = "left";
+  ctx.fillText("CLUE", 10, midY);
+  const hintX = 48;
+  const rawHint = hintOverride ?? tooltipHint;
+  ctx.fillStyle = hintOverride ? CURSOR_ORANGE : CURSOR_TEXT_HI;
+  const maxHintW = Math.max(80, chipBlockLeft - hintX - 12);
+  let shortened = rawHint;
+  while (
+    shortened.length > 0 &&
+    ctx.measureText(`› ${shortened}`).width > maxHintW
+  ) {
+    shortened = shortened.slice(0, -1);
+  }
+  const hint =
+    shortened.length < rawHint.length ? `› ${shortened}…` : `› ${shortened}`;
+  ctx.textAlign = "left";
+  ctx.fillText(hint, hintX, midY);
+
+  for (const c of chips) {
+    ctx.fillStyle = c.col;
     ctx.beginPath();
-    ctx.roundRect(rx, RUNNER_HUD_TOP_PX + 4, chipW, CLUE_STRIP_H - 8, 4);
+    ctx.roundRect(c.x, RUNNER_HUD_TOP_PX + 4, c.w, CLUE_STRIP_H - 8, 4);
     ctx.fill();
-    ctx.strokeStyle = "rgba(245,78,0,0.35)";
+    ctx.strokeStyle = "rgba(245,78,0,0.3)";
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.fillStyle = CURSOR_TEXT_HI;
-    ctx.fillText(tok, rx + pad, midY);
-    rx -= 6;
+    ctx.font = FONT_CLUE_CHIP;
+    ctx.textAlign = "left";
+    ctx.fillText(c.tok, c.x + pad, midY);
   }
+
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.restore();
@@ -408,46 +430,195 @@ export function drawGameOverCard(
 ): void {
   const { w, h, peakHeightM, cluesSeen, mode } = opts;
   ctx.save();
-  ctx.fillStyle = "rgba(10,9,7,0.55)";
+  ctx.fillStyle = "rgba(5, 4, 2, 0.78)";
   ctx.fillRect(0, 0, w, h);
 
-  const cw = 300;
-  const ch = 184;
+  const cw = Math.min(380, w - 32);
+  const clueLine = cluesSeen.length > 0 ? cluesSeen.join(", ") : "—";
+  const ch = 230;
   const x0 = (w - cw) / 2;
   const y0 = (h - ch) / 2;
-  ctx.fillStyle = "rgba(38,37,30,0.96)";
-  ctx.strokeStyle = "rgba(245,78,0,0.55)";
+
+  ctx.save();
+  ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+  ctx.shadowBlur = 32;
+  ctx.fillStyle = "rgba(32, 30, 24, 0.98)";
+  ctx.beginPath();
+  ctx.roundRect(x0, y0, cw, ch, 14);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.strokeStyle = "rgba(245, 78, 0, 0.5)";
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.roundRect(x0, y0, cw, ch, 12);
-  ctx.fill();
+  ctx.roundRect(x0, y0, cw, ch, 14);
   ctx.stroke();
 
-  ctx.fillStyle = CURSOR_ORANGE;
-  ctx.font = "700 22px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("GAME OVER", w / 2, y0 + 44);
+  ctx.textBaseline = "top";
 
-  ctx.font = "600 16px 'Berkeley Mono', ui-monospace, monospace";
-  ctx.fillStyle = CURSOR_GOLD;
-  ctx.fillText(`peak height: ${Math.floor(peakHeightM)}m`, w / 2, y0 + 78);
+  ctx.fillStyle = CURSOR_ORANGE;
+  ctx.font = "700 20px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+  ctx.fillText("GAME OVER", w / 2, y0 + 22);
 
-  const clueLine = cluesSeen.length > 0 ? cluesSeen.join(", ") : "(none yet)";
+  ctx.font = "600 9px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(192, 133, 50, 0.95)";
+  const labelPeakY = y0 + 52;
+  ctx.fillText("PEAK HEIGHT", w / 2, labelPeakY);
+
+  ctx.font = "600 20px 'Berkeley Mono', ui-monospace, monospace";
+  ctx.fillStyle = CURSOR_TEXT_HI;
+  ctx.fillText(`${Math.floor(peakHeightM)} m`, w / 2, y0 + 66);
+
+  ctx.font = "600 9px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(237, 236, 236, 0.55)";
+  ctx.fillText("CLUES SEEN", w / 2, y0 + 100);
+
   ctx.font = "13px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
   ctx.fillStyle = CURSOR_TEXT;
-  const clueY = y0 + 108;
-  const maxW = cw - 36;
-  wrapFillText(ctx, `clues seen: ${clueLine}`, w / 2, clueY, maxW, 16);
+  const maxW = cw - 40;
+  wrapFillText(ctx, clueLine, w / 2, y0 + 116, maxW, 16);
 
-  ctx.font = "13px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-  ctx.fillStyle = "rgba(237,236,236,0.65)";
+  ctx.font = "12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+  ctx.fillStyle = "rgba(237, 236, 236, 0.55)";
   if (mode === "endless") {
-    ctx.fillText("R to retry  ·  Esc to leave the monitor", w / 2, y0 + 156);
+    ctx.fillText("R retry   ·   Esc to leave the monitor", w / 2, y0 + 200);
   } else {
-    ctx.fillText("R retry · Esc back to the desk", w / 2, y0 + 154);
+    ctx.fillText("R retry   ·   Esc back to the desk", w / 2, y0 + 200);
   }
   ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
   ctx.restore();
+}
+
+/** Right-aligned stat chips for the top HUD (height, goal, boost meter). */
+function drawHudStatChips(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  opts: {
+    maxClimbM: number;
+    isDaily: boolean;
+    scroll: number;
+    dailyGoalScroll: number | undefined;
+    boost01: number;
+  },
+): void {
+  const { maxClimbM, isDaily, scroll, dailyGoalScroll, boost01 } = opts;
+  const padX = 6;
+  const chipH = 28;
+  const topY = 4;
+  const rightMargin = 10;
+  const gap = 6;
+  const hVal = `${Math.floor(maxClimbM)}m`;
+  const goalPct =
+    isDaily && dailyGoalScroll
+      ? Math.min(100, Math.round((scroll / dailyGoalScroll) * 100))
+      : 0;
+  const showBoost = boost01 > 0.02;
+  const boostPct = Math.floor(boost01 * 100);
+  const boostAccent = boost01 >= 0.5 ? CURSOR_ORANGE : CURSOR_GOLD;
+
+  type Chip = { w: number; draw: (x: number) => void };
+  const chips: Chip[] = [];
+
+  ctx.font = "600 11px 'Berkeley Mono', ui-monospace, monospace";
+  const hw = Math.max(44, ctx.measureText(hVal).width) + padX * 2;
+  chips.push({
+    w: hw,
+    draw: (x) => {
+      ctx.fillStyle = "rgba(28, 26, 20, 0.95)";
+      ctx.strokeStyle = "rgba(192, 133, 50, 0.4)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, topY, hw, chipH, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.font =
+        "600 8px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+      ctx.fillStyle = CURSOR_GOLD;
+      ctx.fillText("HEIGHT", x + hw / 2, topY + 3);
+      ctx.font = "600 11px 'Berkeley Mono', ui-monospace, monospace";
+      ctx.fillStyle = CURSOR_TEXT_HI;
+      ctx.fillText(hVal, x + hw / 2, topY + 14);
+    },
+  });
+
+  if (isDaily) {
+    const gv = `${goalPct}%`;
+    ctx.font = "600 11px 'Berkeley Mono', ui-monospace, monospace";
+    const gw = Math.max(40, ctx.measureText(gv).width) + padX * 2;
+    chips.push({
+      w: gw,
+      draw: (x) => {
+        ctx.fillStyle = "rgba(28, 26, 20, 0.95)";
+        ctx.strokeStyle = "rgba(192, 133, 50, 0.4)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x, topY, gw, chipH, 5);
+        ctx.fill();
+        ctx.stroke();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.font =
+          "600 8px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+        ctx.fillStyle = CURSOR_GOLD;
+        ctx.fillText("GOAL", x + gw / 2, topY + 3);
+        ctx.font = "600 11px 'Berkeley Mono', ui-monospace, monospace";
+        ctx.fillStyle = CURSOR_TEXT_HI;
+        ctx.fillText(gv, x + gw / 2, topY + 14);
+      },
+    });
+  }
+
+  const boostW = 78;
+  chips.push({
+    w: boostW,
+    draw: (x) => {
+      ctx.fillStyle = "rgba(28, 26, 20, 0.95)";
+      ctx.strokeStyle = "rgba(192, 133, 50, 0.4)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, topY, boostW, chipH, 5);
+      ctx.fill();
+      ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.font =
+        "600 8px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+      ctx.fillStyle = CURSOR_GOLD;
+      ctx.fillText("BOOST", x + boostW / 2, topY + 3);
+      ctx.font = "600 10px 'Berkeley Mono', ui-monospace, monospace";
+      ctx.fillStyle = showBoost ? CURSOR_TEXT_HI : "rgba(237,236,236,0.45)";
+      ctx.fillText(showBoost ? `${boostPct}%` : "—", x + boostW / 2, topY + 14);
+      if (showBoost) {
+        const barX = x + 8;
+        const barY = topY + chipH - 5;
+        const barW = boostW - 16;
+        const barH = 3;
+        ctx.fillStyle = "rgba(20, 18, 11, 0.95)";
+        ctx.beginPath();
+        ctx.roundRect(barX, barY, barW, barH, 1);
+        ctx.fill();
+        ctx.fillStyle = boostAccent;
+        ctx.beginPath();
+        ctx.roundRect(barX, barY, barW * boost01, barH, 1);
+        ctx.fill();
+      }
+    },
+  });
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+
+  let x = w - rightMargin;
+  for (let i = chips.length - 1; i >= 0; i--) {
+    const c = chips[i]!;
+    x -= c.w;
+    c.draw(x);
+    x -= i > 0 ? gap : 0;
+  }
 }
 
 function wrapFillText(
@@ -501,11 +672,13 @@ export function drawRunnerFrame(
     onClueTokenSeen,
     tierRibbon,
     projectiles,
+    dailyCleared,
+    dailyGoalScroll,
   } = opts;
 
   const feetW = playerY + RUNNER_DRAW.playerH;
-  /** Follow falls: allow negative offset so the void read stays on-screen. */
-  const cameraY = Math.min(280, Math.max(-200, H * 0.55 - feetW));
+  /** Follow climb and falls — no upper clamp so high yTop courses stay on-screen. */
+  const cameraY = Math.max(-220, H * 0.55 - feetW);
 
   const failAnim = gameOver?.failureAnimMs;
   const shakeT =
@@ -626,19 +799,13 @@ export function drawRunnerFrame(
   ctx.fillStyle = CURSOR_TEXT_HI;
   ctx.font = FONT_MODE;
   ctx.fillText(modeLabel, 12, 23);
-  ctx.font = FONT_HUD_SM;
-  const boostColor = boost01 >= 0.5 ? CURSOR_ORANGE : CURSOR_GOLD;
-  ctx.fillStyle = boostColor;
-  const rightParts = [`height ${Math.floor(maxClimbM)}m`];
-  if (modeLabel.includes("daily")) {
-    const goalPct = Math.min(100, Math.round((maxClimbM / DAILY_GOAL_M) * 100));
-    rightParts.push(`goal ${goalPct}%`);
-  }
-  if (boost01 > 0.02) {
-    rightParts.push(`boost ${Math.floor(boost01 * 100)}%`);
-  }
-  const rightText = rightParts.join(" · ");
-  ctx.fillText(rightText, W - 12 - ctx.measureText(rightText).width, 22);
+  drawHudStatChips(ctx, W, {
+    maxClimbM,
+    isDaily: modeLabel.includes("daily"),
+    scroll,
+    dailyGoalScroll,
+    boost01,
+  });
 
   if (tierRibbon && tierRibbon.ageMs < 1200 && tierRibbon.tier > 0) {
     const fade = 1 - tierRibbon.ageMs / 1200;
@@ -652,6 +819,32 @@ export function drawRunnerFrame(
     ctx.fillText(rib, W / 2, 30);
     ctx.textAlign = "left";
     ctx.restore();
+  }
+
+  if (dailyCleared && !gameOver) {
+    const barH = 34;
+    const barY = H - barH - 8;
+    const pad = 10;
+    ctx.fillStyle = "rgba(24, 22, 17, 0.96)";
+    ctx.beginPath();
+    ctx.roundRect(pad, barY, W - pad * 2, barH, 8);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(192, 133, 50, 0.45)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(pad + 0.5, barY + 0.5, W - pad * 2 - 1, barH - 1, 8);
+    ctx.stroke();
+    ctx.fillStyle = CURSOR_GOLD;
+    ctx.font = FONT_HUD_SM;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      "Daily clear — clue locked  ·  keep going or Esc to desk  ·  R to retry",
+      W / 2,
+      barY + barH / 2,
+    );
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
   }
 
   ctx.restore();

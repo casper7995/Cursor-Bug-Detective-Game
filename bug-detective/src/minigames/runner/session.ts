@@ -11,6 +11,7 @@ import { drawRunnerFrame } from "./draw";
 import type { RunnerClueSet } from "./clueTokens";
 import {
   createRunnerSimWithSeed,
+  DEFAULT_DAILY_GOAL_SCROLL,
   type RunnerSimConfig,
   type RunnerSimState,
   stepRunnerSim,
@@ -21,7 +22,7 @@ import type { RunnerMode, RunnerRunOutcome } from "./types";
 const DEFAULT_CFG: RunnerSimConfig = {
   canvasW: RUNNER_DRAW.canvasW,
   canvasH: RUNNER_DRAW.canvasH,
-  dailyGoalDistance: 2600,
+  dailyGoalDistance: DEFAULT_DAILY_GOAL_SCROLL,
 };
 
 const TIER_RIBBON_MS = 1200;
@@ -140,6 +141,11 @@ export class RunnerSession {
     return Math.round(this.sim.boost01 * 100);
   }
 
+  /** Daily goal distance reached: clue pins; run may continue past the line. */
+  isDailyCleared(): boolean {
+    return this.mode === "daily" && this.sim.dailyLineCrossed && !this.gameOver;
+  }
+
   /** New course, same mode; clears game over. */
   restartSameMode(): void {
     this.gameOver = false;
@@ -229,6 +235,10 @@ export class RunnerSession {
       anomalyId: this.anomalyId,
       clueTooltipHint: this.clueTooltipHint,
       projectiles: this.sim.projectiles,
+      dailyCleared: this.isDailyCleared(),
+      ...(this.mode === "daily"
+        ? { dailyGoalScroll: this.cfg.dailyGoalDistance }
+        : {}),
     };
     const tierRibbon =
       this.tierRibbon &&
@@ -259,10 +269,6 @@ export class RunnerSession {
     }
 
     this.blitToOverlay();
-
-    if (this.sim.finished && this.mode === "daily" && !this.gameOver) {
-      this.outcome = { kind: "daily_clear" };
-    }
   }
 
   private blitToOverlay(): void {
@@ -274,6 +280,32 @@ export class RunnerSession {
     octx.setTransform(1, 0, 0, 1, 0, 0);
     octx.clearRect(0, 0, cw, ch);
     octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Full-viewport “arcade monitor” shell so letterbox gutters are intentional,
+    // not empty black bars (gameplay canvas stays 512×320).
+    const stageTop = "#0f0d0a";
+    const stageBot = "#050403";
+    const g = octx.createLinearGradient(0, 0, 0, cssH);
+    g.addColorStop(0, stageTop);
+    g.addColorStop(0.55, "#12100c");
+    g.addColorStop(1, stageBot);
+    octx.fillStyle = g;
+    octx.fillRect(0, 0, cssW, cssH);
+    octx.strokeStyle = "rgba(245,78,0,0.045)";
+    octx.lineWidth = 1;
+    for (let x = 0; x <= cssW; x += 28) {
+      octx.beginPath();
+      octx.moveTo(x, 0);
+      octx.lineTo(x, cssH);
+      octx.stroke();
+    }
+    for (let y = 0; y <= cssH; y += 28) {
+      octx.beginPath();
+      octx.moveTo(0, y);
+      octx.lineTo(cssW, y);
+      octx.stroke();
+    }
+
     const scale = Math.min(
       cssW / RUNNER_DRAW.canvasW,
       cssH / RUNNER_DRAW.canvasH,
@@ -282,6 +314,24 @@ export class RunnerSession {
     const dh = RUNNER_DRAW.canvasH * scale;
     const dx = (cssW - dw) / 2;
     const dy = (cssH - dh) / 2;
+    const bezel = 4;
+    const rx = dx - bezel;
+    const ry = dy - bezel;
+    const rw = dw + bezel * 2;
+    const rh = dh + bezel * 2;
+    octx.save();
+    octx.shadowColor = "rgba(245, 78, 0, 0.22)";
+    octx.shadowBlur = 28;
+    octx.fillStyle = "rgba(12, 10, 8, 0.55)";
+    octx.beginPath();
+    octx.roundRect(rx, ry, rw, rh, 10);
+    octx.fill();
+    octx.restore();
+    octx.strokeStyle = "rgba(192, 133, 50, 0.45)";
+    octx.lineWidth = 2;
+    octx.beginPath();
+    octx.roundRect(rx, ry, rw, rh, 10);
+    octx.stroke();
     octx.drawImage(this.renderCtx.canvas, dx, dy, dw, dh);
   }
 

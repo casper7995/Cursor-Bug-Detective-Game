@@ -3,66 +3,739 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bug Detective — QA Cockpit</title>
+    <title>Bug Detective — QA Command Cockpit</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body>
-    <header>
-      <h1>Bug Detective QA Cockpit</h1>
-      <p>
-        Local loop: cloud record → list/download SDK artifacts → Gemini analyze
-        → send findings to Cursor (plan agent) → approve → implement. Keys only
-        on the server (<code>.env</code>).
-      </p>
+  <body class="cockpit-body">
+    <header class="cockpit-mission-header">
+      <div class="cockpit-mission-brand">
+        <h1>Bug Detective QA Cockpit</h1>
+        <p class="tagline tagline--compact">
+          Cloud &rarr; artifacts &rarr; Gemini &rarr; hand off. Keys stay in <code>.env</code> on the server.
+        </p>
+      </div>
+      <ol class="cockpit-mission-strip cockpit-mission-strip--compact" aria-label="Typical order">
+        <li><span>Cloud</span> agent</li>
+        <li><span>Artifacts</span> sync</li>
+        <li><span>Gemini</span> analyze</li>
+        <li><span>Export</span> share</li>
+        <li><span>Finish</span> PR / local</li>
+      </ol>
     </header>
-    <div class="layout">
-      <aside>
+    <div class="cockpit-layout">
+      <aside class="cockpit-runs-rail">
         <h2>Runs</h2>
         <button type="button" id="newRun">New run</button>
         <ul id="runList"></ul>
       </aside>
-      <main>
-        <section id="currentRun" class="panel" hidden>
-          <h2 id="runTitle"></h2>
-          <pre id="runMeta"></pre>
-          <p class="hint">
-            <strong>Agent ID</strong> for list/download: use
-            <code>recordAgentId</code> after cloud record completes (or paste a
-            <code>bc-…</code> id from the dashboard).
-          </p>
-          <input
-            type="text"
-            id="agentId"
-            placeholder="bc-… (cloud agent with artifacts)"
-            size="48"
-          />
-          <div class="row">
-            <button type="button" id="btnCloudRecord">Start cloud record</button>
-            <button type="button" id="btnListArtifacts">List artifacts (SDK)</button>
-            <button type="button" id="btnDownloadArtifacts">Download to disk</button>
-            <button type="button" id="btnPlan">Start plan agent (wait)</button>
+      <main class="cockpit-main-column">
+        <section id="currentRun" class="panel cockpit-run" hidden>
+          <header class="cockpit-hero">
+            <h2 class="run-heading" id="runTitle"></h2>
+            <p class="control-summary" id="controlSummary" hidden></p>
+          </header>
+
+          <div class="cockpit-board">
+            <nav class="cockpit-step-rail" aria-label="Workflow steps">
+              <div class="cockpit-step-rail__item" data-rail-step="cloud">
+                <span class="cockpit-step-rail__num">1</span>
+                <span class="cockpit-step-rail__label">Cloud</span>
+              </div>
+              <div class="cockpit-step-rail__item" data-rail-step="artifacts">
+                <span class="cockpit-step-rail__num">2</span>
+                <span class="cockpit-step-rail__label">Artifacts</span>
+              </div>
+              <div class="cockpit-step-rail__item" data-rail-step="assess">
+                <span class="cockpit-step-rail__num">3</span>
+                <span class="cockpit-step-rail__label">Gemini</span>
+              </div>
+              <div class="cockpit-step-rail__item" data-rail-step="handoff">
+                <span class="cockpit-step-rail__num">4</span>
+                <span class="cockpit-step-rail__label">Hand off</span>
+              </div>
+              <div class="cockpit-step-rail__item" data-rail-step="ship">
+                <span class="cockpit-step-rail__num">5</span>
+                <span class="cockpit-step-rail__label">Finish</span>
+              </div>
+            </nav>
+
+            <div class="cockpit-command-surface">
+              <section class="flow-step flow-step--cloud" aria-labelledby="step1-label">
+                <div class="flow-step-head">
+                  <span class="step-num" id="step1-label">1</span>
+                  <span
+                    class="step-badge step-badge--not-started"
+                    id="stepBadgeCloud"
+                    data-step="cloud"
+                    >Cloud</span
+                  >
+                  <div>
+                    <h3>Cloud agent</h3>
+                    <p class="step-desc step-desc--compact">
+                      <strong>New</strong> (Scratch / Recipes) or <strong>Existing</strong> (picker). Step&nbsp;2 uses the agent selected under Existing.
+                    </p>
+                    <details class="cockpit-help-details">
+                      <summary class="cockpit-help-summary">How cloud agents map to Step&nbsp;2</summary>
+                      <p class="hint cockpit-help-body">
+                        Start a new <code>bc-&hellip;</code> agent from Scratch or a recipe, then choose it under <strong>Existing &rarr; Pick agent</strong> so list/download in Step&nbsp;2 targets the right run.
+                      </p>
+                    </details>
+                  </div>
+                </div>
+
+                <div class="step1-cloud-split">
+                  <div
+                    class="step1-left-column cloud-path cloud-path--new"
+                    aria-labelledby="step1-new-label"
+                  >
+                    <div class="step1-new-intro">
+                      <h4 class="cloud-path-heading" id="step1-new-label">
+                        <span class="cloud-path-kicker cloud-path-kicker--new">New</span>
+                        Start a cloud agent
+                      </h4>
+                      <p class="hint cloud-path-lead cloud-path-lead--compact">
+                        Spawns a new <code>bc-&hellip;</code> agent &mdash; then pick it under
+                        <strong>Existing</strong> for Step&nbsp;2.
+                      </p>
+                    </div>
+
+                    <div class="subpanel cockpit-command cockpit-command--dense">
+                      <h4>
+                        <span class="lane-label">Scratch</span> Custom command
+                      </h4>
+                      <p class="lane-subhead lane-subhead--compact">
+                        Pre-filled on first open (record vs plan). <button type="button" class="link-ghost" id="btnInjectRecordRecipe" title="Fills the box with the same text as &ldquo;Run record preset&rdquo;">load record</button> &middot;
+                        <button type="button" class="link-ghost" id="btnInjectPlanRecipe" title="Fills the box with the same text as &ldquo;Run plan preset&rdquo;">load plan</button> &rarr; edit &rarr; <strong>Start agent</strong>.
+                      </p>
+                      <details class="cockpit-help-details cockpit-help-details--inline">
+                        <summary class="cockpit-help-summary">Scratch &amp; recipes (full detail)</summary>
+                        <p class="hint cockpit-help-body">
+                          Same prompt text as server recipes; cards below are one-tap presets and full disclosure. Recipes stay the source of truth for exact copy.
+                        </p>
+                      </details>
+                      <label class="block-label" for="agentCommandPrompt">Prompt</label>
+                      <textarea
+                        id="agentCommandPrompt"
+                        class="cockpit-prompt-textarea"
+                        rows="4"
+                        spellcheck="false"
+                        autocomplete="off"
+                        placeholder="Filled from record or plan recipe on first open; edit before Start agent&hellip;"
+                      ></textarea>
+                      <label class="block-label" for="agentFriendlyName"
+                        >Name in picker (optional)</label
+                      >
+                      <input
+                        type="text"
+                        id="agentFriendlyName"
+                        class="cockpit-text-input"
+                        placeholder="e.g. Runner demo review, smoke test A"
+                        maxlength="120"
+                        autocomplete="off"
+                      />
+                      <p class="hint hint--compact">
+                        Label in <strong>Existing &rarr; Pick agent</strong> (may differ from Cursor&rsquo;s system name).
+                      </p>
+                      <div class="row align-center">
+                        <label class="inline-label" for="agentCommandRole">Role</label>
+                        <select id="agentCommandRole" title="Labels the agent; also affects PR auto-create for implement">
+                          <option value="record">record</option>
+                          <option value="plan">plan</option>
+                          <option value="implement">implement</option>
+                          <option value="custom" selected>custom</option>
+                        </select>
+                        <input
+                          type="text"
+                          id="agentRolePrefix"
+                          placeholder="custom label"
+                          size="14"
+                          title="When role is custom, used as the name prefix if non-empty"
+                        />
+                        <button type="button" class="btn-primary" id="btnAgentStart">Start agent</button>
+                      </div>
+                    </div>
+
+                    <div class="subpanel one-shot-panel recipe-lane" aria-labelledby="recipes-label">
+                      <h4 id="recipes-label">
+                        <span class="lane-label">Recipes</span> Preset cloud agents
+                        <span class="lane-pill" title="Exact prompt text is decided in-repo (recordPrompt)">server-defined</span>
+                      </h4>
+                      <p class="lane-subhead lane-subhead--compact">
+                        One tap = new <code>bc-&hellip;</code> agent (same as Start). Record = computer-use demos; Plan = writes <code>cursor-plan.md</code>. Fork wording via <em>Use as custom prompt</em>.
+                      </p>
+                      <details class="cockpit-help-details cockpit-help-details--inline">
+                        <summary class="cockpit-help-summary">Recipe behavior (detail)</summary>
+                        <p class="hint cockpit-help-body">
+                          Record stresses terminal + browser, not chat-only. Plan overwrites canonical <code>cursor-plan.md</code> on disk. Use Scratch to edit, then Start agent.
+                        </p>
+                      </details>
+                      <div class="recipe-grid">
+                        <div class="recipe-card recipe-card--record">
+                          <div class="recipe-card-head">
+                            <span class="recipe-name">Record minigame videos</span>
+                            <span class="recipe-pill">Non-blocking</span>
+                          </div>
+                          <p class="recipe-one-liner">
+                            <code>qa:record</code> per slot; computer-use reminder; videos + <code>recorder.log</code> under this run.
+                          </p>
+                          <details class="recipe-disclosure">
+                            <summary>What the server sends</summary>
+                            <pre class="recipe-pre" id="recipeRecordPre" aria-label="Server prompt for record preset">(select a run to load)</pre>
+                          </details>
+                          <div class="recipe-actions">
+                            <button
+                              type="button"
+                              class="btn-recipe btn-recipe--record"
+                              id="btnCloudRecord"
+                              title="Built-in record task &mdash; then Existing &rarr; Pick agent and step 2 to fetch artifacts."
+                            >
+                              Run record preset
+                            </button>
+                            <button
+                              type="button"
+                              class="btn-recipe-ghost"
+                              id="btnRecipeRecordToCustom"
+                              title="Copies the same prompt into Custom command so you can edit it"
+                            >
+                              Use as custom prompt
+                            </button>
+                          </div>
+                        </div>
+                        <div class="recipe-card recipe-card--plan">
+                          <div class="recipe-card-head">
+                            <span class="recipe-name">Write plan from assessment</span>
+                            <span class="recipe-pill recipe-pill--blocks">Blocks server</span>
+                          </div>
+                          <p class="recipe-one-liner">
+                            Uses <code>assessment.json</code> when present; writes <code>cursor-plan.md</code>. Blocks until the cloud run finishes.
+                          </p>
+                          <details class="recipe-disclosure">
+                            <summary>What the server sends</summary>
+                            <pre class="recipe-pre" id="recipePlanPre" aria-label="Server prompt for plan preset">(select a run to load)</pre>
+                          </details>
+                          <div class="recipe-actions">
+                            <button
+                              type="button"
+                              class="btn-recipe btn-recipe--plan"
+                              id="btnPlan"
+                              title="Blocks until plan cloud run completes (often several minutes)"
+                            >
+                              Run plan preset (blocks)
+                            </button>
+                            <button
+                              type="button"
+                              class="btn-recipe-ghost"
+                              id="btnRecipePlanToCustom"
+                            >
+                              Use as custom prompt
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <p class="hint recipe-footnote hint--compact">
+                        Then <strong>Existing</strong> (or paste <code>bc-&hellip;</code> in Step&nbsp;2) &rarr; <strong>List</strong> / <strong>Download</strong>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    class="step1-ex-column cloud-path cloud-path--existing subpanel cockpit-command"
+                    aria-labelledby="step1-existing-label"
+                  >
+                    <div class="step1-ex-header">
+                      <h4 class="cloud-path-heading" id="step1-existing-label">
+                        <span class="cloud-path-kicker cloud-path-kicker--existing">Existing</span>
+                        Use an agent from this run
+                      </h4>
+                      <p class="hint cloud-path-lead cloud-path-lead--compact">
+                        Pick <code>bc-&hellip;</code> for this run. <strong>Use for artifacts</strong> drives Step&nbsp;2 defaults.
+                      </p>
+                      <details class="cockpit-help-details cockpit-help-details--inline">
+                        <summary class="cockpit-help-summary">Existing agents (detail)</summary>
+                        <p class="hint cockpit-help-body">
+                          Includes agents you just started under New. Step&nbsp;2 list/download uses the selected agent unless you override the id field.
+                        </p>
+                      </details>
+                      <div class="row align-center">
+                        <label class="inline-label" for="agentPick">Pick agent</label>
+                        <select id="agentPick"></select>
+                        <button type="button" id="btnAgentSelect">Use for artifacts</button>
+                        <button type="button" id="btnAgentFollowup">Send follow-up</button>
+                      </div>
+                    </div>
+                    <div class="step1-ex-retry">
+                      <div class="subpanel agent-retry-panel">
+                        <h4>Retry / follow-up</h4>
+                        <p class="hint hint--compact">
+                          Bad take? Edit below, or use <strong>Send follow-up</strong> for a generic message from Scratch.
+                        </p>
+                        <details class="cockpit-help-details cockpit-help-details--inline">
+                          <summary class="cockpit-help-summary">Retry tips</summary>
+                          <p class="hint cockpit-help-body">
+                            Recording-specific instructions go in the box; Scratch follow-up is for broader prompts. Refresh conversation pulls cloud status into a local JSON trace.
+                          </p>
+                        </details>
+                        <label class="block-label" for="agentRetryPrompt"
+                          >Retry / follow-up prompt</label
+                        >
+                        <textarea
+                          id="agentRetryPrompt"
+                          rows="5"
+                          spellcheck="false"
+                          placeholder="e.g. ask the cloud agent to redo the video capture&hellip;"
+                        ></textarea>
+                        <div class="btn-row">
+                          <button
+                            type="button"
+                            class="btn-primary"
+                            id="btnAgentRetryRecording"
+                            title="Sends the text below to the same selected agent (bc-&hellip;)"
+                          >
+                            Ask agent to redo recording
+                          </button>
+                          <button
+                            type="button"
+                            class="btn-secondary"
+                            id="btnRefreshAgentConversation"
+                            title="Fetch status + messages from Cursor Cloud and save a local JSON trace"
+                          >
+                            Refresh conversation
+                          </button>
+                        </div>
+                        <div id="agentCloudLinks" class="agent-links"></div>
+                        <p
+                          id="agentConversationSummary"
+                          class="agent-conversation-summary"
+                          aria-live="polite"
+                        ></p>
+                      </div>
+                    </div>
+                    <div class="step1-ex-tail">
+                      <p class="hint" id="selectedAgentHint">
+                        Selected for artifacts: <span id="selectedAgentId">(none)</span>
+                      </p>
+                      <pre id="agentEvents" class="agent-events"></pre>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="flow-step flow-step--artifacts" aria-labelledby="step2-label">
+                <div class="flow-step-head">
+                  <span class="step-num" id="step2-label">2</span>
+                  <span
+                    class="step-badge step-badge--not-started"
+                    id="stepBadgeArtifacts"
+                    data-step="artifacts"
+                    >Artifacts</span
+                  >
+                  <div>
+                    <h3>SDK artifacts</h3>
+                    <p class="step-desc step-desc--compact">
+                      <strong>List</strong> preview only &middot; <strong>Download</strong> syncs to <code>artifacts/qa-runs/&lt;id&gt;/</code>. Newest local clip is tagged for Step&nbsp;3.
+                    </p>
+                    <details class="cockpit-help-details">
+                      <summary class="cockpit-help-summary">Artifact sync detail</summary>
+                      <p class="hint cockpit-help-body">
+                        Download refreshes paths from the selected agent, writes files under this run, scrolls to the video panel, and marks the most recently updated clip for Gemini.
+                      </p>
+                    </details>
+                  </div>
+                </div>
+                <details class="advanced">
+                  <summary>Optional agent id override</summary>
+                  <p class="hint advanced-hint">
+                    Prefer <strong>Existing &rarr; Pick agent</strong> in step 1 first. Use this field only to paste a
+                    dashboard id when the dropdown does not have it yet.
+                  </p>
+                  <label class="block-label" for="agentId"
+                    >Agent id for list / download (optional; defaults to selected)</label
+                  >
+                  <input
+                    type="text"
+                    id="agentId"
+                    placeholder="bc-&hellip; (from Cursor cloud dashboard)"
+                    size="48"
+                    autocomplete="off"
+                  />
+                </details>
+                <div class="btn-row">
+                  <button type="button" class="btn-primary" id="btnListArtifacts">List (cloud only)</button>
+                  <button type="button" class="btn-secondary" id="btnSaveArtifactSlots" title="POST slot choices for ambiguous paths">
+                    Save slot choices
+                  </button>
+                  <button type="button" class="btn-primary" id="btnDownloadArtifacts">Download for video review</button>
+                </div>
+                <p class="hint hint--compact">
+                  Ambiguous <code>bug-detective-&hellip;</code> paths need a slot (or saved override) before download.
+                </p>
+                <details class="cockpit-help-details cockpit-help-details--inline">
+                  <summary class="cockpit-help-summary">Slot rules</summary>
+                  <p class="hint cockpit-help-body">
+                    Assign a minigame slot per row or use Save slot choices. Overrides persist on the manifest for later syncs.
+                  </p>
+                </details>
+                <div
+                  id="step2ArtifactList"
+                  class="artifact-list-inline"
+                  aria-live="polite"
+                  aria-label="Last cloud artifact list for this run"
+                >
+                  <h4 class="artifact-list-inline-title">Cloud list result</h4>
+                  <p class="artifact-list-summary" id="artifactListSummary">
+                    No list yet &mdash; <strong>List (cloud only)</strong>.
+                  </p>
+                  <div class="artifact-table-wrap" id="artifactTableWrap" hidden>
+                    <table class="artifact-table" id="artifactTable" aria-label="Cloud artifacts">
+                      <thead>
+                        <tr>
+                          <th scope="col">Path</th>
+                          <th scope="col">Updated</th>
+                          <th scope="col">Size</th>
+                          <th scope="col">Detected</th>
+                          <th scope="col">Confidence</th>
+                          <th scope="col">Slot</th>
+                          <th scope="col">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody id="artifactTableBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+
+              <div
+                id="videoPreviewPanel"
+                class="panel video-preview-panel cockpit-review-surface"
+                role="region"
+                aria-label="Local video review before analysis"
+              >
+                <h2>Video previews</h2>
+                <p class="hint video-review-hint hint--compact">
+                  Local <code>.webm</code> / <code>.mp4</code>. Step&nbsp;3 runs Gemini per slot that has a file. <span class="latest-webm-badge">Newest download</span> = last sync only, not &ldquo;only this slot&rdquo;.
+                </p>
+                <details class="cockpit-help-details cockpit-help-details--inline">
+                  <summary class="cockpit-help-summary">Preview detail</summary>
+                  <p class="hint cockpit-help-body">
+                    One Gemini request per slot with a local video, in parallel. The newest badge reflects cloud sync metadata, not analysis scope.
+                  </p>
+                </details>
+                <div id="videos" class="videos"></div>
+              </div>
+
+              <section class="flow-step flow-step--assess" aria-labelledby="step3-label">
+                <div class="flow-step-head">
+                  <span class="step-num" id="step3-label">3</span>
+                  <span
+                    class="step-badge step-badge--not-started"
+                    id="stepBadgeAssess"
+                    data-step="assess"
+                    >Gemini video</span
+                  >
+                  <div>
+                    <h3>Gemini video analysis</h3>
+                    <p class="step-desc step-desc--compact">
+                      One request per slot with a local video &rarr; merged <code>assessment.json</code> (no single &ldquo;picked&rdquo; clip).
+                    </p>
+                    <details class="cockpit-help-details">
+                      <summary class="cockpit-help-summary">Gemini scope</summary>
+                      <p class="hint cockpit-help-body">
+                        Every slot that has a file is analyzed; watch-through per file. Output lives alongside this run&rsquo;s artifacts.
+                      </p>
+                    </details>
+                    <p class="hint gemini-assess-scope" id="geminiAssessScope" role="status" aria-live="polite"></p>
+                  </div>
+                </div>
+                <div class="model-picker-row">
+                  <label class="block-label model-label" for="assessmentModel"
+                    >Gemini video model</label
+                  >
+                  <select id="assessmentModel" class="model-select"></select>
+                  <input
+                    type="text"
+                    id="assessmentModelCustom"
+                    class="cockpit-text-input model-custom-input"
+                    placeholder="Custom model id, e.g. gemini-2.5-flash"
+                    autocomplete="off"
+                    hidden
+                  />
+                </div>
+                <p class="hint model-hint hint--compact">
+                  Per-run model. On quota errors, try Flash or another model on your Google project.
+                </p>
+                <details class="gemini-prompt-disclosure">
+                  <summary>
+                    What prompt does Gemini get? (read-only &mdash; includes <strong>score100</strong> and
+                    0&ndash;100 dimensions)
+                  </summary>
+                  <p class="hint gemini-prompt-disclosure-hint">
+                    The box below is only <strong>optional Focus notes</strong>. The server always sends
+                    the intro + JSON contract + your run id and minigame line; this panel mirrors that
+                    structure.
+                  </p>
+                  <pre
+                    class="gemini-prompt-overview-pre"
+                    id="geminiPromptOverviewPre"
+                    aria-label="Structure of the text prompt sent to Gemini"
+                  >(select a run)</pre>
+                </details>
+                <label class="block-label" for="assessmentInstruction"
+                  >Focus notes (optional)</label
+                >
+                <textarea
+                  id="assessmentInstruction"
+                  class="assessment-instruction"
+                  rows="5"
+                  spellcheck="false"
+                  autocomplete="off"
+                ></textarea>
+                <p class="hint hint--compact">Appended after server intro, before JSON contract. Kept in session per run.</p>
+                <div class="btn-row">
+                  <button type="button" class="btn-primary" id="btnAnalyze">
+                    Run Gemini video analysis
+                  </button>
+                </div>
+                <p
+                  class="action-status gemini-status"
+                  id="geminiAnalysisStatus"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+              </section>
+
+              <div
+                class="panel assessment-results-panel cockpit-review-surface"
+                id="assessmentResultsPanel"
+                role="region"
+                aria-label="Gemini video analysis results"
+                hidden
+              >
+                <div class="results-head">
+                  <div>
+                    <h2>Gemini results</h2>
+                    <p class="hint results-hint hint--compact">
+                      From <code>assessment.json</code> &mdash; review before Export / Send in Step&nbsp;4.
+                    </p>
+                    <details class="cockpit-help-details cockpit-help-details--inline">
+                      <summary class="cockpit-help-summary">What this panel shows</summary>
+                      <p class="hint cockpit-help-body">
+                        Per-minigame scores and findings drive handoff and plan agents. Gate badge reflects pass/fail heuristics on disk.
+                      </p>
+                    </details>
+                  </div>
+                  <span class="results-gate" id="assessmentGateBadge"></span>
+                </div>
+                <div class="assessment-results" id="assessmentResults"></div>
+              </div>
+
+              <section class="flow-step flow-step--handoff" aria-labelledby="step4-label">
+                <div class="flow-step-head">
+                  <span class="step-num" id="step4-label">4</span>
+                  <span
+                    class="step-badge step-badge--not-started"
+                    id="stepBadgeHandoff"
+                    data-step="handoff"
+                    >Hand off</span
+                  >
+                  <div>
+                    <h3>Share &amp; handoff</h3>
+                    <p class="step-desc step-desc--compact">
+                      <strong>Export</strong> = local bundle &middot; <strong>Send</strong> = message to cloud agent (minigame scope below).
+                    </p>
+                    <details class="cockpit-help-details">
+                      <summary class="cockpit-help-summary">Agent selection order</summary>
+                      <p class="hint cockpit-help-body">
+                        Send targets the same agent order as artifacts: selected &rarr; latest artifact agent &rarr; record &rarr; plan &rarr; implement &rarr; most recent custom. A new plan agent starts only when no id is known.
+                      </p>
+                    </details>
+                    <div class="handoff-scope-row">
+                      <label class="block-label" for="handoffScopePreset">Handoff minigames (share + send)</label>
+                      <select id="handoffScopePreset" class="model-select handoff-scope-preset" aria-describedby="step4ActionHint">
+                        <option value="all">All minigames</option>
+                        <option value="runner">Runner only</option>
+                        <option value="sentence">Sentence only</option>
+                        <option value="errand">Errand only</option>
+                        <option value="tamper">Tamper only</option>
+                        <option value="custom">Custom&hellip;</option>
+                      </select>
+                      <div id="handoffCustomSlots" class="handoff-custom-slots" hidden>
+                        <span class="handoff-custom-label">Include:</span>
+                        <label class="handoff-slot-check"><input type="checkbox" data-handoff-slot="runner" /> runner</label>
+                        <label class="handoff-slot-check"><input type="checkbox" data-handoff-slot="sentence" /> sentence</label>
+                        <label class="handoff-slot-check"><input type="checkbox" data-handoff-slot="errand" /> errand</label>
+                        <label class="handoff-slot-check"><input type="checkbox" data-handoff-slot="tamper" /> tamper</label>
+                      </div>
+                    </div>
+                    <label class="block-label" for="followUpInstruction"
+                      >Custom instructions (Send + Export)</label
+                    >
+                    <textarea
+                      id="followUpInstruction"
+                      class="assessment-instruction handoff-followup-instruction"
+                      rows="3"
+                      spellcheck="true"
+                      placeholder="Example: After fixes land, record a fresh Playwright demo for errand and re-upload artifacts so we can re-run Gemini on the new clip."
+                      aria-describedby="step4ActionHint"
+                    ></textarea>
+                    <p class="hint handoff-followup-hint hint--compact">
+                      Optional. Appended on Send; also <code>handoff-follow-up-notes.txt</code> on Export. Session-stored per run.
+                    </p>
+                  </div>
+                </div>
+                <div class="btn-row">
+                  <button type="button" id="btnShare">Export share bundle to disk</button>
+                  <button type="button" class="btn-primary" id="btnSend">Send assessment follow-up</button>
+                </div>
+                <div id="step4ActionHint" class="step-action-hint-wrap">
+                  <p class="hint hint--compact">
+                    <strong>Export</strong> &rarr; <code>artifacts/qa-runs/&lt;runId&gt;/share/</code> (local only).
+                    <strong>Send</strong> &rarr; Cursor API from <code>assessment.json</code> (scoped); disk file unchanged.
+                  </p>
+                  <details class="cockpit-help-details cockpit-help-details--inline">
+                    <summary class="cockpit-help-summary">Export / Send (full detail)</summary>
+                    <div class="cockpit-help-body hint">
+                      <p>
+                        <strong>Export</strong> writes Markdown/JSON under
+                        <code>bug-detective/artifacts/qa-runs/&lt;runId&gt;/share/</code> (monorepo-relative). Custom instructions also become
+                        <code>handoff-follow-up-notes.txt</code>.
+                      </p>
+                      <p>
+                        <strong>Send</strong> posts the latest assessment to the chosen agent with scores/fixes filtered by minigame scope and custom notes appended.
+                        If no recording or plan id is known, the server may start a new plan agent.
+                      </p>
+                    </div>
+                  </details>
+                </div>
+
+                <div class="subpanel focused-loop-panel" aria-labelledby="focused-loop-heading">
+                  <h4 id="focused-loop-heading">Focused auto-loop</h4>
+                  <p class="hint hint--compact">
+                    One minigame: send &rarr; implement &rarr; record &rarr; download &rarr; Gemini until score or max attempts. Manual controls pause while <strong>running</strong>.
+                  </p>
+                  <details class="cockpit-help-details cockpit-help-details--inline">
+                    <summary class="cockpit-help-summary">Focused loop detail</summary>
+                    <p class="hint cockpit-help-body">
+                      Implement may open a PR. Cancel after current stage to unlock Step 1&ndash;5. Checklist shows stage progress when active.
+                    </p>
+                  </details>
+                  <div class="focused-loop-controls">
+                    <label class="inline-label" for="focusedLoopSlot">Minigame</label>
+                    <select id="focusedLoopSlot" class="model-select" aria-label="Minigame slot for focused loop">
+                      <option value="runner">runner</option>
+                      <option value="sentence">sentence</option>
+                      <option value="errand">errand</option>
+                      <option value="tamper">tamper</option>
+                    </select>
+                    <label class="inline-label" for="focusedLoopTarget">Target score</label>
+                    <input
+                      type="number"
+                      id="focusedLoopTarget"
+                      min="0"
+                      max="100"
+                      value="90"
+                      class="cockpit-text-input focused-loop-input-num"
+                      aria-label="Target score 0 to 100"
+                    />
+                    <label class="inline-label" for="focusedLoopAttempts">Max attempts</label>
+                    <input
+                      type="number"
+                      id="focusedLoopAttempts"
+                      min="1"
+                      max="10"
+                      value="2"
+                      class="cockpit-text-input focused-loop-input-num"
+                      aria-label="Max attempts 1 to 10"
+                    />
+                  </div>
+                  <label class="block-label" for="focusedLoopInstruction">Loop instructions (optional)</label>
+                  <textarea
+                    id="focusedLoopInstruction"
+                    rows="2"
+                    class="assessment-instruction"
+                    spellcheck="true"
+                    placeholder="Extra context appended each attempt (e.g. repro steps, UX goals)&hellip;"
+                  ></textarea>
+                  <div class="btn-row">
+                    <button type="button" class="btn-primary" id="btnFocusedLoopRun">Run focused loop</button>
+                    <button type="button" class="btn-secondary" id="btnFocusedLoopCancel">
+                      Stop after current stage
+                    </button>
+                  </div>
+                  <ol class="focused-loop-checklist" id="focusedLoopChecklist" aria-label="Focused loop progress" hidden></ol>
+                  <p class="hint focused-loop-status" id="focusedLoopStatus" aria-live="polite"></p>
+                </div>
+              </section>
+
+              <section class="flow-step flow-step--ship" aria-labelledby="step5-label">
+                <div class="flow-step-head">
+                  <span class="step-num" id="step5-label">5</span>
+                  <span
+                    class="step-badge step-badge--not-started"
+                    id="stepBadgeShip"
+                    data-step="ship"
+                    >Finish</span
+                  >
+                  <div>
+                    <h3>Finish</h3>
+                    <p class="step-desc step-desc--compact">
+                      Approve in manifest only, or approve + <strong>implement</strong> agent (may open a PR). No <code>git commit</code> from here.
+                    </p>
+                    <details class="cockpit-help-details">
+                      <summary class="cockpit-help-summary">Finish behavior</summary>
+                      <p class="hint cockpit-help-body">
+                        Use manifest-only when you will commit/PR yourself. Implement sets the same approval flag and starts Cursor&rsquo;s implement agent; a PR URL may appear in the timeline if the API returns one.
+                      </p>
+                    </details>
+                  </div>
+                </div>
+                <div class="btn-row">
+                  <button type="button" id="btnApprove">
+                    Mark approved &mdash; manifest only (I&rsquo;ll commit / PR myself)
+                  </button>
+                  <button type="button" class="btn-primary" id="btnImplement">
+                    Mark approved + start implement agent (may open PR)
+                  </button>
+                </div>
+                <div id="step5ActionHint" class="step-action-hint-wrap">
+                  <p class="hint hint--compact">
+                    <strong>Manifest only</strong> = <code>planApproved</code> + advance workflow.
+                    <strong>+ implement</strong> = same + start implement agent (watch timeline for PR link).
+                  </p>
+                  <details class="cockpit-help-details cockpit-help-details--inline">
+                    <summary class="cockpit-help-summary">Finish (full detail)</summary>
+                    <p class="hint cockpit-help-body">
+                      Manifest-only is for when you handle git outside this UI. Implement waits on the cloud run; PR URL appears in the log when available.
+                    </p>
+                  </details>
+                </div>
+              </section>
+            </div>
           </div>
-          <div class="row">
-            <button type="button" id="btnAnalyze">Analyze (Gemini)</button>
-            <button type="button" id="btnShare">Write share bundle</button>
-            <button type="button" id="btnSend">Send findings to plan agent</button>
-          </div>
-          <div class="row">
-            <button type="button" id="btnApprove">Approve (manifest)</button>
-            <button type="button" id="btnImplement">Approve + run implement</button>
+
+          <div class="cockpit-run-diagnostics-meta">
+            <details class="advanced">
+              <summary>Run manifest (advanced)</summary>
+              <pre id="runMeta" class="run-meta"></pre>
+            </details>
           </div>
         </section>
-        <section class="panel">
+
+        <section class="panel cockpit-diagnostics cockpit-diagnostics--log">
           <h2>Timeline / log</h2>
-          <pre id="log"></pre>
+          <pre id="log" class="cockpit-log-pre"></pre>
         </section>
-        <section class="panel">
-          <h2>Video previews (local paths)</h2>
-          <div id="videos" class="videos"></div>
-        </section>
-        <section class="panel">
+        <section class="panel cockpit-diagnostics cockpit-diagnostics--raw">
           <h2>Last API response</h2>
-          <pre id="raw"></pre>
+          <details class="advanced">
+            <summary>Raw response (advanced)</summary>
+            <pre id="raw" class="cockpit-raw-pre"></pre>
+          </details>
         </section>
       </main>
     </div>

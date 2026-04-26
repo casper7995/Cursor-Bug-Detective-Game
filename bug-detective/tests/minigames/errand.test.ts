@@ -4,15 +4,12 @@ import {
   nudgeSignalsAfterInspect,
   scoreErrandRun,
   canAssignHelper,
+  errandEarnsDeskClue,
   namespacedSeed,
 } from "../../src/minigames/errand/round";
 import {
-  agentRowHitRect,
-  agentRowRect,
-  hitWatchIntervention,
   taskCardDropRect,
   taskCardRect,
-  taskInterventionButtonRects,
 } from "../../src/minigames/errand/draw";
 import { clueTokenForErrand } from "../../src/minigames/errand/clueTokens";
 import { ERRAND_NUM_DRAWERS } from "../../src/minigames/errand/types";
@@ -101,45 +98,16 @@ describe("errand triage (cursor agents)", () => {
     expect(n.relevance01).toBeGreaterThan(p.relevance01);
   });
 
-  it("hitWatchIntervention is null with no active helpers", () => {
-    const r = buildErrandRound(1);
-    expect(hitWatchIntervention(r.drawers, [], 50, 50)).toBe(null);
-  });
-
-  it("hitWatchIntervention matches inspect chip on a running task", () => {
-    const r = buildErrandRound(5);
-    const d0 = r.drawers[0]!;
-    const helpers = [
-      {
-        index: 0 as 0,
-        state: "filling" as const,
-        drawerAssigned: d0.index,
-        fillProgress: 0.2,
-        result: null,
-        trait: r.agentTraits[0]!,
-        tripwireT: 0,
-      },
-    ];
-    const { inspect } = taskInterventionButtonRects(taskCardRect(0));
-    const hit = hitWatchIntervention(
-      r.drawers,
-      helpers,
-      inspect.x + inspect.w / 2,
-      inspect.y + inspect.h / 2,
-    );
-    expect(hit).toEqual({ taskIdx: 0, kind: "inspect" });
+  it("earns the desk clue with 2+ clues, or 1 clue and no trap", () => {
+    expect(errandEarnsDeskClue(0, 0)).toBe(false);
+    expect(errandEarnsDeskClue(1, 1)).toBe(false);
+    expect(errandEarnsDeskClue(1, 0)).toBe(true);
+    expect(errandEarnsDeskClue(2, 1)).toBe(true);
   });
 });
 
 describe("errand hit targets", () => {
-  it("agent row hit rect is taller than the drawn row (easier pickup)", () => {
-    const drawn = agentRowRect(0);
-    const hit = agentRowHitRect(0);
-    expect(hit.h).toBeGreaterThan(drawn.h);
-    expect(hit.y).toBeLessThan(drawn.y);
-  });
-
-  it("task card drop rect is larger than the visible card (easier drop)", () => {
+  it("task card hit rect is larger than the visible card", () => {
     const card = taskCardRect(0);
     const drop = taskCardDropRect(0);
     expect(drop.w).toBeGreaterThan(card.w);

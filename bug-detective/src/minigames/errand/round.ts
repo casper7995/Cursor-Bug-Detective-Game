@@ -224,6 +224,10 @@ export interface LaneDefenseRuntime {
   queue: AgentQueueEntry[];
   deployFx: DeployEffect[];
   nextDeployFxId: number;
+  feedbackFx: FeedbackEffect[];
+  nextFeedbackFxId: number;
+  /** Frame counter that decays each step; renderer uses for BASE-meter shake. */
+  baseHitShake: number;
   selectedTray: AgentKind | null;
 }
 
@@ -231,6 +235,22 @@ export interface DeployEffect {
   readonly id: number;
   readonly kind: AgentKind;
   readonly lane: LaneIndex;
+  readonly startedAt: number;
+  readonly duration: number;
+}
+
+/**
+ * Transient visual + audio cue. Renderer maps `kind` to an icon/color.
+ * `worldX` is in the play-field's normalised x (1=spawn, 0=desk) so the
+ * renderer can position relative to the lane row.
+ */
+export type FeedbackEffectKind = "kill" | "leak" | "spend";
+export interface FeedbackEffect {
+  readonly id: number;
+  readonly kind: FeedbackEffectKind;
+  readonly lane: LaneIndex;
+  readonly worldX: number;
+  readonly value: number;
   readonly startedAt: number;
   readonly duration: number;
 }
@@ -263,6 +283,9 @@ export function createLaneDefenseRuntime(seed: number): LaneDefenseRuntime {
     })),
     deployFx: [],
     nextDeployFxId: 1,
+    feedbackFx: [],
+    nextFeedbackFxId: 1,
+    baseHitShake: 0,
     selectedTray: null,
   };
 }
@@ -323,6 +346,16 @@ export function laneDefenseDeployToLane(
       duration: 0.62,
     }),
     nextDeployFxId: rt.nextDeployFxId + 1,
+    feedbackFx: rt.feedbackFx.concat({
+      id: rt.nextFeedbackFxId,
+      kind: "spend",
+      lane,
+      worldX: 0.5,
+      value: def.cost,
+      startedAt: rt.elapsed,
+      duration: 0.55,
+    }),
+    nextFeedbackFxId: rt.nextFeedbackFxId + 1,
     queue: rt.queue.map((q) =>
       q.kind === def.kind
         ? { ...q, readyAt: rt.elapsed + def.recharge, promoted: false }
@@ -387,12 +420,17 @@ export function stepLaneDefenseRuntime(
     placed: rt.placed.map((p) => ({ ...p })),
     queue: rt.queue.map((q) => ({ ...q })),
     deployFx: rt.deployFx.map((fx) => ({ ...fx })),
+    feedbackFx: rt.feedbackFx.map((fx) => ({ ...fx })),
   };
 
   next.elapsed += dt;
   next.deployFx = next.deployFx.filter(
     (fx) => next.elapsed - fx.startedAt < fx.duration,
   );
+  next.feedbackFx = next.feedbackFx.filter(
+    (fx) => next.elapsed - fx.startedAt < fx.duration,
+  );
+  next.baseHitShake = Math.max(0, next.baseHitShake - dt * 4);
   next.clueLocked = survivalNotebookLock(next.wave, next.elapsed);
 
   if (next.wavePause > 0) {
@@ -458,6 +496,15 @@ export function stepLaneDefenseRuntime(
   next.enemies = next.enemies.filter((e) => {
     if (e.hp > 0) return true;
     if (e.isBoss) bossesDelta++;
+    next.feedbackFx.push({
+      id: next.nextFeedbackFxId++,
+      kind: "kill",
+      lane: e.lane,
+      worldX: e.x,
+      value: e.maxHp,
+      startedAt: next.elapsed,
+      duration: 0.55,
+    });
     return false;
   });
   next.bossesDefeated += bossesDelta;
@@ -476,6 +523,17 @@ export function stepLaneDefenseRuntime(
       dmg -= absorb;
       next.baseHealth -= dmg;
       next.capacity = cap;
+      next.feedbackFx.push({
+        id: next.nextFeedbackFxId++,
+        kind: "leak",
+        lane: e.lane,
+        worldX: 0,
+        value: e.leakDamage,
+        startedAt: next.elapsed,
+        duration: 0.7,
+      });
+      // Only shake when health actually dropped (not when fully absorbed).
+      if (dmg > 0) next.baseHitShake = 1;
       continue;
     }
     afterLeak.push(e);

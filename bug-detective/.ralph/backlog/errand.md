@@ -13,7 +13,7 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
   Forces real choice — Fixer-spam currently dominates. (+10)
 - [x] **E-2 Wire the dead `bossWarningLeadSec` config** — `types.ts:101` defines it but no consumer. Add ribbon flash + sfx 9s before boss spawn. (+3) **[done iter-3 — pulsing ribbon banner over playfield top]**
 - [x] **E-3 Drop firstBossWave from 4 → 2** — `round.ts:99`. Clue locks at wave 3; with current value, 90% of players never meet a boss. (+3) **[done iter-3 — also changed cadence to first-then-every-3]**
-- [ ] **E-4 Per-action feedback layer** — silent enemy deaths today. Add: enemy-death flash + sfx in `round.ts:428-432`; leak-damage shake on BASE meter; focus-tick number popup at `draw.ts:540`. (+5)
+- [x] **E-4 Per-action feedback layer** — added `feedbackFx` system in round.ts: kill (cyan ring + "+1" rise), leak (orange `-N` damage popup + impact ring), spend (focus cost popup); BASE meter shakes 1 frame on real HP loss. (+5) **[done iter-7]**
 
 ## Medium leverage
 

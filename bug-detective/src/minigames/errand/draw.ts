@@ -508,6 +508,14 @@ export function drawLaneDefenseField(
   ctx.font = "700 10px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillText(waveLabel, L.panelX + 22, L.panelY + 19);
 
+  // Shake the BASE meter when leak damage just hit core HP.
+  const shakeMag = rt.baseHitShake;
+  if (shakeMag > 0) ctx.save();
+  if (shakeMag > 0) {
+    const dx = (Math.random() - 0.5) * 4 * shakeMag;
+    const dy = (Math.random() - 0.5) * 2 * shakeMag;
+    ctx.translate(dx, dy);
+  }
   meter(
     ctx,
     "BASE",
@@ -518,6 +526,7 @@ export function drawLaneDefenseField(
     LANE_DEFENSE.baseHealthMax,
     NEON_GREEN,
   );
+  if (shakeMag > 0) ctx.restore();
   meter(
     ctx,
     "CAP",
@@ -676,6 +685,54 @@ export function drawLaneDefenseField(
       ctx.fillRect(barX, barY, hw * hpT, 4);
     }
   }
+
+  drawFeedbackFx(ctx, rt, playX0, playW);
+}
+
+function drawFeedbackFx(
+  ctx: CanvasRenderingContext2D,
+  rt: LaneDefenseRuntime,
+  playX0: number,
+  playW: number,
+): void {
+  if (rt.feedbackFx.length === 0) return;
+  ctx.save();
+  for (const fx of rt.feedbackFx) {
+    const t = (rt.elapsed - fx.startedAt) / fx.duration;
+    if (t < 0 || t >= 1) continue;
+    const cy = laneRowY(fx.lane) + ERRAND_LAYOUT.laneRowH / 2;
+    const cx = playX0 + fx.worldX * playW;
+    const fade = 1 - t;
+    if (fx.kind === "kill") {
+      const ringR = 4 + t * 22;
+      ctx.strokeStyle = `rgba(123, 224, 255, ${fade * 0.9})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(123, 224, 255, ${fade})`;
+      ctx.font = "700 11px 'Cursor Mono', ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("+1", cx, cy - 8 - t * 18);
+    } else if (fx.kind === "leak") {
+      ctx.fillStyle = `rgba(245, 78, 0, ${fade * 0.85})`;
+      ctx.font = "700 11px 'Cursor Mono', ui-monospace, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(`-${Math.round(fx.value)}`, cx + 4, cy + 4 - t * 14);
+      ctx.strokeStyle = `rgba(245, 78, 0, ${fade * 0.6})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx + 8, cy, 6 + t * 8, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (fx.kind === "spend") {
+      ctx.fillStyle = `rgba(255, 215, 199, ${fade})`;
+      ctx.font = "700 9px 'Cursor Mono', ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`-${fx.value}`, cx, cy - 14 - t * 10);
+    }
+  }
+  ctx.textAlign = "left";
+  ctx.restore();
 }
 
 export function drawErrandIntro(

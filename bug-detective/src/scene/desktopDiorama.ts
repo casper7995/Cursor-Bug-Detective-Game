@@ -545,13 +545,16 @@ export function createDesktopDiorama(): DioramaObjects {
   hoverables.push(lampBase);
 
   // Tall narrow invisible hit-cylinder so clicking anywhere on the lamp
-  // body (neck / shade / bulb) launches the Tampering mini. Kept narrow
-  // (0.18r) so it doesn't bleed into the envelope's screen projection.
+  // body (neck / shade / bulb) launches the Tampering mini.
+  // SH-2: previously 0.18r — at certain camera angles its screen-space
+  // projection bled over the envelope, so envelope clicks got routed to
+  // the lamp/Tamper instead of Sentence. Tightened to 0.13r and lowered
+  // to y=0.42 (was 0.55) so the volume hugs the actual lamp silhouette.
   const lampHit = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.18, 0.18, 1.05, 12),
+    new THREE.CylinderGeometry(0.13, 0.13, 0.92, 12),
     new THREE.MeshBasicMaterial({ visible: false }),
   );
-  lampHit.position.y = 0.55;
+  lampHit.position.y = 0.42;
   lampHit.userData.tag = "lamp";
   lamp.add(lampHit);
   hoverables.push(lampHit);

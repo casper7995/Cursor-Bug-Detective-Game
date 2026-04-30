@@ -7,7 +7,7 @@ import {
   sfxRunnerLand,
   sfxWrong,
 } from "../../audio/audio";
-import { drawRunnerFrame } from "./draw";
+import { drawRunnerFrame, drawRunnerIntroOverlay } from "./draw";
 import type { RunnerClueSet } from "./clueTokens";
 import {
   createRunnerSimWithSeed,
@@ -26,6 +26,8 @@ const DEFAULT_CFG: RunnerSimConfig = {
 };
 
 const TIER_RIBBON_MS = 1200;
+/** Hold "READY → GO!" key-legend before scroll starts. */
+const INTRO_MS = 1500;
 
 export interface RunnerSessionOptions {
   readonly baseSeed: number;
@@ -60,6 +62,8 @@ export class RunnerSession {
   private runIndex = 0;
   private outcome: RunnerRunOutcome | null = null;
   private gameOver = false;
+  /** Counts down from INTRO_MS; sim does not step until it hits 0. */
+  private introMs = INTRO_MS;
   private failureAnimMs = 0;
   private playedFailSfx = false;
   private lastTierRibbonFloor = 0;
@@ -149,6 +153,7 @@ export class RunnerSession {
   /** New course, same mode; clears game over. */
   restartSameMode(): void {
     this.gameOver = false;
+    this.introMs = INTRO_MS;
     this.failureAnimMs = 0;
     this.playedFailSfx = false;
     this.lastTierRibbonFloor = 0;
@@ -162,6 +167,15 @@ export class RunnerSession {
       this.cfg,
       this.anomalyId,
     );
+  }
+
+  /** True while the pre-run "READY → GO!" overlay is shown. */
+  isIntroActive(): boolean {
+    return this.introMs > 0 && !this.gameOver && !this.outcome;
+  }
+  /** 0..1 over INTRO_MS; renderer can fade/animate against this. */
+  introProgress01(): number {
+    return Math.max(0, Math.min(1, 1 - this.introMs / INTRO_MS));
   }
 
   /** Endless: exit with score. Daily: mark fail exit. */
@@ -179,7 +193,17 @@ export class RunnerSession {
   step(dtSec: number, wantJump: boolean, wantBoost: boolean): void {
     if (this.outcome) return;
 
-    if (!this.gameOver) {
+    // Intro hold — show key legend before sim advances. Any input cancels
+    // immediately so eager players aren't blocked. While intro is active we
+    // skip the sim step + game-over logic but fall through to the renderer
+    // so the overlay paints atop a static frame.
+    const introActive = this.introMs > 0 && !this.gameOver;
+    if (introActive) {
+      if (wantJump || wantBoost) this.introMs = 0;
+      else this.introMs = Math.max(0, this.introMs - dtSec * 1000);
+    }
+
+    if (!this.gameOver && !introActive) {
       const wasGrounded = this.sim.grounded;
       const boostBefore = this.sim.boost01;
       this.sim = stepRunnerSim(this.sim, dtSec, wantJump, wantBoost, this.cfg);
@@ -262,6 +286,10 @@ export class RunnerSession {
       });
     } else {
       drawRunnerFrame(this.renderCtx, { ...baseDraw, ...ribbonOpt });
+    }
+
+    if (this.isIntroActive()) {
+      drawRunnerIntroOverlay(this.renderCtx, this.introProgress01());
     }
 
     if (this.shouldUpdateMonitorTexture()) {

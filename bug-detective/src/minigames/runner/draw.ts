@@ -856,3 +856,45 @@ export function drawRunnerFrame(
     }
   }
 }
+
+/**
+ * Pre-run intro overlay — "READY → GO!" with a key legend so a brand-new
+ * player learns SPACE/→ before the floor starts disappearing. progress01
+ * goes 0→1 over the intro duration; we fade out near the end.
+ */
+export function drawRunnerIntroOverlay(
+  ctx: CanvasRenderingContext2D,
+  progress01: number,
+): void {
+  const W = RUNNER_DRAW.canvasW;
+  const H = RUNNER_DRAW.canvasH;
+  const fade = progress01 < 0.7 ? 1 : 1 - (progress01 - 0.7) / 0.3;
+
+  ctx.save();
+  // Soft scrim — keeps the playfield readable behind the intro.
+  ctx.fillStyle = `rgba(8, 7, 5, ${0.55 * fade})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // Headline: READY for first 60% of intro, then GO! pops bigger.
+  const showGo = progress01 >= 0.55;
+  const headline = showGo ? "GO!" : "READY";
+  const popScale = showGo ? 1 + Math.min(1, (progress01 - 0.55) * 6) * 0.18 : 1;
+  ctx.fillStyle = `rgba(255, 215, 199, ${fade})`;
+  ctx.font = `700 ${Math.round(48 * popScale)}px 'Cursor Gothic', sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(headline, W / 2, H / 2 - 16);
+
+  // Key legend row.
+  ctx.fillStyle = `rgba(231, 250, 255, ${0.85 * fade})`;
+  ctx.font = "600 13px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText("SPACE jump   ·   → boost   ·   ESC desk", W / 2, H / 2 + 28);
+
+  ctx.fillStyle = `rgba(231, 250, 255, ${0.5 * fade})`;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText("press anything to start", W / 2, H / 2 + 50);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}

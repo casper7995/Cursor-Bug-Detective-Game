@@ -4,7 +4,7 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 ## High leverage (onboarding + feel)
 
-- [ ] **R-1 Pre-run "READY → GO" overlay with key legend** — new `intro` phase in `session.ts`, render in `draw.ts`. 1.5s overlay before scroll: large "READY" → "GO!", legend `SPACE jump · → boost`. Skip with any key. **+8 alone — fixes the "void-die before learning boost exists" cliff.**
+- [x] **R-1 Pre-run "READY → GO" overlay with key legend** — `INTRO_MS=1500` hold with `isIntroActive()` + `introProgress01()`; new `drawRunnerIntroOverlay`. Skip with SPACE/→. (+8) **[done iter-5]**
 - [ ] **R-2 Coyote-time + jump-buffer** — `sim.ts:660-668`. 80ms grace after walking off, 100ms input buffer. Standard platformer feel-fix. (+4)
 - [ ] **R-3 Plank pre-fade warning** — `draw.ts:733-769`. When alpha < 0.35, pulse red + 1px shake. Tells player "leave NOW." (+3)
 - [ ] **R-4 Speed-line FX during boost** — new fx layer in `draw.ts`, triggered while `wantBoost`. 4-6 horizontal motion lines + 1.02× zoom. Most exciting input has smallest visual reaction today. (+2)

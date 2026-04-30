@@ -104,7 +104,17 @@ export function drawEditorScene(
     totalChars * Math.max(0, Math.min(1, typingProgress01)),
   );
   const visible = paragraph.slice(0, visibleChars);
-  const lines = wrapLines(ctx, visible, L.editorW - gutterW - 24);
+  const allLines = wrapLines(ctx, visible, L.editorW - gutterW - 24);
+
+  // S-2: editor auto-scroll. Was clipping after the 8th line, hiding the
+  // prefix the player is being asked to complete past slot 6. Now show
+  // the LAST `maxLines` so the active typing edge stays visible. Line
+  // numbers reflect the absolute index, not the rendered offset.
+  const lineH = 16;
+  const innerH = L.editorH - 32;
+  const maxLines = Math.max(1, Math.floor((innerH - 12) / lineH));
+  const startLine = Math.max(0, allLines.length - maxLines);
+  const lines = allLines.slice(startLine);
 
   // Render visible lines + line numbers
   let yLine = bodyY + 6;
@@ -114,14 +124,13 @@ export function drawEditorScene(
     ctx.fillStyle = CURSOR_AI.inkSubtle;
     ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
     ctx.textAlign = "right";
-    ctx.fillText(String(i + 1), L.editorX + gutterW - 6, yLine);
+    ctx.fillText(String(startLine + i + 1), L.editorX + gutterW - 6, yLine);
     ctx.textAlign = "left";
     ctx.fillStyle = CURSOR_AI.ink;
     ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
     ctx.fillText(line, bodyX + 8, yLine);
     lastLineW = ctx.measureText(line).width;
-    yLine += 16;
-    if (yLine > L.editorY + L.editorH - 6) break;
+    yLine += lineH;
   }
 
   // Caret position — end of last rendered line

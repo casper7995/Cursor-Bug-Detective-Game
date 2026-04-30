@@ -533,14 +533,13 @@ export class SentenceSession {
 
     // Title strip — hidden during the result share card so the card's
     // headline doesn't fight the chrome breadcrumb above it.
+    // S-6/S-7: dropped the duplicate "Tab cycles · Enter accepts" line
+    // (already shown inside the popover footer) and the hardcoded x=162
+    // collision. Just `case_file.md` now.
     if (!showResult) {
-      ctx.fillStyle = CURSOR_AI.ink;
-      ctx.font =
-        "700 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-      ctx.fillText("Tab cycles · Enter accepts", 18, 26);
       ctx.fillStyle = CURSOR_AI.inkSubtle;
       ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
-      ctx.fillText(`· case_file.md`, 162, 26);
+      ctx.fillText("case_file.md", 18, 26);
     }
 
     if (this.phase.kind === "intro") {
@@ -631,9 +630,13 @@ export class SentenceSession {
   private drawProgressDots(ctx: CanvasRenderingContext2D): void {
     const total = SENTENCE_SLOTS_PER_TEMPLATE;
     const cur = this.currentSentenceIdx();
-    const baseX = SENTENCE_LAYOUT.editorX + SENTENCE_LAYOUT.editorW + 6;
+    // S-8: anchor right-edge of editor card so all dots sit on-canvas at
+    // 512px width. Was baseX=502 + i*14 → last dot landed at x=600.
+    const dotSpacing = 12;
+    const rightEdge = SENTENCE_LAYOUT.editorX + SENTENCE_LAYOUT.editorW - 4;
+    const baseX = rightEdge - (total - 1) * dotSpacing;
     for (let i = 0; i < total; i++) {
-      const x = baseX + i * 14;
+      const x = baseX + i * dotSpacing;
       const y = 26;
       const pick = this.picks[i];
       let color: string = CURSOR_AI.border;

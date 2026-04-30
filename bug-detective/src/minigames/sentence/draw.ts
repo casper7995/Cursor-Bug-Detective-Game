@@ -303,6 +303,7 @@ export function drawShareCard(
   ending: EndingKind,
   paragraph: string,
   score: number,
+  revealT: number = 1,
 ): void {
   ctx.save();
   ctx.fillStyle = CURSOR_AI.scrim;
@@ -325,7 +326,7 @@ export function drawShareCard(
     improv: "IMPROV DETECTIVE",
     "typewriter-wrote-it": "THE TYPEWRITER WROTE IT FOR YOU",
   };
-  ctx.fillStyle =
+  const endingColor =
     ending === "by-the-book"
       ? CURSOR_AI.green
       : ending === "cursed-case-file"
@@ -333,7 +334,12 @@ export function drawShareCard(
         : ending === "improv"
           ? CURSOR_AI.blue
           : CURSOR_AI.inkMute;
-  ctx.font = "700 11px 'Cursor Gothic', sans-serif";
+  // S-13: ending headline pulses softly for the first ~25% of reveal so
+  // the player's eye lands on it before the paragraph + score.
+  const headlinePulse =
+    revealT < 0.25 ? 1 + 0.18 * Math.sin(revealT * Math.PI * 8) : 1;
+  ctx.fillStyle = endingColor;
+  ctx.font = `700 ${(11 * headlinePulse).toFixed(1)}px 'Cursor Gothic', sans-serif`;
   ctx.textAlign = "right";
   ctx.fillText(endingLabel[ending], x + w - 14, y + 18);
   ctx.textAlign = "left";
@@ -341,13 +347,17 @@ export function drawShareCard(
   // Paragraph body (longer 8-beat runs)
   drawParagraph(ctx, paragraph, x + 22, y + 50, w - 44, 14);
 
-  // Footer score row
+  // Footer score row — count-up tween on the big number.
+  // S-13: 0 → score over the first 70% of reveal, then steady.
+  const scoreT = Math.min(1, revealT / 0.7);
+  const easedT = 1 - (1 - scoreT) * (1 - scoreT); // ease-out quad
+  const shownScore = Math.round(score * easedT);
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillText("score", x + 22, y + h - 32);
-  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.fillStyle = scoreT >= 1 ? endingColor : CURSOR_AI.ink;
   ctx.font = "700 22px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText(String(score), x + 22, y + h - 14);
+  ctx.fillText(String(shownScore), x + 22, y + h - 14);
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textAlign = "right";

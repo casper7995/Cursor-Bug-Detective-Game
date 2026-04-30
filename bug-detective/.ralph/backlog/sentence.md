@@ -20,8 +20,8 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 - [x] **S-11 Share card hold longer** — RESULT_AUTOCLOSE_S 3.4 → 12; click still advances. **[done iter-11]**
 - [x] **S-12 Share card vs chrome overlap** — title strip + progress dots + desk chrome hidden during result phase so the share card owns the screen. **[done iter-11]**
-- [ ] **S-13 Score reveal juice** — count-up tween on the big score number; small flash on the ending headline. (+3 from reviewer's blocker list)
-- [ ] **S-14 Per-pick commit flash** — 120ms green pulse on right answer / red on wrong, before advance. (+3)
+- [x] **S-13 Score reveal juice** — `revealT` over 1.4s drives a count-up (ease-out quad) of the score and a soft headline pulse on the ending label. Score recolors to ending hue at the end of count. (+3) **[done iter-19]**
+- [x] **S-14 Per-pick commit flash** — new `reveal` phase between pick and next type (280ms). Picked row glows in its color, fading out. Idle defaults to orange. (+3) **[done iter-19]**
 - [ ] **S-15 Beat escalation** — tighten pick-timer 5-10% per beat, or add a "beat 7-8 panic" visual. (+2)
 
 ## Polish

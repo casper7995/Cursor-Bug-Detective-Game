@@ -52,6 +52,8 @@ const H = RUNNER_DRAW.canvasH;
 const INTRO_DURATION_S = 0.95;
 const TYPE_PER_SENTENCE_S = 1.15;
 const PICK_TIMEOUT_S = 3.0;
+/** Brief post-pick flash so the commit feels weighty (S-14). */
+const REVEAL_FLASH_S = 0.28;
 /**
  * Generous hold so the player can read the full 8-sentence paragraph; the
  * pointerdown handler advances earlier on click. Reviewer iter-4 flagged
@@ -75,6 +77,15 @@ type Phase =
       sentenceIdx: number;
       t: number;
       selectedRowIndex: number;
+    }
+  | {
+      /**
+       * Brief post-pick flash showing which row was committed. S-14.
+       */
+      kind: "reveal";
+      sentenceIdx: number;
+      t: number;
+      pickedColor: PickColor | "idle";
     }
   | { kind: "result"; t: number };
 
@@ -301,7 +312,9 @@ export class SentenceSession {
     const sentenceIdx = this.phase.sentenceIdx;
     this.picks.push({ sentenceIdx, color });
     this.maybeInjectNameForNext();
-    this.advanceAfterPick();
+    // S-14: enter the reveal flash before advancing. The step machine
+    // tracks t and calls advanceAfterPick when the flash window expires.
+    this.phase = { kind: "reveal", sentenceIdx, t: 0, pickedColor: color };
   }
 
   private rowsForSlot(sentenceIdx: number): readonly SuggestionRowRect[] {
@@ -444,6 +457,16 @@ export class SentenceSession {
         if (this.phase.t >= PICK_TIMEOUT_S) this.commitIdle();
         break;
       }
+      case "reveal": {
+        this.phase = {
+          kind: "reveal",
+          sentenceIdx: this.phase.sentenceIdx,
+          t: this.phase.t + dtSec,
+          pickedColor: this.phase.pickedColor,
+        };
+        if (this.phase.t >= REVEAL_FLASH_S) this.advanceAfterPick();
+        break;
+      }
       case "result": {
         this.phase = { kind: "result", t: this.phase.t + dtSec };
         if (this.phase.t >= RESULT_AUTOCLOSE_S) this.finalizeOutcome();
@@ -458,7 +481,11 @@ export class SentenceSession {
   }
 
   private currentSentenceIdx(): number {
-    if (this.phase.kind === "type" || this.phase.kind === "pick") {
+    if (
+      this.phase.kind === "type" ||
+      this.phase.kind === "pick" ||
+      this.phase.kind === "reveal"
+    ) {
       return this.phase.sentenceIdx;
     }
     return this.picks.length;
@@ -524,7 +551,41 @@ export class SentenceSession {
         const remain = Math.max(0, 1 - this.phase.t / PICK_TIMEOUT_S);
         drawSuggestionPopover(ctx, rows, this.phase.selectedRowIndex, remain);
       }
+    } else if (this.phase.kind === "reveal") {
+      // S-14: show the popover with the committed row glowing in its
+      // color for a brief flash, so the pick feels weighty before the
+      // typewriter advances.
+      const slot = this.template.slots[this.phase.sentenceIdx];
+      if (slot) {
+        const rows = this.rowsForSlot(this.phase.sentenceIdx);
+        const flashT = Math.min(1, this.phase.t / REVEAL_FLASH_S);
+        const pickedColor = this.phase.pickedColor;
+        const pickedIdx =
+          pickedColor === "idle"
+            ? rows.findIndex((r) => r.color === "orange")
+            : rows.findIndex((r) => r.color === pickedColor);
+        drawSuggestionPopover(ctx, rows, pickedIdx >= 0 ? pickedIdx : null, 0);
+        // Flash overlay over the picked row.
+        if (pickedIdx >= 0 && rows[pickedIdx]) {
+          const r = rows[pickedIdx]!;
+          const alpha = 0.55 * (1 - flashT);
+          const flashColor =
+            pickedColor === "blue"
+              ? `rgba(95, 175, 255, ${alpha})`
+              : pickedColor === "purple"
+                ? `rgba(170, 130, 240, ${alpha})`
+                : `rgba(245, 78, 0, ${alpha})`;
+          ctx.save();
+          ctx.fillStyle = flashColor;
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+          ctx.restore();
+        }
+      }
     } else if (this.phase.kind === "result") {
+      // S-13: reveal animation over the first 1.4s so the score count-up
+      // and ending pulse register before the player can read the paragraph.
+      const REVEAL_DURATION_S = 1.4;
+      const revealT = Math.min(1, this.phase.t / REVEAL_DURATION_S);
       const screen = this.resultScreen;
       if (screen) {
         drawShareCard(
@@ -534,6 +595,7 @@ export class SentenceSession {
           screen.result.ending,
           screen.finalParagraph,
           screen.result.score,
+          revealT,
         );
       } else {
         const result = scoreSentenceRun(this.picks);
@@ -542,7 +604,15 @@ export class SentenceSession {
           this.picks,
           this.resolvedPrefixes,
         );
-        drawShareCard(ctx, W, H, result.ending, finalParagraph, result.score);
+        drawShareCard(
+          ctx,
+          W,
+          H,
+          result.ending,
+          finalParagraph,
+          result.score,
+          revealT,
+        );
       }
     }
 

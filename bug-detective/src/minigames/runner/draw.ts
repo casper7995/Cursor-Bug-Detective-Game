@@ -277,12 +277,9 @@ function drawClueStrip(
   const rawHint = hintOverride ?? tooltipHint;
   ctx.fillStyle = hintOverride ? CURSOR_ORANGE : CURSOR_TEXT_HI;
   const maxHintW = Math.max(80, chipBlockLeft - hintX - 12);
-  // R-8: prefix is fixed; only truncate the dynamic hint body, then
-  // re-prepend the chevron so the prefix never gets eaten.
-  const PREFIX = "› ";
-  const prefixW = ctx.measureText(PREFIX).width;
-  const bodyMaxW = Math.max(0, maxHintW - prefixW);
-  const hint = PREFIX + truncateOnWord(ctx, rawHint, bodyMaxW);
+  // R-12: dropped redundant `› ` chevron — "CLUE" label already conveys
+  // role. Truncate the hint body to fit.
+  const hint = truncateOnWord(ctx, rawHint, maxHintW);
   ctx.textAlign = "left";
   ctx.fillText(hint, hintX, midY);
 
@@ -590,17 +587,19 @@ function drawHudStatChips(
       ctx.fillStyle = CURSOR_GOLD;
       ctx.fillText("BOOST", x + boostW / 2, topY + 3);
       ctx.font = "600 10px 'Berkeley Mono', ui-monospace, monospace";
-      ctx.fillStyle = showBoost ? CURSOR_TEXT_HI : "rgba(237,236,236,0.45)";
-      ctx.fillText(showBoost ? `${boostPct}%` : "—", x + boostW / 2, topY + 14);
-      if (showBoost) {
-        const barX = x + 8;
-        const barY = topY + chipH - 5;
-        const barW = boostW - 16;
-        const barH = 3;
-        ctx.fillStyle = "rgba(20, 18, 11, 0.95)";
-        ctx.beginPath();
-        ctx.roundRect(barX, barY, barW, barH, 1);
-        ctx.fill();
+      ctx.fillStyle = showBoost ? CURSOR_TEXT_HI : "rgba(237,236,236,0.55)";
+      // R-10: always show a numeric percent (no em-dash empty state); the
+      // bar below also renders empty so the chip's affordance is consistent.
+      ctx.fillText(`${boostPct}%`, x + boostW / 2, topY + 14);
+      const barX = x + 8;
+      const barY = topY + chipH - 5;
+      const barW = boostW - 16;
+      const barH = 3;
+      ctx.fillStyle = "rgba(20, 18, 11, 0.95)";
+      ctx.beginPath();
+      ctx.roundRect(barX, barY, barW, barH, 1);
+      ctx.fill();
+      if (boost01 > 0) {
         ctx.fillStyle = boostAccent;
         ctx.beginPath();
         ctx.roundRect(barX, barY, barW * boost01, barH, 1);
@@ -849,7 +848,8 @@ export function drawRunnerFrame(
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
     const rib = `${tierRibbon.tier * 100}m · tier ${tierRibbon.tier}`;
-    ctx.fillText(rib, W / 2, 30);
+    // R-11: sits below HUD bar + clue strip (was 30 — overlapped HUD).
+    ctx.fillText(rib, W / 2, RUNNER_HUD_TOP_PX + CLUE_STRIP_H + 14);
     ctx.textAlign = "left";
     ctx.restore();
   }

@@ -19,6 +19,6 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 ## Polish
 
-- [ ] **R-10 BOOST chip "0%" empty state** — `draw.ts:518` shows em-dash at boost ≤2%. Use `0%` + flat bar. (+1)
-- [ ] **R-11 Move tier ribbon below HUD** — `draw.ts:818-819` y=30 overlaps mode label briefly. Move to y=58. (+1)
-- [ ] **R-12 Drop duplicate `CLUE › ` label** — `draw.ts:267-287` "CLUE" + chevron + text duplicates meaning, eats horizontal space. (+1)
+- [x] **R-10 BOOST chip "0%" empty state** — em-dash gone; chip always reads `N%` and shows the empty bar so the affordance is consistent. (+1) **[done iter-17]**
+- [x] **R-11 Move tier ribbon below HUD** — y from 30 → `RUNNER_HUD_TOP_PX + CLUE_STRIP_H + 14 = 72`. (+1) **[done iter-17]**
+- [x] **R-12 Drop duplicate `CLUE › ` label** — chevron removed; "CLUE" label alone carries the role; hint truncates to fit. (+1) **[done iter-17]**

@@ -16,6 +16,14 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 - [ ] **S-7 Drop duplicated breadcrumb** — `sentenceSession.ts:503` and `draw.ts:266` both say "Tab cycles · Enter accepts". Pick one (keep popover, drop title-strip). (+1)
 - [ ] **S-8 Move progress dots inside canvas** — `sentenceSession.ts:548` last dot lands at x=600 on a 512-wide canvas. Reposition. (+1)
 
+## Iter-4 reviewer follow-ups
+
+- [x] **S-11 Share card hold longer** — RESULT_AUTOCLOSE_S 3.4 → 12; click still advances. **[done iter-11]**
+- [x] **S-12 Share card vs chrome overlap** — title strip + progress dots + desk chrome hidden during result phase so the share card owns the screen. **[done iter-11]**
+- [ ] **S-13 Score reveal juice** — count-up tween on the big score number; small flash on the ending headline. (+3 from reviewer's blocker list)
+- [ ] **S-14 Per-pick commit flash** — 120ms green pulse on right answer / red on wrong, before advance. (+3)
+- [ ] **S-15 Beat escalation** — tighten pick-timer 5-10% per beat, or add a "beat 7-8 panic" visual. (+2)
+
 ## Polish
 
 - [ ] **S-9 Suggestion popover badge alignment** — `draw.ts:240, 244` both right-anchor at `r.x+r.w-{50,38}` and overlap. Move to a separate column. (+1)

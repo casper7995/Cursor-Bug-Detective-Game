@@ -52,7 +52,12 @@ const H = RUNNER_DRAW.canvasH;
 const INTRO_DURATION_S = 0.95;
 const TYPE_PER_SENTENCE_S = 1.15;
 const PICK_TIMEOUT_S = 3.0;
-const RESULT_AUTOCLOSE_S = 3.4;
+/**
+ * Generous hold so the player can read the full 8-sentence paragraph; the
+ * pointerdown handler advances earlier on click. Reviewer iter-4 flagged
+ * the previous 3.4s as "too fast for an 8-line paragraph".
+ */
+const RESULT_AUTOCLOSE_S = 12;
 
 export interface SentenceSessionOpts {
   readonly overlayCtx: CanvasRenderingContext2D;
@@ -495,15 +500,20 @@ export class SentenceSession {
     const ctx = this.renderCtx;
     const paragraph = this.currentParagraph();
     const showCaret = this.phase.kind === "type" || this.phase.kind === "pick";
+    const showResult = this.phase.kind === "result";
     drawEditorScene(ctx, W, H, paragraph, 1, showCaret);
 
-    // Title strip
-    ctx.fillStyle = CURSOR_AI.ink;
-    ctx.font = "700 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText("Tab cycles · Enter accepts", 18, 26);
-    ctx.fillStyle = CURSOR_AI.inkSubtle;
-    ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
-    ctx.fillText(`· case_file.md`, 162, 26);
+    // Title strip — hidden during the result share card so the card's
+    // headline doesn't fight the chrome breadcrumb above it.
+    if (!showResult) {
+      ctx.fillStyle = CURSOR_AI.ink;
+      ctx.font =
+        "700 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
+      ctx.fillText("Tab cycles · Enter accepts", 18, 26);
+      ctx.fillStyle = CURSOR_AI.inkSubtle;
+      ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
+      ctx.fillText(`· case_file.md`, 162, 26);
+    }
 
     if (this.phase.kind === "intro") {
       drawIntroCard(ctx, W, H, this.phase.t / INTRO_DURATION_S);
@@ -536,8 +546,10 @@ export class SentenceSession {
       }
     }
 
-    this.drawProgressDots(ctx);
-    drawDeskChromeAi(ctx);
+    if (!showResult) {
+      this.drawProgressDots(ctx);
+      drawDeskChromeAi(ctx);
+    }
     this.gate.draw(ctx, W, H);
     this.blit();
   }

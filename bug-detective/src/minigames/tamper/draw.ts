@@ -385,7 +385,9 @@ export function drawTamperDiffHintGutter(
   const L = TAMPER_LAYOUT;
   const maxW = L.diffW - 24;
   const x = L.diffX + 12;
-  const y = L.diffY + L.diffH + 9;
+  // T-6: was diffH+9 = y 299, colliding with bottom strip at H-18 = y 302.
+  // Move up so the strip owns the H-18 row cleanly.
+  const y = L.diffY + L.diffH + 4;
   ctx.save();
   ctx.font = "8px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillStyle = CURSOR_AI.inkSubtle;

@@ -58,8 +58,16 @@ export function buildTamperRound(seed: number): TamperRound {
   // round ramps in tension; high-confidence lies are worth more (see scoreCall).
   const numLies = 1 + Math.floor(rng() * 3); // 1..3
   const lyingCallIndices = pickIndicesForLies(numLies, rng);
+  // T-10: sample spots WITHOUT replacement so Bugbot doesn't point at the
+  // same prop 2-3 times per round. When the deck is exhausted, reshuffle.
+  let deck: TamperSpot[] = shuffle(spots, rng);
+  let deckIdx = 0;
   for (let i = 0; i < TAMPER_CALLS_PER_ROUND; i++) {
-    const spot = spots[Math.floor(rng() * spots.length)] as TamperSpot;
+    if (deckIdx >= deck.length) {
+      deck = shuffle(spots, rng);
+      deckIdx = 0;
+    }
+    const spot = deck[deckIdx++] as TamperSpot;
     const truthIsTampered = spot.id === tamperedSpot.id;
     const isLying = lyingCallIndices.has(i);
     const claim: "tampered" | "clean" = isLying
@@ -92,6 +100,21 @@ export function buildTamperRound(seed: number): TamperRound {
  * of the round (calls 4–6, indices 3..5) so tension ramps; the front half is
  * where the player learns the scene. ~70% back-half / ~30% front-half draws.
  */
+/**
+ * Fisher–Yates shuffle, returns a fresh array. Deterministic because rng
+ * is seeded — same seed yields same order across runs.
+ */
+function shuffle<T>(items: readonly T[], rng: () => number): T[] {
+  const out = items.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = out[i] as T;
+    out[i] = out[j] as T;
+    out[j] = tmp;
+  }
+  return out;
+}
+
 function pickIndicesForLies(n: number, rng: () => number): Set<number> {
   const out = new Set<number>();
   let safety = 0;

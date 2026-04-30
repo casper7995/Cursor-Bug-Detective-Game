@@ -12,11 +12,11 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 - [x] **T-4 Pick-mode hint copy** — change `"Click the real changed row in TONIGHT (left)."` to `"Click the changed prop in TONIGHT."` at `draw.ts:528`. Stale refactor copy. (+1) **[done iter-01]**
 - [x] **T-5 Hold verdict flash 1.2s** — `VERDICT_FLASH_S` 0.6 → 1.2. (+2) **[done iter-12]**
-- [ ] **T-6 Bottom-band collision** — gutter at `diffY+diffH+9` overlaps bottom strip at `H-18`. Move gutter to `diffY+diffH+4` OR drop during call/pick (duplicates info). (+2)
+- [x] **T-6 Bottom-band collision** — gutter y from `diffH+9 (=299)` to `diffH+4 (=294)` so the bottom strip at `H-18 (=302)` owns its row cleanly. (+2) **[done iter-18]**
 - [x] **T-7 "No clue earned" feedback** — when `tamperEarnsDeskClue` returns false, show line on result card: "needed: 3+ correct AND 1+ caught lie." (+2) **[done iter-02 — folded into T-3's teach line]**
 
 ## Polish
 
 - [x] **T-8 Per-prop hover state in pick-mode** — `hoveredPropId` set in pointer-move during `disagree-point`; hovered prop gets brighter solid ring + larger radius vs others. (+2) **[done iter-12]**
 - [x] **T-9 Clamp Bugbot pointer arrow** — `drawBugbotPointer` now takes the panel rect and clamps `ax`/`ay` so the arrow tail + "bot" tag stay inside the TONIGHT panel for edge spots. (+1) **[done iter-12]**
-- [ ] **T-10 Sample-without-replacement Bugbot picks** — `pickIndicesForLies` and call-spot picks use replacement; player commonly sees same prop pointed at 2-3 times in one round. Force coverage of all 5 spots before resampling. (+1)
+- [x] **T-10 Sample-without-replacement Bugbot picks** — Fisher–Yates shuffle of spots; Bugbot draws one per call without repeats. Reshuffles when exhausted (5 spots vs 6 calls). Determinism preserved via seeded rng. (+1) **[done iter-18]**

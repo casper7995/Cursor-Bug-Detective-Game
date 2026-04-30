@@ -28,6 +28,8 @@ const DEFAULT_CFG: RunnerSimConfig = {
 const TIER_RIBBON_MS = 1200;
 /** Hold "READY → GO!" key-legend before scroll starts. */
 const INTRO_MS = 1500;
+/** Soft retry — short shutter wipe at the start of a restarted run. */
+const SHUTTER_MS = 220;
 
 export interface RunnerSessionOptions {
   readonly baseSeed: number;
@@ -64,6 +66,8 @@ export class RunnerSession {
   private gameOver = false;
   /** Counts down from INTRO_MS; sim does not step until it hits 0. */
   private introMs = INTRO_MS;
+  /** Counts down from SHUTTER_MS on restart for the soft transition. */
+  private shutterMs = 0;
   private failureAnimMs = 0;
   private playedFailSfx = false;
   private lastTierRibbonFloor = 0;
@@ -174,6 +178,9 @@ export class RunnerSession {
     const c = this.renderCtx.canvas;
     this.renderCtx.clearRect(0, 0, c.width, c.height);
     this.texture.needsUpdate = true;
+    // R-6: arm the shutter so the first frames after restart fade up
+    // instead of snapping in.
+    this.shutterMs = SHUTTER_MS;
   }
 
   /** True while the pre-run "READY → GO!" overlay is shown. */
@@ -183,6 +190,10 @@ export class RunnerSession {
   /** 0..1 over INTRO_MS; renderer can fade/animate against this. */
   introProgress01(): number {
     return Math.max(0, Math.min(1, 1 - this.introMs / INTRO_MS));
+  }
+  /** Shutter alpha 0..1 — 1 right after restart, 0 after SHUTTER_MS. */
+  shutter01(): number {
+    return Math.max(0, Math.min(1, this.shutterMs / SHUTTER_MS));
   }
 
   /** Endless: exit with score. Daily: mark fail exit. */
@@ -208,6 +219,9 @@ export class RunnerSession {
     if (introActive) {
       if (wantJump || wantBoost) this.introMs = 0;
       else this.introMs = Math.max(0, this.introMs - dtSec * 1000);
+    }
+    if (this.shutterMs > 0) {
+      this.shutterMs = Math.max(0, this.shutterMs - dtSec * 1000);
     }
 
     if (!this.gameOver && !introActive) {
@@ -299,6 +313,16 @@ export class RunnerSession {
 
     if (this.isIntroActive()) {
       drawRunnerIntroOverlay(this.renderCtx, this.introProgress01());
+    }
+    // R-6: shutter wipe — paints over everything else and fades out so the
+    // restart feels intentional instead of snapping in.
+    const shutter = this.shutter01();
+    if (shutter > 0) {
+      const ctx = this.renderCtx;
+      ctx.save();
+      ctx.fillStyle = `rgba(8, 7, 5, ${0.92 * shutter})`;
+      ctx.fillRect(0, 0, this.cfg.canvasW, this.cfg.canvasH);
+      ctx.restore();
     }
 
     if (this.shouldUpdateMonitorTexture()) {

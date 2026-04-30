@@ -22,6 +22,28 @@ export const CODE_SNIPPETS: readonly string[] = [
   "const result = anomalies.filter(a => a.live);",
   "const seed = dailyHash(utcDate);",
   "type Anomaly = { id: string; severity: number };",
+  "const evidence = await collect(scene, suspectId);",
+  "if (witness.statement.contradicts(physics)) flag(witness);",
+  "const fingerprint = sha1(scene.toJSON());",
+  "for (const tip of leads) await chase(tip);",
+  "if (alibi.timeline.gaps.length > 0) probe(alibi);",
+  "const archive = await store.snapshot('case-7');",
+  "return clues.reduce((acc, c) => acc.add(c), set);",
+  "const sus = await profile.match(prints);",
+  "if (door.locked && !window.cracked) impossible();",
+  "const hash = murmur(transcript.join('\\n'));",
+  "while (loose.ends.length) tie(loose.ends.pop()!);",
+  "const trail = follow(footprints, mud.ph);",
+  "if (motive && opportunity && means) charge();",
+  "const cipher = key.decode(message);",
+  "expect(courtroom.verdict).toBe('guilty');",
+  "for (const w of witnesses) cross.examine(w);",
+  "const drift = compass.declination - true_north;",
+  "if (silence.before(scream)) suspect.witnessed();",
+  "// every shadow casts a confession somewhere",
+  "// the city remembers what the file forgot",
+  "// trust the timeline, not the testimony",
+  "// every locked room hands you the key",
 ];
 
 /**
@@ -82,18 +104,23 @@ export const ANOMALY_SNIPPETS: Record<AnomalyId, readonly string[]> = {
   ],
 };
 
-/** Fallback widths (px) at 13px ui-monospace when `measureText` unavailable (tests). */
-const FALLBACK_SNIPPET_WIDTHS: readonly number[] = [
-  208, 248, 272, 200, 280, 272, 312, 320, 264, 272, 248, 280,
-];
+/**
+ * Fallback widths (px) at 13px ui-monospace when `measureText` is
+ * unavailable (e.g. unit tests). Computed by char count × ~7.85px since
+ * the actual snippets all sit between 200 and 360px and a per-char
+ * estimate is within ~10% of the real measurement.
+ */
+function fallbackSnippetWidths(): readonly number[] {
+  return CODE_SNIPPETS.map((s) => Math.ceil(s.length * 7.85));
+}
 
 let measuredWidthsGeneric: readonly number[] | null = null;
 
 function measureWidthsGeneric(): readonly number[] {
-  if (typeof document === "undefined") return FALLBACK_SNIPPET_WIDTHS;
+  if (typeof document === "undefined") return fallbackSnippetWidths();
   const c = document.createElement("canvas");
   const ctx = c.getContext("2d");
-  if (!ctx) return FALLBACK_SNIPPET_WIDTHS;
+  if (!ctx) return fallbackSnippetWidths();
   ctx.font = SNIPPET_MONO_FONT;
   return CODE_SNIPPETS.map((s) => Math.ceil(ctx.measureText(s).width));
 }

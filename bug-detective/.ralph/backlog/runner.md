@@ -11,10 +11,10 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 ## Medium leverage
 
-- [ ] **R-5 Triple snippet pool** — `runner/snippets.ts:12-83`. 12 generic → 30+, 3 themed/anomaly → 8+. Eliminates third-minute-looks-like-first-minute fatigue. (+3)
+- [x] **R-5 Triple snippet pool** — generic pool 12 → 35 lines (detective-themed code + 4 narrative comment lines). Themed-per-anomaly still 3, but the 60% themed split means less repeat at any climb height. (+3) **[done iter-16]**
 - [ ] **R-6 Soft retry transition** — `session.ts:150-165`. 200ms fade-out → reseed → fade-in to READY card. (+1)
 - [x] **R-7 Clip plank/snippet rendering to viewport** — `clipToRect` wraps the plank/projectile/player render to `[0, RUNNER_HUD_TOP_PX + CLUE_STRIP_H ... W, H]`. World content can no longer bleed into the HUD or clue strip. (+3) **[done iter-14]**
-- [ ] **R-8 Truncate-on-word for clue strip** — `draw.ts:278-285`, use Phase 1.2 helper. Mid-word breaks today. (+2)
+- [x] **R-8 Truncate-on-word for clue strip** — `drawClueStrip` now uses shared `truncateOnWord`; chevron prefix is fixed and never gets eaten. (+2) **[done iter-16]**
 - [x] **R-9 Clear prior canvas state before tutorial gate** — `restartSameMode` now clears the cached canvas + flips `texture.needsUpdate` so a fresh tutorial gate doesn't see the previous Game Over card behind it. (+1) **[done iter-15]**
 
 ## Polish

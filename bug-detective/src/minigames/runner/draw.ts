@@ -1,5 +1,5 @@
 import type { AnomalyId } from "../../scene/anomalies";
-import { clipToRect, wrapLines } from "../desk/aiCard";
+import { clipToRect, truncateOnWord, wrapLines } from "../desk/aiCard";
 import type { CodePlank } from "./sim";
 import {
   endlessTierFromMaxClimbM,
@@ -277,15 +277,12 @@ function drawClueStrip(
   const rawHint = hintOverride ?? tooltipHint;
   ctx.fillStyle = hintOverride ? CURSOR_ORANGE : CURSOR_TEXT_HI;
   const maxHintW = Math.max(80, chipBlockLeft - hintX - 12);
-  let shortened = rawHint;
-  while (
-    shortened.length > 0 &&
-    ctx.measureText(`› ${shortened}`).width > maxHintW
-  ) {
-    shortened = shortened.slice(0, -1);
-  }
-  const hint =
-    shortened.length < rawHint.length ? `› ${shortened}…` : `› ${shortened}`;
+  // R-8: prefix is fixed; only truncate the dynamic hint body, then
+  // re-prepend the chevron so the prefix never gets eaten.
+  const PREFIX = "› ";
+  const prefixW = ctx.measureText(PREFIX).width;
+  const bodyMaxW = Math.max(0, maxHintW - prefixW);
+  const hint = PREFIX + truncateOnWord(ctx, rawHint, bodyMaxW);
   ctx.textAlign = "left";
   ctx.fillText(hint, hintX, midY);
 

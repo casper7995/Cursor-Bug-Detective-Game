@@ -8,7 +8,12 @@ import {
   inRect,
   type Rect,
 } from "../desk/aiCard";
-import { bossWarningActive, queueHead, type LaneDefenseRuntime } from "./round";
+import {
+  bossWarningActive,
+  clueLockProgress01,
+  queueHead,
+  type LaneDefenseRuntime,
+} from "./round";
 import {
   AGENT_TRAY,
   LANE_COUNT,
@@ -538,20 +543,45 @@ export function drawLaneDefenseField(
     NEON_CYAN,
   );
 
+  // Clue progress pill — animated fill bar from "OPEN" to "LOCKED" across
+  // wave/time. Shows the player how close they are to securing the clue.
+  const pillX = L.panelX + L.panelW - 142;
+  const pillY = L.panelY + 12;
+  const pillW = 126;
+  const pillH = 18;
+  const clueP = clueLockProgress01(rt.wave, rt.elapsed);
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(pillX, pillY, pillW, pillH, 6);
+  ctx.fillStyle = "rgba(245,78,0,0.16)";
+  ctx.fill();
+  // Animated fill — green once locked, orange while open.
+  const fillW = pillW * clueP;
+  if (fillW > 0) {
+    ctx.beginPath();
+    ctx.roundRect(pillX, pillY, fillW, pillH, 6);
+    ctx.fillStyle = rt.clueLocked
+      ? "rgba(120,210,140,0.42)"
+      : "rgba(245,78,0,0.42)";
+    ctx.fill();
+  }
+  ctx.strokeStyle = rt.clueLocked
+    ? "rgba(120,210,140,0.85)"
+    : "rgba(245,78,0,0.55)";
+  ctx.beginPath();
+  ctx.roundRect(pillX, pillY, pillW, pillH, 6);
+  ctx.stroke();
+  ctx.restore();
   const waveTxt = rt.defeated
     ? "DEFEAT"
     : rt.wavePause > 0
-      ? `Wave pause · next ${rt.wave + 1}`
-      : `Wave ${rt.wave} · clue ${rt.clueLocked ? "LOCKED" : "open"}`;
-  ctx.fillStyle = "rgba(245,78,0,0.18)";
-  ctx.beginPath();
-  ctx.roundRect(L.panelX + L.panelW - 142, L.panelY + 12, 126, 18, 6);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(245,78,0,0.45)";
-  ctx.stroke();
+      ? `WAVE PAUSE · NEXT ${rt.wave + 1}`
+      : rt.clueLocked
+        ? `WAVE ${rt.wave} · CLUE LOCKED`
+        : `WAVE ${rt.wave} · ${Math.round(clueP * 100)}% TO CLUE`;
   ctx.fillStyle = "#ffd7c7";
   ctx.font = "700 8px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText(waveTxt.toUpperCase(), L.panelX + L.panelW - 135, L.panelY + 24);
+  ctx.fillText(waveTxt, pillX + 7, pillY + 12);
   ctx.fillStyle = "rgba(231,250,255,0.8)";
   ctx.font = "700 9px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillText(

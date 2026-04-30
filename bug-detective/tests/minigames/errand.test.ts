@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildWaveSpawnRoster,
+  clueLockProgress01,
   createLaneDefenseRuntime,
   laneDefenseDeployToLane,
   laneDefenseDeskScore,
@@ -50,6 +51,17 @@ describe("lane defense errand", () => {
     expect(survivalNotebookLock(2, 30)).toBe(false);
     expect(survivalNotebookLock(3, 10)).toBe(true);
     expect(survivalNotebookLock(1, 60)).toBe(true);
+  });
+
+  it("clueLockProgress01 advances toward lock and caps at 1", () => {
+    expect(clueLockProgress01(1, 0)).toBe(0);
+    // Wave 2 with 0 time = 50% via wave path (1 of 2 segments).
+    expect(clueLockProgress01(2, 0)).toBeCloseTo(0.5, 5);
+    // Time gate at half-way is the better path while wave is still 1.
+    expect(clueLockProgress01(1, 30)).toBeCloseTo(0.5, 5);
+    expect(clueLockProgress01(3, 0)).toBe(1);
+    expect(clueLockProgress01(1, 60)).toBe(1);
+    expect(clueLockProgress01(99, 999)).toBe(1);
   });
 
   it("scoreLaneDefense is tiered when clue locked", () => {

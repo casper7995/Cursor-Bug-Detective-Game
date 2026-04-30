@@ -33,6 +33,20 @@ export function survivalNotebookLock(
   );
 }
 
+/**
+ * Player-visible progress (0..1) toward locking the desk clue. Takes the
+ * better of the wave-progress and time-progress paths so the bar tracks
+ * whichever gate is closer to firing. Caps at 1 once locked.
+ */
+export function clueLockProgress01(
+  waveNumber: number,
+  secondsHeld: number,
+): number {
+  const waveP = (waveNumber - 1) / Math.max(1, LANE_DEFENSE.clueLockWaves - 1);
+  const timeP = secondsHeld / LANE_DEFENSE.clueLockSeconds;
+  return Math.max(0, Math.min(1, Math.max(waveP, timeP)));
+}
+
 export interface LaneDefenseScoreInput {
   readonly clueLocked: boolean;
   readonly bossesDefeated: number;

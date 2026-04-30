@@ -17,7 +17,7 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 ## Medium leverage
 
-- [ ] **E-5 Replace binary clue-lock with fill-bar** — header widget "Evidence: 1/3 waves" animating up. Backend already has the data (`survivalNotebookLock`); just expose. (+3)
+- [x] **E-5 Replace binary clue-lock with fill-bar** — added `clueLockProgress01()`; in-panel pill now shows animated fill (orange while open, green-tinted when locked) plus `WAVE N · X% TO CLUE` / `WAVE N · CLUE LOCKED`. (+3) **[done iter-8]**
 - [x] **E-6 Fix "HEAD READY" truncation** — shortened to "GO" which fits the available x-range. (+2) **[done iter-3]**
 - [x] **E-7 Tutorial gate bullet wrap** — `wrapAndDraw` in tutorial gate + `estimateBulletsBlock` measures wrapped lines for layout. (+2) **[done iter-3]**
 - [x] **E-8 Hold result card on click** — `DEFEAT_AUTOCLOSE_S` removed; existing click handler advances. (+2) **[done iter-3]**

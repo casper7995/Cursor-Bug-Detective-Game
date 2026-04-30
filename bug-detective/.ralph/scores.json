@@ -1,5 +1,5 @@
 {
-  "iteration": 7,
+  "iteration": 8,
   "max_iterations": null,
   "target": 90,
   "games": {
@@ -43,5 +43,5 @@
   "phase_2_complete": false,
   "phase_3_complete": false,
   "blocked_items": [],
-  "notes": "Iter 4: sentence S-1 + S-4 + simplify cleanup. Iter 5: runner R-1 (READY→GO overlay). Iter 6: tamper T-2 (6 subtle variants rewritten + sketchSize 18→22). Iter 7: errand E-4 (feedbackFx + BASE shake). Playwright MCP still disconnected; reviews for iter-4/5/6/7 deferred. typecheck + 260/260 tests pass."
+  "notes": "Iter 4-8 implemented but unrev'd: sentence S-1+S-4 (spoilers killed), runner R-1 (intro), tamper T-2 (6 subtle variants), errand E-4 (per-action feedback), errand E-5 (clue progress fill). Playwright MCP disconnected since iter-4. 261/261 tests + clean typecheck. Reviewer batch needed when MCP returns."
 }

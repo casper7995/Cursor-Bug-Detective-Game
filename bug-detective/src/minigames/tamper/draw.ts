@@ -167,6 +167,7 @@ export function drawDiffCard(
   pointAtSpotId: string | null,
   showRealTamper: boolean,
   pickingSpot: boolean,
+  hoveredSpotId: string | null = null,
 ): void {
   const L = TAMPER_LAYOUT;
   drawAiCard(ctx, L.diffX, L.diffY, L.diffW, L.diffH);
@@ -198,7 +199,7 @@ export function drawDiffCard(
   ctx.restore();
 
   const { original, tonight } = getTamperPanelRects();
-  drawScenePanel(ctx, scene, original, "original", null, false, false);
+  drawScenePanel(ctx, scene, original, "original", null, false, false, null);
   drawScenePanel(
     ctx,
     scene,
@@ -207,6 +208,7 @@ export function drawDiffCard(
     pointAtSpotId,
     showRealTamper,
     pickingSpot,
+    hoveredSpotId,
   );
 }
 
@@ -218,6 +220,7 @@ function drawScenePanel(
   pointAtSpotId: string | null,
   showRealTamper: boolean,
   pickingSpot: boolean,
+  hoveredSpotId: string | null,
 ): void {
   // Panel background — slightly different paper for ORIGINAL vs TONIGHT so
   // the eye registers them as two separate scenes at a glance.
@@ -279,18 +282,20 @@ function drawScenePanel(
     const { cx, cy, r } = projectSpot(spot, panel);
     const sketchSize = Math.max(14, Math.min(22, r * 0.95));
 
-    // Pick-mode hover halo on TONIGHT props.
+    // Pick-mode hover halo on TONIGHT props. The hovered prop is brighter
+    // and gets a solid ring so the player sees which one will land.
     if (pickingSpot && half === "tonight") {
+      const isHot = hoveredSpotId === spot.id;
       ctx.save();
-      ctx.fillStyle = "rgba(245,78,0,0.08)";
+      ctx.fillStyle = isHot ? "rgba(245,78,0,0.22)" : "rgba(245,78,0,0.08)";
       ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.arc(cx, cy, isHot ? r + 2 : r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "rgba(245,78,0,0.5)";
-      ctx.setLineDash([2, 2]);
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = isHot ? "rgba(245,78,0,0.95)" : "rgba(245,78,0,0.5)";
+      ctx.lineWidth = isHot ? 2 : 1;
+      if (!isHot) ctx.setLineDash([2, 2]);
       ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.arc(cx, cy, isHot ? r + 2 : r, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
       ctx.restore();
@@ -315,7 +320,7 @@ function drawScenePanel(
 
     // Bugbot pointer arrow on the prop in TONIGHT.
     if (pointAtSpotId === spot.id && half === "tonight") {
-      drawBugbotPointer(ctx, cx, cy, r);
+      drawBugbotPointer(ctx, cx, cy, r, panel);
     }
 
     // Small label badge under the prop — text stays as a secondary signal.
@@ -336,6 +341,7 @@ function drawBugbotPointer(
   cx: number,
   cy: number,
   r: number,
+  panel: PanelRect,
 ): void {
   ctx.save();
   // Halo ring around the prop.
@@ -344,9 +350,15 @@ function drawBugbotPointer(
   ctx.beginPath();
   ctx.arc(cx, cy, r + 1, 0, Math.PI * 2);
   ctx.stroke();
-  // Arrow above-left pointing at the prop.
-  const ax = cx - r - 10;
-  const ay = cy - r - 10;
+  // Arrow tail anchored above-left of the prop, but clamped to stay inside
+  // the panel so edge spots don't draw the "bot" tag in the gutter.
+  const tagW = 18; // approximate width of " bot" text run + arrow body
+  const minAx = panel.x + tagW;
+  const maxAx = panel.x + panel.w - 12;
+  const minAy = panel.y + 8;
+  const maxAy = panel.y + panel.h - 12;
+  const ax = Math.max(minAx, Math.min(maxAx, cx - r - 10));
+  const ay = Math.max(minAy, Math.min(maxAy, cy - r - 10));
   ctx.fillStyle = "rgba(245,78,0,0.95)";
   ctx.beginPath();
   ctx.moveTo(ax, ay);

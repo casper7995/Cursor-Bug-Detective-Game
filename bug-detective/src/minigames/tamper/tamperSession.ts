@@ -56,7 +56,9 @@ const READ_BEAT_S = 1.25;
 const CALL_DURATION_S = 4.25;
 /** After Disagree → point: player already knows the real change; short tap window. */
 const POINT_DURATION_S = 2.25;
-const VERDICT_FLASH_S = 0.6;
+/** Long enough to read "Caught a confident lie!" + score-bit. Reviewer iter-X
+ * flagged 0.6s as "barely long enough to register the +500 catch". */
+const VERDICT_FLASH_S = 1.2;
 const RESULT_AUTOCLOSE_S = 3.2;
 
 export interface TamperSessionOpts {
@@ -111,6 +113,8 @@ export class TamperSession {
   private pointerBound = false;
   /** Cached hit-rects from the most recent draw — re-used by pointer events. */
   private chatHits: ChatHits | null = null;
+  /** Spot id under the cursor in TONIGHT during pick-mode (else null). */
+  private hoveredPropId: string | null = null;
   private readonly gate = new TutorialGate({
     title: "Spot the difference",
     tagline: "Compare ORIGINAL vs TONIGHT. Bugbot may be wrong about a prop.",
@@ -224,6 +228,13 @@ export class TamperSession {
 
     const move = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
+      // Update prop-hover during pick-mode for the brighter highlight.
+      if (this.phase.kind === "disagree-point") {
+        const hit = spotPropAt(this.round.scene, p.x, p.y);
+        this.hoveredPropId = hit?.spotId ?? null;
+        return;
+      }
+      this.hoveredPropId = null;
       if (this.phase.kind !== "call") return;
       const hits = this.chatHits;
       if (!hits) return;
@@ -493,6 +504,7 @@ export class TamperSession {
       cur?.call.bugbotPointsAtSpotId ?? null,
       showRealTamper,
       pickingSpot,
+      pickingSpot ? this.hoveredPropId : null,
     );
     const diffHint = this.diffHintLine();
     if (diffHint) {

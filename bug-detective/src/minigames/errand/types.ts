@@ -51,12 +51,38 @@ export interface EnemyArchetype {
   readonly speed: number;
   readonly leakDamage: number;
   readonly isBoss: boolean;
+  /**
+   * Multiplier applied to Fixer DPS against this enemy. <1 makes the enemy
+   * Fixer-resistant, encouraging Reviewer slow + sustained DPS, or stacking
+   * multiple Fixers across lanes. Defaults to 1.
+   */
+  readonly fixerDpsMul?: number;
+  /**
+   * Multiplier on leak damage when NO Firewall is present in the leaked
+   * lane. >1 punishes "no Firewall" play, encouraging the Firewall pick on
+   * waves heavy in this enemy. Defaults to 1.
+   */
+  readonly noFirewallLeakMul?: number;
 }
 
 export const ENEMY_STATS: Record<EnemyKind, EnemyArchetype> = {
   syntaxBug: { maxHp: 22, speed: 0.17, leakDamage: 9, isBoss: false },
-  regressionBug: { maxHp: 52, speed: 0.11, leakDamage: 12, isBoss: false },
-  phishingPacket: { maxHp: 18, speed: 0.26, leakDamage: 10, isBoss: false },
+  regressionBug: {
+    maxHp: 52,
+    speed: 0.11,
+    leakDamage: 12,
+    isBoss: false,
+    // Heavy hitter — without Firewall to soften, leaks twice as hard.
+    noFirewallLeakMul: 2,
+  },
+  phishingPacket: {
+    maxHp: 18,
+    speed: 0.26,
+    leakDamage: 10,
+    isBoss: false,
+    // Slippery — Fixer DPS bounces off; Reviewer slow buys time.
+    fixerDpsMul: 0.5,
+  },
   ransomwareBlob: { maxHp: 110, speed: 0.055, leakDamage: 18, isBoss: false },
   zeroDay: { maxHp: 380, speed: 0.075, leakDamage: 32, isBoss: true },
 };

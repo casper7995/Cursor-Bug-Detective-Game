@@ -196,6 +196,68 @@ describe("lane defense errand", () => {
   });
 });
 
+describe("enemy resistance / vulnerability rules", () => {
+  it("phishing packet takes half DPS from a Fixer (50% resist)", () => {
+    let rt = createLaneDefenseRuntime(11);
+    // Drop a Fixer in lane 0 by hand and place a phishing packet at the
+    // front of the lane just inside DPS range.
+    rt = {
+      ...rt,
+      placed: [{ lane: 0, kind: "fixer" }],
+      enemies: [
+        spawnEnemyUnit(101, 0, "phishingPacket"),
+        spawnEnemyUnit(102, 0, "syntaxBug"),
+      ],
+    };
+    // Step 1s; phishing front should take half the syntax-bug damage.
+    const beforePhishHp = rt.enemies[0]!.hp;
+    rt = stepLaneDefenseRuntime(rt, 1.0);
+    const phish = rt.enemies.find((e) => e.id === 101);
+    expect(phish).toBeDefined();
+    // 1s of fixer DPS at 13 dps with 0.5 mul = 6.5 hp lost; allow ±1.
+    const lost = beforePhishHp - phish!.hp;
+    expect(lost).toBeGreaterThan(5.5);
+    expect(lost).toBeLessThan(7.5);
+  });
+
+  it("regression bug leaks twice as hard with no firewall", () => {
+    // Build a minimal runtime where one regression bug is at x=0 with a
+    // firewall present, and another with no firewall.
+    const noFw = createLaneDefenseRuntime(22);
+    const withFw = {
+      ...createLaneDefenseRuntime(22),
+      placed: [{ lane: 0, kind: "firewall" as const }],
+    };
+    const placeBug = (rt: typeof noFw): typeof noFw => ({
+      ...rt,
+      enemies: [{ ...spawnEnemyUnit(1, 0, "regressionBug"), x: 0 }],
+    });
+    const a = stepLaneDefenseRuntime(placeBug(noFw), 1 / 60);
+    const b = stepLaneDefenseRuntime(placeBug(withFw), 1 / 60);
+    // No-firewall took 2x leak; with-firewall took 0.5x. Total HP delta
+    // (capacity + base) for noFw should be ~4x with-fw.
+    const hpDelta = (rt: typeof noFw): number =>
+      noFw.capacity - rt.capacity + (noFw.baseHealth - rt.baseHealth);
+    expect(hpDelta(a)).toBeGreaterThan(hpDelta(b) * 2);
+  });
+
+  it("syntax bug DPS path is unaffected by the new resistance rules", () => {
+    let rt = createLaneDefenseRuntime(33);
+    rt = {
+      ...rt,
+      placed: [{ lane: 0, kind: "fixer" }],
+      enemies: [spawnEnemyUnit(7, 0, "syntaxBug")],
+    };
+    const before = rt.enemies[0]!.hp;
+    rt = stepLaneDefenseRuntime(rt, 1.0);
+    const after = rt.enemies[0]?.hp ?? 0;
+    const lost = before - after;
+    // 1s × 13 fixerDps × 1.0 mul = 13.
+    expect(lost).toBeGreaterThan(12);
+    expect(lost).toBeLessThan(14);
+  });
+});
+
 describe("errand clue token", () => {
   it("normalises and clamps", () => {
     expect(clueTokenForErrand("backwards")).toBe("BACKWARD");

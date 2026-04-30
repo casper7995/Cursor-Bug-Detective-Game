@@ -484,7 +484,8 @@ export function stepLaneDefenseRuntime(
     const front = frontEnemy(next.enemies, p.lane);
     if (!front || front.hp <= 0) continue;
     if (p.kind === "fixer") {
-      front.hp -= LANE_DEFENSE.fixerDps * dt;
+      const mul = ENEMY_STATS[front.kind].fixerDpsMul ?? 1;
+      front.hp -= LANE_DEFENSE.fixerDps * mul * dt;
     }
   }
 
@@ -530,7 +531,12 @@ export function stepLaneDefenseRuntime(
       const firewallHere = next.placed.some(
         (p) => p.lane === e.lane && p.kind === "firewall",
       );
-      if (firewallHere) dmg *= LANE_DEFENSE.firewallLeakMul;
+      if (firewallHere) {
+        dmg *= LANE_DEFENSE.firewallLeakMul;
+      } else {
+        // Some archetypes punish the absence of a Firewall.
+        dmg *= ENEMY_STATS[e.kind].noFirewallLeakMul ?? 1;
+      }
       let cap = next.capacity;
       const absorb = Math.min(cap, dmg);
       cap -= absorb;

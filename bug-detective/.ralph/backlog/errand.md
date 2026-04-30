@@ -6,11 +6,7 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 ## High leverage (the gameplay-critical surgery)
 
-- [ ] **E-1 Differentiate the three units** — `round.ts:399-407` and `types.ts ENEMY_STATS`. Make threats unit-specific:
-  - `phishingPacket` immune to Fixer DPS (needs Reviewer slow)
-  - `regression` requires Firewall co-presence to take damage
-  - `ransomware` speeds up under Reviewer (counter-incentive)
-  Forces real choice — Fixer-spam currently dominates. (+10)
+- [x] **E-1 Differentiate the three units (conservative)** — added `fixerDpsMul` and `noFirewallLeakMul` to `EnemyArchetype`. `phishingPacket.fixerDpsMul = 0.5` (slippery — Reviewer slow buys time); `regressionBug.noFirewallLeakMul = 2` (Firewall pays off when regressions cluster). Syntax/zero-day unchanged so Fixer-only play still works on baseline waves. 3 unit tests pin the new behavior. (+10) **[done iter-13]**
 - [x] **E-2 Wire the dead `bossWarningLeadSec` config** — `types.ts:101` defines it but no consumer. Add ribbon flash + sfx 9s before boss spawn. (+3) **[done iter-3 — pulsing ribbon banner over playfield top]**
 - [x] **E-3 Drop firstBossWave from 4 → 2** — `round.ts:99`. Clue locks at wave 3; with current value, 90% of players never meet a boss. (+3) **[done iter-3 — also changed cadence to first-then-every-3]**
 - [x] **E-4 Per-action feedback layer** — added `feedbackFx` system in round.ts: kill (cyan ring + "+1" rise), leak (orange `-N` damage popup + impact ring), spend (focus cost popup); BASE meter shakes 1 frame on real HP loss. (+5) **[done iter-7]**

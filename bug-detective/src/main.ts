@@ -760,7 +760,10 @@ function bootGameInner(simplified: boolean): void {
       void cameraRig.scriptedTo(ret.pos, ret.look, 420);
     }
     if (runnerOverlay) {
-      void runnerOverlay.fadeOut(180).then(() => {
+      // SH-8: 180→280ms so the desk-mini overlay rides the camera move
+      // back to the desk view instead of snapping out before the rig
+      // arrives. Camera move is 420ms; overlay finishes ~150ms before.
+      void runnerOverlay.fadeOut(280).then(() => {
         runnerOverlay?.dispose();
         runnerOverlay = null;
         mascotController.setFrozen(false);

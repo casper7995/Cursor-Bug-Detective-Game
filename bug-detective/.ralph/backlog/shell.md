@@ -17,8 +17,8 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 ## Medium leverage
 
 - [x] **SH-6 HUD evidence row reads as muted/empty** — empty `tok` opacity 0.25 → 0.55 with `_ _ _ _` placeholder + 0.08em letter-spacing. Reads as a tracker, not a broken state. Filled state resets letter-spacing. (+2) **[done iter-23]**
-- [ ] **SH-7 Title splash → page-peel pacing** — page-peel is original but follows a generic title; consider a 1-frame mascot wink or a desk silhouette behind the title to set tone. (+1)
-- [ ] **SH-8 Return-to-desk transition** — after a minigame the camera snaps back. Add a brief fade or zoom-out. (+1)
+- [x] **SH-7 Title splash → page-peel pacing** — splash dismiss timeout 350→220ms + CSS opacity transition 320→200ms. Snappier handoff to the original page-peel. (+1) **[done iter-24]**
+- [x] **SH-8 Return-to-desk transition** — overlay fadeOut 180→280ms so the curtain rides the 420ms camera move back instead of snapping out early. (+1) **[done iter-24]**
 
 ## Polish
 

@@ -232,10 +232,12 @@ export function showTitleSplash(container: HTMLElement): TitleSplash {
       console.info(`[bug-detective] title splash dismissed via ${label}`);
       cleanupSplash();
       overlay.classList.add("bd-title--out");
+      // SH-7: snappier splash → page-peel handoff. Was 350ms; the splash
+      // doesn't need a long fade-out before the original page-peel reveal.
       window.setTimeout(() => {
         overlay.remove();
         resolve();
-      }, 350);
+      }, 220);
       teardown();
     };
     // Use document-level capture-phase listeners. Some embedded views
@@ -292,7 +294,7 @@ function ensureStyle(): void {
       justify-content: center;
       z-index: 100000;
       font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-      transition: opacity 320ms ease-out;
+      transition: opacity 200ms ease-out;
       cursor: pointer;
       touch-action: manipulation;
     }

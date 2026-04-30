@@ -68,6 +68,8 @@ export class RunnerSession {
   private playedFailSfx = false;
   private lastTierRibbonFloor = 0;
   private tierRibbon: { tier: number; ageMs: number } | null = null;
+  /** True iff last step actually consumed boost — drives speed-line FX. */
+  private boostingThisFrame = false;
   private readonly seenClueTokens = new Set<string>();
   private readonly onClueTokenSeenBound = (token: string): void => {
     const before = this.seenClueTokens.size;
@@ -167,6 +169,11 @@ export class RunnerSession {
       this.cfg,
       this.anomalyId,
     );
+    // R-9: clear the cached frame so a fresh overlay/tutorial doesn't see
+    // the previous Game Over card behind it. The next step() will repaint.
+    const c = this.renderCtx.canvas;
+    this.renderCtx.clearRect(0, 0, c.width, c.height);
+    this.texture.needsUpdate = true;
   }
 
   /** True while the pre-run "READY → GO!" overlay is shown. */
@@ -213,8 +220,9 @@ export class RunnerSession {
         sfxRunnerJump();
       }
       if (!wasGrounded && this.sim.grounded) sfxRunnerLand();
-      if (wantBoost && boostBefore > this.sim.boost01 + 0.002)
-        sfxRunnerBoostPulse();
+      const boostConsumed = boostBefore > this.sim.boost01 + 0.002;
+      this.boostingThisFrame = wantBoost && boostConsumed;
+      if (wantBoost && boostConsumed) sfxRunnerBoostPulse();
       if (this.sim.failed) {
         this.gameOver = true;
         this.failureAnimMs = 0;
@@ -254,6 +262,7 @@ export class RunnerSession {
       elapsedMs: this.sim.elapsedMs,
       maxClimbM: this.sim.maxClimbM,
       boost01: this.sim.boost01,
+      boostActive: this.boostingThisFrame,
       clueSet: this.clueSet,
       onClueTokenSeen: this.onClueTokenSeenBound,
       anomalyId: this.anomalyId,

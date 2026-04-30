@@ -7,7 +7,7 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 - [x] **R-1 Pre-run "READY → GO" overlay with key legend** — `INTRO_MS=1500` hold with `isIntroActive()` + `introProgress01()`; new `drawRunnerIntroOverlay`. Skip with SPACE/→. (+8) **[done iter-5]**
 - [x] **R-2 Coyote-time + jump-buffer** — `COYOTE_TIME_MS=80`, `JUMP_BUFFER_MS=100`. State carries `lastGroundedAtMs`, `bufferedJumpAtMs`, `prevWantJump` (edge-detect). Tests: jump buffer fires on land + neutral init values. (+4) **[done iter-9]**
 - [x] **R-3 Plank pre-fade warning** — `lifeT > 0.65` triggers red pulsing underline + 1px wobble (sin-based). Players see "leave NOW" before the floor disappears. (+3) **[done iter-14]**
-- [ ] **R-4 Speed-line FX during boost** — new fx layer in `draw.ts`, triggered while `wantBoost`. 4-6 horizontal motion lines + 1.02× zoom. Most exciting input has smallest visual reaction today. (+2)
+- [x] **R-4 Speed-line FX during boost** — 6 motion lines scroll horizontally at varying lengths/y while `boostActive` is true; session pipes the flag through. Most-used input now has visible feedback. (+2) **[done iter-15]**
 
 ## Medium leverage
 
@@ -15,7 +15,7 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 - [ ] **R-6 Soft retry transition** — `session.ts:150-165`. 200ms fade-out → reseed → fade-in to READY card. (+1)
 - [x] **R-7 Clip plank/snippet rendering to viewport** — `clipToRect` wraps the plank/projectile/player render to `[0, RUNNER_HUD_TOP_PX + CLUE_STRIP_H ... W, H]`. World content can no longer bleed into the HUD or clue strip. (+3) **[done iter-14]**
 - [ ] **R-8 Truncate-on-word for clue strip** — `draw.ts:278-285`, use Phase 1.2 helper. Mid-word breaks today. (+2)
-- [ ] **R-9 Clear prior canvas state before tutorial gate** — Game Over + tutorial render simultaneously. Bug, not polish. Whoever calls `tryMountRunnerTutorialGate`. (+1)
+- [x] **R-9 Clear prior canvas state before tutorial gate** — `restartSameMode` now clears the cached canvas + flips `texture.needsUpdate` so a fresh tutorial gate doesn't see the previous Game Over card behind it. (+1) **[done iter-15]**
 
 ## Polish
 

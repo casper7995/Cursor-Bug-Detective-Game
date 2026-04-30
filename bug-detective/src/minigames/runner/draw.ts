@@ -53,6 +53,8 @@ export interface DrawRunnerOpts {
   elapsedMs: number;
   maxClimbM: number;
   boost01: number;
+  /** True while the player is actively burning boost — triggers speed-line FX. */
+  boostActive?: boolean;
   clueSet: RunnerClueSet;
   anomalyId: AnomalyId;
   clueTooltipHint: string;
@@ -654,6 +656,7 @@ export function drawRunnerFrame(
     gameOver,
     maxClimbM,
     boost01,
+    boostActive,
     clueSet,
     anomalyId,
     clueTooltipHint,
@@ -801,6 +804,28 @@ export function drawRunnerFrame(
     }
     drawChibiThreeQuarterMascot(ctx, px, py, pose, runPhase);
     ctx.restore();
+
+    // R-4: speed-line FX while boost is being burned. Six horizontal lines
+    // at varying y/length, scrolling fast off the right edge so the eye
+    // reads a sense of motion. Only paints in the playfield (clipped).
+    if (boostActive) {
+      ctx.save();
+      const lines = 6;
+      for (let i = 0; i < lines; i++) {
+        const seedY = (i * 53 + 17) % 100;
+        const ly = playfield.y + 16 + (seedY * (playfield.h - 32)) / 100;
+        const phase = (elapsedMs * 0.9 + i * 47) % W;
+        const lineLen = 70 + ((i * 23) % 60);
+        const startX = W - phase;
+        ctx.strokeStyle = "rgba(255, 215, 199, 0.55)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(startX, ly);
+        ctx.lineTo(startX + lineLen, ly);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }); // end clipToRect(playfield)
 
   drawClueStrip(ctx, W, clueSet, clueTooltipHint, activeToks, hintFlash);

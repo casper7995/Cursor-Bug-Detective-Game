@@ -100,8 +100,11 @@ export function createHud(
     c.appendChild(small);
     const tok = document.createElement("div");
     tok.className = "tok";
-    tok.style.cssText = `font:600 11px 'Cursor Mono','Berkeley Mono',monospace;color:${CURSOR.text};opacity:0.25;text-transform:uppercase;`;
-    tok.textContent = "—";
+    // SH-6: was opacity 0.25 with em-dash — read as muted/empty rather than
+    // "to be filled". Now uses an underscore placeholder at higher contrast
+    // so the player sees this as a trackable slot.
+    tok.style.cssText = `font:600 11px 'Cursor Mono','Berkeley Mono',monospace;color:${CURSOR.text};opacity:0.55;text-transform:uppercase;letter-spacing:0.08em;`;
+    tok.textContent = "_ _ _ _";
     c.appendChild(tok);
     cardRow.appendChild(c);
   }
@@ -375,14 +378,17 @@ export function createHud(
           "Clue word from this minigame (not a “wrong guess” marker).";
         tok.style.opacity = "1";
         tok.style.color = CURSOR.ink;
+        tok.style.letterSpacing = "normal";
       } else {
+        // SH-6: empty slot reads as a fillable tracker, not a broken state.
         card.style.border = "1px dashed rgba(192,133,50,0.55)";
         card.style.background = "rgba(20,18,11,0.35)";
         card.style.boxShadow = "none";
-        tok.textContent = "—";
+        tok.textContent = "_ _ _ _";
         tok.removeAttribute("title");
-        tok.style.opacity = "0.25";
+        tok.style.opacity = "0.55";
         tok.style.color = CURSOR.text;
+        tok.style.letterSpacing = "0.08em";
       }
     }
     makeCallBtn.disabled = !full;

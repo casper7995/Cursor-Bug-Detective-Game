@@ -16,11 +16,11 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 ## Medium leverage
 
-- [ ] **SH-6 HUD evidence row reads as muted/empty** — MONITOR/ENVELOPE/AGENTS/LAMP slots use `_` placeholders on near-black. Players miss it as a tracker. Bump unfilled state contrast or animate when one is collected. (+2)
+- [x] **SH-6 HUD evidence row reads as muted/empty** — empty `tok` opacity 0.25 → 0.55 with `_ _ _ _` placeholder + 0.08em letter-spacing. Reads as a tracker, not a broken state. Filled state resets letter-spacing. (+2) **[done iter-23]**
 - [ ] **SH-7 Title splash → page-peel pacing** — page-peel is original but follows a generic title; consider a 1-frame mascot wink or a desk silhouette behind the title to set tone. (+1)
 - [ ] **SH-8 Return-to-desk transition** — after a minigame the camera snaps back. Add a brief fade or zoom-out. (+1)
 
 ## Polish
 
-- [ ] **SH-9 Smooth cursor on prop hover** — cursor changes to a "look" cue (eye? lens?) on hoverable props for tactile feel. (+1)
+- [x] **SH-9 Smooth cursor on prop hover** — already addressed by the existing loupe overlay (`loupeEl` in `hud.ts`) that follows the cursor and fades in on hoverable props. The look-cue is visual, not a native CSS cursor swap. (+1) **[resolved by existing UX]**
 - [ ] **SH-10 Audio bed under the desk view** — soft ambient tone (typing/static) so silence between actions doesn't feel dead. (+1)

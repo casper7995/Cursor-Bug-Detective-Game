@@ -6,7 +6,7 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 - [x] **S-1 KILL THE ANSWER-KEY SPOILERS** — done iter-4, validated +14 by reviewer (64→78).
 - [x] **S-2 Editor auto-scroll to active slot** — `drawEditorScene` now slices `allLines` to the last `maxLines` (computed from `editorH/16`). Line numbers reflect absolute index, not the rendered offset. Active typing edge is always visible. (+5) **[done iter-26]**
-- [ ] **S-3 Loosen the 6/8 fail gate** — `sentence/scoring.ts:89` requires 6+ blues to emit any clue; 5 forfeits the entire envelope. Allow partial credit (e.g., 4-5 blues = lowercase clue at half score). (+4)
+- [x] **S-3 Loosen the 6/8 fail gate** — new `outcomeStrength()` returns `none / partial / full`. 4-5 blues now emits the clue at half score; 6+ blues full. `shouldEmitOutcome` retained as a back-compat shim. (+4) **[done iter-27]**
 - [x] **S-4 Reconcile idle vs orange contradiction** — set IDLE=ORANGE=0; verified by reviewer iter-4. (+3) **[done iter-4]**
 
 ## Medium leverage

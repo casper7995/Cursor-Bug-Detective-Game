@@ -11,6 +11,7 @@ import {
 import {
   classifyEnding,
   injectName,
+  outcomeStrength,
   scoreSentenceRun,
   shouldEmitOutcome,
 } from "../../src/minigames/sentence/scoring";
@@ -118,10 +119,63 @@ describe("sentence scoring", () => {
     expect(classifyEnding(4, 0, 3)).toBe("typewriter-wrote-it");
   });
 
-  it("requires a full run and at least six blue picks to emit a clue", () => {
+  it("outcomeStrength tiers by blue count: <4=none, 4-5=partial, 6+=full", () => {
+    expect(outcomeStrength(picks("blue", "blue", "blue"))).toBe("none"); // incomplete
+    expect(
+      outcomeStrength(
+        picks(
+          "blue",
+          "blue",
+          "blue",
+          "purple",
+          "purple",
+          "orange",
+          "orange",
+          "idle",
+        ),
+      ),
+    ).toBe("none"); // 3 blues
+    expect(
+      outcomeStrength(
+        picks(
+          "blue",
+          "blue",
+          "blue",
+          "blue",
+          "purple",
+          "orange",
+          "orange",
+          "idle",
+        ),
+      ),
+    ).toBe("partial"); // 4 blues
+    expect(
+      outcomeStrength(
+        picks(
+          "blue",
+          "blue",
+          "blue",
+          "blue",
+          "blue",
+          "purple",
+          "orange",
+          "idle",
+        ),
+      ),
+    ).toBe("partial"); // 5 blues
+    expect(
+      outcomeStrength(
+        picks("blue", "blue", "blue", "blue", "blue", "blue", "orange", "idle"),
+      ),
+    ).toBe("full"); // 6 blues
+  });
+
+  it("requires a full run and at least four blue picks to emit a clue", () => {
     expect(shouldEmitOutcome(picks("blue", "blue", "blue", "blue"))).toBe(
       false,
     );
+    // S-3: 5 blues out of 8 used to forfeit the envelope. Now emits a
+    // partial-strength clue so good-but-not-perfect play is rewarded.
     expect(
       shouldEmitOutcome(
         picks(
@@ -135,7 +189,7 @@ describe("sentence scoring", () => {
           "idle",
         ),
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       shouldEmitOutcome(
         picks("blue", "blue", "blue", "blue", "blue", "blue", "orange", "idle"),

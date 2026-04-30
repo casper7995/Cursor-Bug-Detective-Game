@@ -78,15 +78,32 @@ export function classifyEnding(
 }
 
 /**
- * Desk / notebook gating: full 8-beat run and at least **six** case-correct (blue) picks.
+ * Outcome strength of a completed run.
+ * - `none`:    incomplete or fewer than 4 blues — nothing emitted.
+ * - `partial`: 4–5 blues — clue still emitted at half score.
+ * - `full`:    6+ blues — full clue and full score.
+ *
+ * S-3 (loosened gate): previously 5 blues forfeited the entire envelope
+ * which punished good play. Now the desk still receives a clue at 4+ blues.
  */
-export function shouldEmitOutcome(picks: readonly PlayerPick[]): boolean {
-  if (picks.length < SENTENCE_SLOTS_PER_TEMPLATE) return false;
+export type SentenceOutcomeStrength = "none" | "partial" | "full";
+
+export function outcomeStrength(
+  picks: readonly PlayerPick[],
+): SentenceOutcomeStrength {
+  if (picks.length < SENTENCE_SLOTS_PER_TEMPLATE) return "none";
   let blues = 0;
   for (const p of picks) {
     if (p.color === "blue") blues++;
   }
-  return blues >= 6;
+  if (blues >= 6) return "full";
+  if (blues >= 4) return "partial";
+  return "none";
+}
+
+/** Back-compat — `true` whenever any outcome (partial or full) is emitted. */
+export function shouldEmitOutcome(picks: readonly PlayerPick[]): boolean {
+  return outcomeStrength(picks) !== "none";
 }
 
 /** Inject the player name into a prefix once 3 consecutive blues land. */

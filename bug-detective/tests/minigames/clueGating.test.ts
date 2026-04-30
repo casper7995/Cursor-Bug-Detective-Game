@@ -23,8 +23,9 @@ describe("desk mini clue gating helpers", () => {
     expect(survivalNotebookLock(2, 59.9)).toBe(false);
   });
 
-  it("sentence shouldEmitOutcome needs full round and at least 6 blues", () => {
+  it("sentence shouldEmitOutcome needs full round and at least 4 blues (S-3)", () => {
     expect(shouldEmitOutcome(picks("blue"))).toBe(false);
+    // 4 blues out of 8 = partial credit (was full forfeit before S-3).
     expect(
       shouldEmitOutcome(
         picks(
@@ -32,6 +33,21 @@ describe("desk mini clue gating helpers", () => {
           "blue",
           "blue",
           "blue",
+          "purple",
+          "purple",
+          "orange",
+          "idle",
+        ),
+      ),
+    ).toBe(true);
+    // 3 blues still doesn't earn anything.
+    expect(
+      shouldEmitOutcome(
+        picks(
+          "blue",
+          "blue",
+          "blue",
+          "purple",
           "purple",
           "purple",
           "orange",

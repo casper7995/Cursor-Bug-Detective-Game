@@ -17,7 +17,7 @@ import { pickTemplate } from "./templates";
 import {
   injectName,
   scoreSentenceRun,
-  shouldEmitOutcome,
+  outcomeStrength,
   type SentenceResult,
 } from "./scoring";
 import {
@@ -396,14 +396,19 @@ export class SentenceSession {
 
   private finalizeOutcome(): void {
     if (this.outcome) return;
-    if (!shouldEmitOutcome(this.picks)) {
+    const strength = outcomeStrength(this.picks);
+    if (strength === "none") {
       this.onExit();
       return;
     }
     const result = scoreSentenceRun(this.picks);
+    // S-3: partial runs (4-5 blues) still emit a clue but at half score so
+    // good-but-not-perfect play is rewarded without diluting the full win.
+    const score =
+      strength === "partial" ? Math.floor(result.score / 2) : result.score;
     this.outcome = {
       clueToken: clueTokenForSentence(this.clueWord),
-      score: result.score,
+      score,
     };
   }
 

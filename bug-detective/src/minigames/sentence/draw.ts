@@ -6,31 +6,10 @@ import {
   drawAiCard,
   drawAiProgressLine,
   inRect,
+  wrapLines,
   type Rect,
 } from "../desk/aiCard";
 import type { EndingKind, PickColor, SentenceSlot } from "./types";
-
-/** Wrap a string into lines no wider than width px in the current font. */
-function wrapText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  width: number,
-): string[] {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (ctx.measureText(candidate).width <= width) {
-      current = candidate;
-    } else {
-      if (current) lines.push(current);
-      current = word;
-    }
-  }
-  if (current) lines.push(current);
-  return lines;
-}
 
 const COLOR_BY_PICK: Record<PickColor, string> = {
   blue: CURSOR_AI.blue,
@@ -125,7 +104,7 @@ export function drawEditorScene(
     totalChars * Math.max(0, Math.min(1, typingProgress01)),
   );
   const visible = paragraph.slice(0, visibleChars);
-  const lines = wrapText(ctx, visible, L.editorW - gutterW - 24);
+  const lines = wrapLines(ctx, visible, L.editorW - gutterW - 24);
 
   // Render visible lines + line numbers
   let yLine = bodyY + 6;
@@ -231,14 +210,9 @@ export function drawSuggestionPopover(
     ctx.fillStyle = CURSOR_AI.ink;
     ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
     ctx.fillText(r.word, r.x + 30, r.y + r.h / 2 + 1);
-    // Hint badge on the right
-    ctx.fillStyle = CURSOR_AI.inkSubtle;
-    ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
-    ctx.textAlign = "right";
-    const aux =
-      r.color === "blue" ? "case" : r.color === "purple" ? "alt" : "nope";
-    ctx.fillText(aux, r.x + r.w - 50, r.y + r.h / 2 + 1);
-    // Number badge — display row, not the answer
+    // Number badge — display row, not the answer. (No "case/alt/nope"
+    // hint badge: that was an answer-key spoiler that defeated the
+    // read-the-clue puzzle.)
     ctx.font = "600 9px 'Cursor Mono', ui-monospace, monospace";
     const badgeW = 30;
     const badgeX = r.x + r.w - badgeW - 8;
@@ -393,7 +367,7 @@ function drawParagraph(
 ): void {
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "12px 'Cursor Mono', ui-monospace, monospace";
-  const lines = wrapText(ctx, text, width);
+  const lines = wrapLines(ctx, text, width);
   let yy = y;
   for (const line of lines) {
     ctx.fillText(line, x, yy);

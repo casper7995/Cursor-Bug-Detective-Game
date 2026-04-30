@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  canDispatchDuringDeskInspect,
   routeDeskInteractionTag,
   routeDeskMiniTag,
 } from "../../src/scene/deskInteractionRouting";
@@ -77,6 +78,16 @@ describe("full desk interaction routing", () => {
     expect(routeDeskInteractionTag("case-file", shared)).toEqual({
       kind: "case-file",
     });
+  });
+
+  it("allows actionable targets to dispatch from close inspect view", () => {
+    expect(canDispatchDuringDeskInspect("case-file")).toBe(true);
+    expect(canDispatchDuringDeskInspect("evidence-envelope")).toBe(true);
+    expect(canDispatchDuringDeskInspect("reagent-tray")).toBe(true);
+    expect(canDispatchDuringDeskInspect("lamp")).toBe(true);
+    expect(canDispatchDuringDeskInspect("monitor-screen")).toBe(true);
+    expect(canDispatchDuringDeskInspect("desk")).toBe(false);
+    expect(canDispatchDuringDeskInspect("mug")).toBe(false);
   });
 
   it("does not steal clicks on the live anomaly target", () => {

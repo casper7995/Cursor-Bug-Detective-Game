@@ -30,10 +30,19 @@ describe("lane defense errand", () => {
   });
 
   it("wave roster is deterministic", () => {
-    const a = buildWaveSpawnRoster(99, 2);
-    const b = buildWaveSpawnRoster(99, 2);
+    const a = buildWaveSpawnRoster(99, 1);
+    const b = buildWaveSpawnRoster(99, 1);
     expect(a).toEqual(b);
-    expect(a.length).toBe(3 + 2 * 2);
+    // Wave 1 is the only guaranteed non-boss wave under current cadence
+    // (firstBossWave = 2). Body count is 3 + wave * 2.
+    expect(a.length).toBe(3 + 1 * 2);
+  });
+
+  it("first boss arrives on the configured wave", () => {
+    const wave1 = buildWaveSpawnRoster(7, 1);
+    const wave2 = buildWaveSpawnRoster(7, 2);
+    expect(wave1.some((p) => p.kind === "zeroDay")).toBe(false);
+    expect(wave2.some((p) => p.kind === "zeroDay")).toBe(true);
   });
 
   it("survivalNotebookLock matches waves or time gate", () => {
@@ -90,6 +99,20 @@ describe("lane defense errand", () => {
     );
     const fixer = rt.queue.find((q) => q.kind === "fixer");
     expect(fixer?.readyAt).toBeGreaterThan(rt.elapsed);
+    expect(rt.deployFx).toMatchObject([
+      { kind: "fixer", lane: 0, startedAt: 0 },
+    ]);
+    expect(rt.nextDeployFxId).toBe(2);
+  });
+
+  it("deployment launch effects expire after their animation window", () => {
+    let rt = createLaneDefenseRuntime(1);
+    rt = laneDefenseDeployToLane(rt, 0);
+    expect(rt.deployFx.length).toBe(1);
+    rt = stepLaneDefenseRuntime(rt, 0.2);
+    expect(rt.deployFx.length).toBe(1);
+    rt = stepLaneDefenseRuntime(rt, 0.5);
+    expect(rt.deployFx.length).toBe(0);
   });
 
   it("queue head returns first ready hero and respects promotion", () => {

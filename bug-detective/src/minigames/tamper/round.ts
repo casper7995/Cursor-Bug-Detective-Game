@@ -9,6 +9,7 @@ import {
   type TamperScene,
   type TamperSpot,
   TAMPER_CALLS_PER_ROUND,
+  TAMPER_CONFIDENT_THRESHOLD,
   TAMPER_SCORE,
 } from "./types";
 
@@ -53,7 +54,8 @@ export function buildTamperRound(seed: number): TamperRound {
   const calls: TamperCall[] = [];
   // Distribute 6 calls across spots so the player sees variety. Bugbot picks
   // a random spot each call (with replacement). About 2 of 6 calls are lies
-  // — at least 1, at most 3 per seed.
+  // — at least 1, at most 3 per seed. Lies cluster in the back half so the
+  // round ramps in tension; high-confidence lies are worth more (see scoreCall).
   const numLies = 1 + Math.floor(rng() * 3); // 1..3
   const lyingCallIndices = pickIndicesForLies(numLies, rng);
   for (let i = 0; i < TAMPER_CALLS_PER_ROUND; i++) {
@@ -67,7 +69,12 @@ export function buildTamperRound(seed: number): TamperRound {
       : truthIsTampered
         ? "tampered"
         : "clean";
-    const conf = 60 + Math.floor(rng() * 40); // 60..99
+    // Honest calls: uniform 60..99. Lying calls: floor rises with callIndex
+    // so late-round lies tend to land in the 80s–90s (capped so we don't
+    // exceed the 99 ceiling).
+    const confFloor = isLying ? Math.min(90, 60 + i * 5) : 60;
+    const confSpan = 100 - confFloor;
+    const conf = confFloor + Math.floor(rng() * confSpan); // [floor..99]
     calls.push({
       callIndex: i,
       bugbotPointsAtSpotId: spot.id,
@@ -80,14 +87,32 @@ export function buildTamperRound(seed: number): TamperRound {
   return { scene, tamperedSpotId: tamperedSpot.id, calls };
 }
 
+/**
+ * Pick which call indices Bugbot will lie on. We bias toward the back half
+ * of the round (calls 4–6, indices 3..5) so tension ramps; the front half is
+ * where the player learns the scene. ~70% back-half / ~30% front-half draws.
+ */
 function pickIndicesForLies(n: number, rng: () => number): Set<number> {
   const out = new Set<number>();
   let safety = 0;
-  while (out.size < Math.min(n, TAMPER_CALLS_PER_ROUND) && safety < 50) {
-    out.add(Math.floor(rng() * TAMPER_CALLS_PER_ROUND));
+  const target = Math.min(n, TAMPER_CALLS_PER_ROUND);
+  while (out.size < target && safety < 50) {
+    const backHalf = rng() < 0.7;
+    const idx = backHalf
+      ? 3 + Math.floor(rng() * 3) // 3..5
+      : Math.floor(rng() * 3); // 0..2
+    out.add(idx);
     safety++;
   }
   return out;
+}
+
+export interface CallScore {
+  readonly delta: number;
+  readonly rightCall: boolean;
+  readonly caughtLie: boolean;
+  /** True when caughtLie AND Bugbot's confidence was at/above the threshold. */
+  readonly confidentCatch: boolean;
 }
 
 /**
@@ -98,12 +123,16 @@ function pickIndicesForLies(n: number, rng: () => number): Set<number> {
  * "disagree-point" wins like a regular DISAGREE *and* awards CAUGHT_LIE if
  * the spot the player clicked matches the real tampered spot AND Bugbot was
  * lying. Pointing to the wrong spot is treated as a wrong call (penalty).
+ *
+ * Catching a lie at high confidence (>= TAMPER_CONFIDENT_THRESHOLD) earns an
+ * additional CONFIDENT_CATCH_BONUS — the louder Bugbot is when wrong, the
+ * more it's worth to call it out.
  */
 export function scoreCall(
   call: TamperCall,
   verdict: CallVerdict,
   tamperedSpotId: string,
-): { delta: number; rightCall: boolean; caughtLie: boolean } {
+): CallScore {
   const honest = !call.bugbotIsLying;
   switch (verdict.kind) {
     case "agree": {
@@ -112,6 +141,7 @@ export function scoreCall(
         delta: right ? TAMPER_SCORE.RIGHT_CALL : TAMPER_SCORE.WRONG_CALL,
         rightCall: right,
         caughtLie: false,
+        confidentCatch: false,
       };
     }
     case "disagree": {
@@ -120,6 +150,7 @@ export function scoreCall(
         delta: right ? TAMPER_SCORE.RIGHT_CALL : TAMPER_SCORE.WRONG_CALL,
         rightCall: right,
         caughtLie: false,
+        confidentCatch: false,
       };
     }
     case "disagree-point": {
@@ -127,22 +158,32 @@ export function scoreCall(
       // truly tampered spot. Anything less is a wrong call.
       const right = !honest && verdict.spotId === tamperedSpotId;
       if (right) {
+        const confident =
+          call.bugbotConfidencePct >= TAMPER_CONFIDENT_THRESHOLD;
+        const bonus = confident ? TAMPER_SCORE.CONFIDENT_CATCH_BONUS : 0;
         return {
-          delta: TAMPER_SCORE.RIGHT_CALL + TAMPER_SCORE.CAUGHT_LIE,
+          delta: TAMPER_SCORE.RIGHT_CALL + TAMPER_SCORE.CAUGHT_LIE + bonus,
           rightCall: true,
           caughtLie: true,
+          confidentCatch: confident,
         };
       }
       return {
         delta: TAMPER_SCORE.WRONG_CALL,
         rightCall: false,
         caughtLie: false,
+        confidentCatch: false,
       };
     }
     default: {
       const _: never = verdict;
       void _;
-      return { delta: 0, rightCall: false, caughtLie: false };
+      return {
+        delta: 0,
+        rightCall: false,
+        caughtLie: false,
+        confidentCatch: false,
+      };
     }
   }
 }
@@ -191,14 +232,16 @@ export function tamperEarnsDeskClue(result: TamperResult): boolean {
 
 /**
  * One-line result flash after each call, tied to the chosen verdict
- * and `scoreCall`’s `rightCall` / `caughtLie`.
+ * and `scoreCall`’s `rightCall` / `caughtLie` / `confidentCatch`.
  */
 export function tamperVerdictFeedbackLine(
   verdict: CallVerdict,
-  o: { rightCall: boolean; caughtLie: boolean },
+  o: { rightCall: boolean; caughtLie: boolean; confidentCatch?: boolean },
 ): string {
   if (o.caughtLie) {
-    return "Caught: you pointed to the real change.";
+    return o.confidentCatch
+      ? "Caught a confident lie!"
+      : "Caught: you pointed to the real change.";
   }
   if (o.rightCall) {
     if (verdict.kind === "agree") {
@@ -207,12 +250,12 @@ export function tamperVerdictFeedbackLine(
     return "Correct: Bugbot was wrong.";
   }
   if (verdict.kind === "disagree-point") {
-    return "That was not the changed row.";
+    return "That was not the changed prop.";
   }
   if (verdict.kind === "agree") {
-    return "Miss — Bugbot was wrong about this row.";
+    return "Miss — Bugbot was wrong about this prop.";
   }
-  return "Miss — Bugbot was right about this row.";
+  return "Miss — Bugbot was right about this prop.";
 }
 
 export function spotById(scene: TamperScene, id: string): TamperSpot | null {

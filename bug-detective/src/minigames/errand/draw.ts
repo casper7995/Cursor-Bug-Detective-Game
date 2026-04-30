@@ -8,7 +8,7 @@ import {
   inRect,
   type Rect,
 } from "../desk/aiCard";
-import { queueHead, type LaneDefenseRuntime } from "./round";
+import { bossWarningActive, queueHead, type LaneDefenseRuntime } from "./round";
 import {
   AGENT_TRAY,
   LANE_COUNT,
@@ -390,11 +390,10 @@ function drawQueueCard(
   ctx.fillText(def.label, r.x + 40, r.y + 17);
   ctx.fillStyle = ready ? NEON_GREEN : "rgba(231,250,255,0.55)";
   ctx.font = "600 8px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText(
-    isHead ? "HEAD READY" : ready ? "READY" : `${remaining.toFixed(1)}s`,
-    r.x + 40,
-    r.y + 30,
-  );
+  // Status text must fit between glyph (r.x + 40) and recharge ring
+  // (r.x + r.w - 27). Keep strings short to avoid clipping into the ring.
+  const status = isHead ? "GO" : ready ? "READY" : `${remaining.toFixed(1)}s`;
+  ctx.fillText(status, r.x + 40, r.y + 30);
 
   ctx.fillStyle = canAfford ? "rgba(245,78,0,0.25)" : "rgba(255,255,255,0.08)";
   ctx.beginPath();
@@ -418,6 +417,67 @@ function drawQueueCard(
   ctx.restore();
 }
 
+function easeOutCubic(t: number): number {
+  const inv = 1 - t;
+  return 1 - inv * inv * inv;
+}
+
+function drawDeployLaunchFx(
+  ctx: CanvasRenderingContext2D,
+  rt: LaneDefenseRuntime,
+  lane: LaneIndex,
+  playLeft: number,
+  playRight: number,
+  cy: number,
+): void {
+  const laneFx = rt.deployFx.filter((fx) => fx.lane === lane);
+  if (laneFx.length === 0) return;
+
+  const L = ERRAND_LAYOUT;
+  const startX = L.panelX + L.fieldPadX + L.queueW + 8;
+  const targetX = playLeft + 22;
+  for (const fx of laneFx) {
+    const rawT = Math.max(
+      0,
+      Math.min(1, (rt.elapsed - fx.startedAt) / fx.duration),
+    );
+    const t = easeOutCubic(rawT);
+    const x = startX + (targetX - startX) * t;
+    const y = cy - Math.sin(rawT * Math.PI) * 7;
+    const alpha = Math.max(0, 1 - rawT * 0.55);
+    const beamEnd = Math.min(playRight, x + 22 + rawT * 46);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = NEON_CYAN;
+    ctx.shadowBlur = 16;
+    ctx.strokeStyle = NEON_CYAN;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(startX, cy);
+    ctx.lineTo(beamEnd, cy);
+    ctx.stroke();
+
+    ctx.strokeStyle = CURSOR_AI.accent;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.max(startX, x - 32), cy + 6);
+    ctx.lineTo(Math.min(playRight, x + 18), cy + 1);
+    ctx.stroke();
+
+    ctx.globalAlpha = alpha * (1 - rawT * 0.25);
+    ctx.strokeStyle = "rgba(60,255,154,0.75)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(targetX, cy, 7 + rawT * 22, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    drawDefenderGlyph(ctx, x, y, fx.kind);
+    ctx.restore();
+  }
+}
+
 /** Primary playfield (lanes + Agent Queue + meters). */
 export function drawLaneDefenseField(
   ctx: CanvasRenderingContext2D,
@@ -434,9 +494,19 @@ export function drawLaneDefenseField(
   const hoverQueue = hover.queue ?? hover.tray ?? null;
   drawTerminalBackdrop(ctx);
 
+  // Wave indicator pill replaces the redundant terminal heading; the desk
+  // breadcrumb already says "Cursor Agents · lane defense".
+  const waveLabel = `WAVE ${rt.wave}`;
+  ctx.fillStyle = "rgba(123,224,255,0.16)";
+  ctx.beginPath();
+  ctx.roundRect(L.panelX + 14, L.panelY + 8, 70, 16, 5);
+  ctx.fill();
+  ctx.strokeStyle = NEON_CYAN;
+  ctx.lineWidth = 1;
+  ctx.stroke();
   ctx.fillStyle = "#e9fbff";
-  ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText("> CURSOR AGENTS // DEFEND_DESK", L.panelX + 14, L.panelY + 18);
+  ctx.font = "700 10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText(waveLabel, L.panelX + 22, L.panelY + 19);
 
   meter(
     ctx,
@@ -486,6 +556,28 @@ export function drawLaneDefenseField(
   ctx.fillText("AGENT QUEUE", L.panelX + L.fieldPadX + 2, L.panelY + 54);
 
   const o = playFieldOrigin();
+
+  // Boss warning ribbon — spans the play field top (between AGENT QUEUE
+  // label and the lane rows). Pulses by elapsed time. Doesn't overlap
+  // BASE/CAP meters or wave pill.
+  if (bossWarningActive(rt)) {
+    const ribW = o.innerW;
+    const ribX = o.x;
+    const ribY = L.panelY + L.fieldTopOffset - 14;
+    const pulse = 0.55 + 0.25 * Math.sin(rt.elapsed * 6);
+    ctx.fillStyle = `rgba(245,78,0,${0.22 * pulse + 0.18})`;
+    ctx.beginPath();
+    ctx.roundRect(ribX, ribY, ribW, 12, 4);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(245,78,0,${0.95 * pulse})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "#ffd7c7";
+    ctx.font = "700 9px 'Cursor Mono', ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("⚠ ZERO-DAY INBOUND", ribX + ribW / 2, ribY + 9);
+    ctx.textAlign = "left";
+  }
   const playW = o.innerW - L.deskZoneW - L.spawnZoneW;
   const playX0 = o.x + L.deskZoneW;
 
@@ -553,9 +645,11 @@ export function drawLaneDefenseField(
 
     const agentHere = rt.placed.find((p) => p.lane === (lane as LaneIndex));
     const cy = rowY + rowH / 2 + 2;
-    if (agentHere) {
+    const launchActive = rt.deployFx.some((fx) => fx.lane === lane);
+    if (agentHere && !launchActive) {
       drawDefenderGlyph(ctx, playX0 + 22, cy, agentHere.kind);
     }
+    drawDeployLaunchFx(ctx, rt, lane as LaneIndex, playX0, playX0 + playW, cy);
 
     const laneAttackers = enemiesByLane[lane as LaneIndex];
     for (const e of laneAttackers) {

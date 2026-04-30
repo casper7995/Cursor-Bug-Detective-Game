@@ -1,4 +1,5 @@
 import type { AnomalyId } from "../../scene/anomalies";
+import { wrapLines } from "../desk/aiCard";
 import type { CodePlank } from "./sim";
 import {
   endlessTierFromMaxClimbM,
@@ -629,23 +630,10 @@ function wrapFillText(
   maxW: number,
   lineGap: number,
 ): void {
-  const words = text.split(/\s+/);
-  let line = "";
   let yy = y;
-  for (const w of words) {
-    const tryLine = line ? `${line} ${w}` : w;
-    if (ctx.measureText(tryLine).width <= maxW) {
-      line = tryLine;
-    } else {
-      if (line) {
-        ctx.fillText(line, cx - ctx.measureText(line).width / 2, yy);
-        yy += lineGap;
-      }
-      line = w;
-    }
-  }
-  if (line) {
+  for (const line of wrapLines(ctx, text, maxW)) {
     ctx.fillText(line, cx - ctx.measureText(line).width / 2, yy);
+    yy += lineGap;
   }
 }
 

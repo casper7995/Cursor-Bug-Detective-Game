@@ -1,0 +1,47 @@
+{
+  "iteration": 3,
+  "max_iterations": null,
+  "target": 90,
+  "games": {
+    "shell": {
+      "current": 0,
+      "target": 90,
+      "history": [],
+      "notes": "Game start, opening entry, exploration smoothness before minigames. Smooth + slick is the bar, not fancy."
+    },
+    "tamper": {
+      "current": 68,
+      "target": 90,
+      "history": [
+        { "iter": 0, "score": 68, "source": "post-refactor agent review", "validated": true }
+      ]
+    },
+    "sentence": {
+      "current": 64,
+      "target": 90,
+      "history": [
+        { "iter": 0, "score": 64, "source": "deep agent review", "validated": true }
+      ]
+    },
+    "errand": {
+      "current": 64,
+      "target": 90,
+      "history": [
+        { "iter": 0, "score": 58, "source": "deep agent review", "validated": true },
+        { "iter": 3, "score": 64, "source": "iter-3 review (boss telegraph + GO + tutorial wrap + autoclose removed + shorter footer)", "validated": true, "regressions": ["boss ribbon overlay BASE/CAP", "tutorial Start vs diagram"] }
+      ]
+    },
+    "runner": {
+      "current": 65,
+      "target": 90,
+      "history": [
+        { "iter": 0, "score": 65, "source": "averaged from two reviewers (58 / 72)", "validated": true }
+      ]
+    }
+  },
+  "phase_1_complete": true,
+  "phase_2_complete": false,
+  "phase_3_complete": false,
+  "blocked_items": [],
+  "notes": "Iter 3: errand 58→64. Two regressions found: boss ribbon overlapping BASE/CAP meters and tutorial Start button overlapping diagram. Both fixed in same iteration before commit. Shell experience added as 5th scoring target. Iteration cap removed."
+}

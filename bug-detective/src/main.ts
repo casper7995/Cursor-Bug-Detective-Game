@@ -5,8 +5,14 @@ import { CameraRig } from "./three/cameraRig";
 import { createMascotMesh } from "./cursor/mascotMesh";
 import { MascotController } from "./cursor/mascotController";
 import { createDesktopDiorama } from "./scene/desktopDiorama";
-import { applyPropFlavor } from "./scene/propInteractions";
-import { routeDeskInteractionTag } from "./scene/deskInteractionRouting";
+import {
+  applyPropFlavor,
+  preferredDeskHoverHit,
+} from "./scene/propInteractions";
+import {
+  canDispatchDuringDeskInspect,
+  routeDeskInteractionTag,
+} from "./scene/deskInteractionRouting";
 import { CursorTracker } from "./intro/cursorTracker";
 import { createPagePeel, type PagePeel } from "./intro/pagePeel";
 import { showCaseFileModal } from "./ui/caseFileModal";
@@ -264,9 +270,15 @@ function bootGameInner(simplified: boolean): void {
         diorama.hoverables as THREE.Object3D[],
         true,
       );
-      return hits.slice(0, 200).map((h) => ({
-        tag: String(h.object.userData.tag ?? "?"),
-      }));
+      const pref = preferredDeskHoverHit(hits);
+      const mapped: { tag: string }[] = [];
+      if (pref) mapped.push({ tag: String(pref.object.userData.tag ?? "?") });
+      for (const h of hits) {
+        if (h === pref) continue;
+        mapped.push({ tag: String(h.object.userData.tag ?? "?") });
+        if (mapped.length >= 200) break;
+      }
+      return mapped;
     };
     const verify = (pt: { x: number; y: number }, want: string): boolean =>
       hitsAt(pt.x, pt.y).some((e) => e.tag === want);
@@ -913,7 +925,7 @@ function bootGameInner(simplified: boolean): void {
       diorama.hoverables as THREE.Object3D[],
       false,
     );
-    return hits[0] ?? null;
+    return preferredDeskHoverHit(hits);
   }
 
   function dispatchDeskInteractionFromHit(
@@ -960,9 +972,8 @@ function bootGameInner(simplified: boolean): void {
     if (state.phase.kind !== "investigating") return;
     const hit = pickDeskInteractionHit(e.clientX, e.clientY);
     const tag = hit?.object?.userData?.tag;
-    const isMonitor = tag === "monitor" || tag === "monitor-screen";
     if (inspectZoomActive || flavorInspectReturn) {
-      if (hit?.object && isMonitor) {
+      if (hit?.object && canDispatchDuringDeskInspect(tag)) {
         if (inspectZoomActive) exitInspectZoom(200);
         else endFlavorInspectNow();
         dispatchDeskInteractionFromHit(hit, e);

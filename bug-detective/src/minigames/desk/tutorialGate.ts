@@ -4,6 +4,7 @@
  */
 
 import { CURSOR } from "../../ui/cursorTheme";
+import { wrapAndDraw, wrappedLineCount } from "./aiCard";
 
 export interface TutorialContent {
   readonly title: string;
@@ -72,6 +73,49 @@ export class TutorialGate {
     this.visible = true;
   }
 
+  /**
+   * Memo for `estimateBulletsBlock` keyed on card width. Wiped if the
+   * bullets ever change (they're set once at construction so this is a
+   * no-op in practice, but defensive).
+   */
+  private bulletsBlockMemo: { cw: number; height: number } | null = null;
+
+  /**
+   * Bullets-block height in pixels for a given card width. Uses real
+   * `measureText` via an offscreen canvas with the same font the renderer
+   * uses, so layout matches draw exactly. Memoized per `cw`.
+   */
+  private estimateBulletsBlock(cw: number): number {
+    if (this.bulletsBlockMemo && this.bulletsBlockMemo.cw === cw) {
+      return this.bulletsBlockMemo.height;
+    }
+    const ctx = TutorialGate.measureCtx();
+    ctx.font = "11px 'Cursor Gothic', sans-serif";
+    const innerW = cw - 36;
+    let totalLines = 0;
+    for (const line of this.content.howToLines) {
+      const lines = wrappedLineCount(ctx, `• ${line}`, innerW);
+      totalLines += lines;
+    }
+    // Mirrors draw loop: 15px per wrapped line + 3px gap between bullets + 8px tail pad.
+    const height = totalLines * 15 + this.content.howToLines.length * 3 + 8;
+    this.bulletsBlockMemo = { cw, height };
+    return height;
+  }
+
+  /** Lazy offscreen 2d ctx — one per browser document, reused by all gates. */
+  private static _measureCtx: CanvasRenderingContext2D | null = null;
+  private static measureCtx(): CanvasRenderingContext2D {
+    if (TutorialGate._measureCtx) return TutorialGate._measureCtx;
+    const c = document.createElement("canvas");
+    c.width = 1;
+    c.height = 1;
+    const ctx = c.getContext("2d");
+    if (!ctx) throw new Error("2d");
+    TutorialGate._measureCtx = ctx;
+    return ctx;
+  }
+
   private dismissWithoutSave(): void {
     this.visible = false;
   }
@@ -93,11 +137,10 @@ export class TutorialGate {
   private layout(W: number, H: number): void {
     this.panelRect = { x: 0, y: 0, w: W, h: H };
     const cw = Math.min(420, W - 56);
-    const lineCount = this.content.howToLines.length;
     const padTop = 22;
     const titleBlock = 28;
     const taglineBlock = 22;
-    const bulletsBlock = lineCount * 18 + 6;
+    const bulletsBlock = this.estimateBulletsBlock(cw);
     const diagramBlock = this.content.drawDiagram ? 56 : 0;
     const buttonBlock = 36;
     const footerBlock = 26;
@@ -207,9 +250,17 @@ export class TutorialGate {
 
     ctx.font = "11px 'Cursor Gothic', sans-serif";
     ctx.fillStyle = "rgba(247,247,244,0.92)";
+    const bulletMaxW = cardRect.w - 36;
     for (const line of c.howToLines) {
-      ctx.fillText(`\u2022 ${line}`, cardRect.x + 18, ly);
-      ly += 18;
+      ly = wrapAndDraw(
+        ctx,
+        `\u2022 ${line}`,
+        cardRect.x + 18,
+        ly,
+        bulletMaxW,
+        15,
+      );
+      ly += 3;
     }
 
     if (c.drawDiagram) {

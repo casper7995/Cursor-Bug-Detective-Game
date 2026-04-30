@@ -1,6 +1,25 @@
+import type { Intersection } from "three";
 import type { DioramaObjects } from "./desktopDiorama";
 
 const DUR_MS = 620;
+
+/**
+ * Raycaster hits are sorted by distance. The desk surface is usually the
+ * closest intersection under the cursor even when a prop sits on top, so
+ * clicks and tooltips can miss the envelope / tray / lamp. Prefer the
+ * closest hit whose tag is not the broad desk mesh.
+ */
+export function preferredDeskHoverHit(
+  hits: readonly Intersection[],
+): Intersection | null {
+  if (hits.length === 0) return null;
+  const onProp = hits.find(
+    (h) =>
+      typeof h.object.userData.tag === "string" &&
+      h.object.userData.tag !== "desk",
+  );
+  return onProp ?? hits[0] ?? null;
+}
 
 /**
  * Click-to-play desk flavor lines (non-anomaly props). Sets `userData.flavorEndMs`

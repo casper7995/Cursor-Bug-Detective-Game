@@ -96,7 +96,11 @@ export function buildWaveSpawnRoster(
   const rng = makeSeededRng(namespacedSeed(seed, `wave:${wave}`));
   const count = 3 + wave * 2;
   const plans: WaveSpawnPlan[] = [];
-  const bossThisWave = wave >= LANE_DEFENSE.firstBossWave && wave % 4 === 0;
+  // First boss arrives on wave === firstBossWave; subsequent bosses every 3 waves.
+  const bossThisWave =
+    wave === LANE_DEFENSE.firstBossWave ||
+    (wave > LANE_DEFENSE.firstBossWave &&
+      (wave - LANE_DEFENSE.firstBossWave) % 3 === 0);
 
   for (let i = 0; i < count; i++) {
     plans.push({
@@ -117,6 +121,32 @@ export function buildWaveSpawnRoster(
 
 export function spawnIntervalForWave(wave: number): number {
   return Math.max(0.85, 2.05 - wave * 0.07);
+}
+
+/**
+ * Is a Zero-Day boss within `bossWarningLeadSec` of its spawn point in the
+ * current wave? Used by the renderer to telegraph incoming bosses with a
+ * ribbon flash. Returns null if no boss is queued in the rest of this wave.
+ */
+export function bossWarningActive(rt: {
+  readonly roster: readonly WaveSpawnPlan[];
+  readonly spawnIdx: number;
+  readonly spawnAcc: number;
+  readonly wave: number;
+  readonly wavePause: number;
+}): boolean {
+  if (rt.wavePause > 0) return false;
+  const interval = spawnIntervalForWave(rt.wave);
+  for (let i = rt.spawnIdx; i < rt.roster.length; i++) {
+    const plan = rt.roster[i];
+    if (!plan) break;
+    if (plan.kind !== "zeroDay") continue;
+    const stepsAhead = i - rt.spawnIdx;
+    const secsToSpawn =
+      Math.max(0, interval - rt.spawnAcc) + stepsAhead * interval;
+    return secsToSpawn <= LANE_DEFENSE.bossWarningLeadSec;
+  }
+  return false;
 }
 
 export function makeEnemyIdStream(seed: number): () => number {
@@ -192,7 +222,17 @@ export interface LaneDefenseRuntime {
   bossesDefeated: number;
   wavesFinished: number;
   queue: AgentQueueEntry[];
+  deployFx: DeployEffect[];
+  nextDeployFxId: number;
   selectedTray: AgentKind | null;
+}
+
+export interface DeployEffect {
+  readonly id: number;
+  readonly kind: AgentKind;
+  readonly lane: LaneIndex;
+  readonly startedAt: number;
+  readonly duration: number;
 }
 
 export function createLaneDefenseRuntime(seed: number): LaneDefenseRuntime {
@@ -221,6 +261,8 @@ export function createLaneDefenseRuntime(seed: number): LaneDefenseRuntime {
       readyAt: 0,
       promoted: false,
     })),
+    deployFx: [],
+    nextDeployFxId: 1,
     selectedTray: null,
   };
 }
@@ -273,6 +315,14 @@ export function laneDefenseDeployToLane(
     placed: rt.placed
       .filter((p) => p.lane !== lane)
       .concat({ lane, kind: def.kind }),
+    deployFx: rt.deployFx.concat({
+      id: rt.nextDeployFxId,
+      kind: def.kind,
+      lane,
+      startedAt: rt.elapsed,
+      duration: 0.62,
+    }),
+    nextDeployFxId: rt.nextDeployFxId + 1,
     queue: rt.queue.map((q) =>
       q.kind === def.kind
         ? { ...q, readyAt: rt.elapsed + def.recharge, promoted: false }
@@ -336,9 +386,13 @@ export function stepLaneDefenseRuntime(
     enemies: rt.enemies.map((e) => ({ ...e })),
     placed: rt.placed.map((p) => ({ ...p })),
     queue: rt.queue.map((q) => ({ ...q })),
+    deployFx: rt.deployFx.map((fx) => ({ ...fx })),
   };
 
   next.elapsed += dt;
+  next.deployFx = next.deployFx.filter(
+    (fx) => next.elapsed - fx.startedAt < fx.duration,
+  );
   next.clueLocked = survivalNotebookLock(next.wave, next.elapsed);
 
   if (next.wavePause > 0) {

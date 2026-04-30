@@ -23,6 +23,16 @@ export function routeDeskMiniTag(tag: string): DeskMiniKind | null {
   }
 }
 
+export function canDispatchDuringDeskInspect(tag: unknown): boolean {
+  if (typeof tag !== "string") return false;
+  return (
+    tag === "monitor" ||
+    tag === "monitor-screen" ||
+    tag === "case-file" ||
+    routeDeskMiniTag(tag) !== null
+  );
+}
+
 export function routeDeskInteractionTag(
   tag: string,
   opts: {

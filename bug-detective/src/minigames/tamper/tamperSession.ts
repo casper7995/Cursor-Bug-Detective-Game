@@ -27,7 +27,7 @@ import {
   drawResultCard,
   drawTamperDiffHintGutter,
   drawTamperTutorialDiagram,
-  spotRowAt,
+  spotPropAt,
   TAMPER_LAYOUT,
   type ChatHits,
   type TamperChatActionMode,
@@ -88,7 +88,12 @@ type Phase =
       kind: "verdict";
       callIndex: number;
       t: number;
-      result: { delta: number; rightCall: boolean; caughtLie: boolean };
+      result: {
+        delta: number;
+        rightCall: boolean;
+        caughtLie: boolean;
+        confidentCatch: boolean;
+      };
       verdict: CallVerdict;
     }
   | { kind: "result"; t: number };
@@ -108,11 +113,11 @@ export class TamperSession {
   private chatHits: ChatHits | null = null;
   private readonly gate = new TutorialGate({
     title: "Spot the difference",
-    tagline: "Compare ORIGINAL vs TONIGHT. Bugbot may be wrong about a row.",
+    tagline: "Compare ORIGINAL vs TONIGHT. Bugbot may be wrong about a prop.",
     howToLines: [
-      "Find the one line that really changed in TONIGHT (label + icon).",
-      "You get 6 row calls — say whether Bugbot is right about the highlighted row.",
-      "If Bugbot is wrong, use Point to real change, then click the true changed TONIGHT row.",
+      "Find the one prop that really changed in TONIGHT (icon shifts shape).",
+      "You get 6 calls — say whether Bugbot is right about the highlighted prop.",
+      "If Bugbot is wrong, use Point to real change, then click the true changed prop in TONIGHT.",
     ],
     drawDiagram: drawTamperTutorialDiagram,
     storageKey: "bd:miniTutorial:tamper",
@@ -183,10 +188,10 @@ export class TamperSession {
 
   private diffHintLine(): string | null {
     if (this.phase.kind === "disagree-point") {
-      return "Click the real changed row in TONIGHT.";
+      return "Click the real changed prop in TONIGHT.";
     }
     if (this.phase.kind === "read" || this.phase.kind === "call") {
-      return "Compare ORIGINAL and TONIGHT, then judge Bugbot’s row claim.";
+      return "Compare ORIGINAL and TONIGHT, then judge Bugbot’s prop claim.";
     }
     if (this.phase.kind === "instructions") {
       return "Compare ORIGINAL and TONIGHT, then get ready to judge each call.";
@@ -276,11 +281,11 @@ export class TamperSession {
         return;
       }
       if (this.phase.kind === "disagree-point") {
-        const hit = spotRowAt(this.round.scene, p.x, p.y);
+        const hit = spotPropAt(this.round.scene, p.x, p.y);
         if (hit) {
           this.commitVerdict({ kind: "disagree-point", spotId: hit.spotId });
         } else {
-          // Click outside any TONIGHT row → fall back to plain disagree.
+          // Click outside any TONIGHT prop → fall back to plain disagree.
           this.commitVerdict({ kind: "disagree" });
         }
         return;
@@ -476,8 +481,11 @@ export class TamperSession {
     ctx.fillText(`· ${this.round.scene.displayName} · Bugbot`, 118, 26);
 
     const cur = this.currentCall();
+    // Reveal the tampered prop on every verdict (so a player who nailed it
+    // confirms what they saw) and during the result card (so misses still
+    // teach what to look for next round).
     const showRealTamper =
-      this.phase.kind === "verdict" && !this.phase.result.rightCall;
+      this.phase.kind === "verdict" || this.phase.kind === "result";
     const pickingSpot = this.phase.kind === "disagree-point";
     drawDiffCard(
       ctx,
@@ -533,7 +541,22 @@ export class TamperSession {
       drawInstructionCard(ctx, W, H, this.phase.t / INSTRUCTIONS_MAX_S);
     } else if (this.phase.kind === "result") {
       const r = scoreTamperRound(this.round, this.verdicts);
-      drawResultCard(ctx, W, H, r, TAMPER_CALLS_PER_ROUND);
+      const tamperedSpot = this.round.scene.spots.find(
+        (s) => s.id === this.round.tamperedSpotId,
+      );
+      drawResultCard(
+        ctx,
+        W,
+        H,
+        {
+          score: r.score,
+          rightCalls: r.rightCalls,
+          caughtLies: r.caughtLies,
+          earnedClue: tamperEarnsDeskClue(r),
+          tamperedVariant: tamperedSpot?.tonightIfThisTampered ?? "?",
+        },
+        TAMPER_CALLS_PER_ROUND,
+      );
     }
 
     drawDeskChromeAi(ctx);
@@ -572,11 +595,7 @@ export class TamperSession {
       const r = this.phase.result;
       const v = this.phase.verdict;
       const line = tamperVerdictFeedbackLine(v, r);
-      const scoreBit = r.caughtLie
-        ? " · +400"
-        : r.rightCall
-          ? " · +150"
-          : " · −75";
+      const scoreBit = ` · ${formatScoreDelta(r)}`;
       ctx.fillStyle = r.rightCall ? CURSOR_AI.green : CURSOR_AI.red;
       ctx.font = "700 10px 'Cursor Gothic', sans-serif";
       ctx.textAlign = "right";
@@ -624,4 +643,15 @@ function inRect(
   r: { x: number; y: number; w: number; h: number },
 ): boolean {
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+
+function formatScoreDelta(r: {
+  confidentCatch: boolean;
+  caughtLie: boolean;
+  rightCall: boolean;
+}): string {
+  if (r.confidentCatch) return "+500";
+  if (r.caughtLie) return "+400";
+  if (r.rightCall) return "+150";
+  return "−75";
 }

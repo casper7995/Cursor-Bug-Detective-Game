@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { DioramaObjects } from "../scene/desktopDiorama";
+import { preferredDeskHoverHit } from "../scene/propInteractions";
 import type { NotebookState } from "../game/notebook";
 import type { SessionScoreboardView } from "../game/sessionScoreboard";
 import { CURSOR } from "./cursorTheme";
@@ -486,7 +487,7 @@ export function createHud(
       false,
       intersects,
     );
-    const first = intersects[0];
+    const first = preferredDeskHoverHit(intersects);
     hoverScratch.tag =
       first && typeof first.object.userData.tag === "string"
         ? (first.object.userData.tag as string)

@@ -89,7 +89,9 @@ describe("sentence scoring", () => {
       "idle",
     );
     const r = scoreSentenceRun(ps);
-    expect(r.score).toBe(450);
+    // 5 purples (350) + 1 blue (125) + 1 orange (0) + 1 idle (0) = 475.
+    // IDLE was previously -25 but tutorial copy says it equals orange.
+    expect(r.score).toBe(475);
     expect(r.ending).toBe("cursed-case-file");
     expect(shouldEmitOutcome(ps)).toBe(false);
   });

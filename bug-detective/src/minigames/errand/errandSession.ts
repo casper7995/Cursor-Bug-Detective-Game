@@ -42,7 +42,6 @@ const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
 
 const INTRO_DURATION_S = 1.55;
-const DEFEAT_AUTOCLOSE_S = 4;
 
 export interface ErrandSessionOpts {
   readonly overlayCtx: CanvasRenderingContext2D;
@@ -303,8 +302,9 @@ export class ErrandSession {
         break;
       }
       case "defeat": {
+        // Hold the defeat result on screen until the player clicks; the
+        // pointer handler below calls finalizeDefeatOutcome() on click.
         this.phase = { kind: "defeat", t: this.phase.t + dtSec };
-        if (this.phase.t >= DEFEAT_AUTOCLOSE_S) this.finalizeDefeatOutcome();
         break;
       }
       default: {
@@ -380,7 +380,7 @@ export class ErrandSession {
     if (this.transientFooter) return this.transientFooter;
     switch (this.phase.kind) {
       case "play":
-        return "1 top · 2 mid · 3 bot deploy the ready queue head · click queue to promote · ESC exits";
+        return "1/2/3 deploy lane · click queue to promote · ESC exit";
       case "defeat":
         return this.rt.clueLocked
           ? "evidence locked · click to pin cipher"

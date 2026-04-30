@@ -3,7 +3,7 @@
  */
 
 import { CURSOR_AI } from "../../ui/cursorAiTheme";
-import { inRect, type Rect } from "./aiCard";
+import { inRect, wrapLines, type Rect } from "./aiCard";
 import { RUNNER_DRAW } from "../runner/sim";
 
 export type CoachRect = Rect;
@@ -158,27 +158,6 @@ const COACH_CAPTION_FONT =
   "600 11px 'Cursor Gothic', ui-sans-serif, sans-serif";
 const COACH_SUB_FONT = "10px 'Cursor Mono', ui-monospace, monospace";
 
-function wrapCoachLine(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxInner: number,
-): string[] {
-  if (ctx.measureText(text).width <= maxInner) return [text];
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    const cand = cur ? `${cur} ${w}` : w;
-    if (ctx.measureText(cand).width <= maxInner) cur = cand;
-    else {
-      if (cur) lines.push(cur);
-      cur = w;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines.length ? lines : [text];
-}
-
 /** Lower-left coach caption + optional arrow toward `pointTo` (canvas coords). */
 export function drawPracticeCoachCaption(
   ctx: CanvasRenderingContext2D,
@@ -194,12 +173,12 @@ export function drawPracticeCoachCaption(
 
   const rows: { readonly t: string; readonly caption: boolean }[] = [];
   ctx.font = COACH_CAPTION_FONT;
-  for (const line of wrapCoachLine(ctx, caption, innerMax)) {
+  for (const line of wrapLines(ctx, caption, innerMax)) {
     rows.push({ t: line, caption: true });
   }
   ctx.font = COACH_SUB_FONT;
   for (const sub of sublines) {
-    for (const line of wrapCoachLine(ctx, sub, innerMax)) {
+    for (const line of wrapLines(ctx, sub, innerMax)) {
       rows.push({ t: line, caption: false });
     }
   }

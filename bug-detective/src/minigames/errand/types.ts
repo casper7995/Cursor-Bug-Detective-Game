@@ -101,7 +101,7 @@ export const LANE_DEFENSE = {
   bossWarningLeadSec: 9,
   interWavePauseSec: 1.85,
   /** First wave that spawns a Zero-Day (after warning). */
-  firstBossWave: 4,
+  firstBossWave: 2,
   /** Notebook locks once current wave index reaches this (1-based) or time gate hits. */
   clueLockWaves: 3,
   clueLockSeconds: 60,

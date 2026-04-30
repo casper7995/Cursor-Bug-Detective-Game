@@ -36,6 +36,7 @@ export const SENTENCE_SCORE = {
   /** Eight perfect blues hit the 1000 cap. */
   BLUE: 125,
   PURPLE: 70,
+  /** Tutorial says idle and orange are equivalent — keep them so. */
   ORANGE: 0,
-  IDLE: -25,
+  IDLE: 0,
 } as const;

@@ -9,7 +9,9 @@ import {
 } from "../../src/minigames/tamper/round";
 import {
   bugbotRowClaimLine,
+  getTamperPanelRects,
   getTamperTutorialDiagramLayout,
+  spotPropAt,
 } from "../../src/minigames/tamper/draw";
 import { clueTokenForTamper } from "../../src/minigames/tamper/clueTokens";
 import { TAMPER_CALLS_PER_ROUND } from "../../src/minigames/tamper/types";
@@ -188,10 +190,10 @@ describe("tamper helpers", () => {
 });
 
 describe("tamper copy helpers", () => {
-  it("bugbotRowClaimLine uses 1-based row and plain-English claim", () => {
+  it("bugbotRowClaimLine names the prop in plain English", () => {
     const scene = TAMPER_SCENES[0]!;
-    const s0 = scene.spots[0] as { id: string };
-    const s1 = scene.spots[1] as { id: string };
+    const s0 = scene.spots[0]!;
+    const s1 = scene.spots[1]!;
     expect(
       bugbotRowClaimLine(
         {
@@ -203,7 +205,7 @@ describe("tamper copy helpers", () => {
         },
         scene,
       ),
-    ).toBe("Bugbot says: Row 1 changed");
+    ).toBe(`Bugbot says: the ${s0.label} changed`);
     expect(
       bugbotRowClaimLine(
         {
@@ -215,7 +217,7 @@ describe("tamper copy helpers", () => {
         },
         scene,
       ),
-    ).toBe("Bugbot says: Row 2 is clean");
+    ).toBe(`Bugbot says: the ${s1.label} is clean`);
   });
 
   it("tamperVerdictFeedbackLine matches the rule the player just applied", () => {
@@ -242,7 +244,81 @@ describe("tamper copy helpers", () => {
         { kind: "disagree-point", spotId: "x" },
         { rightCall: false, caughtLie: false },
       ),
-    ).toBe("That was not the changed row.");
+    ).toBe("That was not the changed prop.");
+    expect(
+      tamperVerdictFeedbackLine(
+        { kind: "disagree-point", spotId: "x" },
+        { rightCall: true, caughtLie: true, confidentCatch: true },
+      ),
+    ).toBe("Caught a confident lie!");
+  });
+});
+
+describe("spotPropAt hit-testing", () => {
+  it("clicking a prop's projected center returns its id", () => {
+    const scene = TAMPER_SCENES[0]!;
+    const { tonight } = getTamperPanelRects();
+    // Mirror the renderer's centering math (see projectSpot in draw.ts).
+    const SCENE_W = 256;
+    const SCENE_H = 200;
+    const drawnW = SCENE_W * tonight.scale;
+    const drawnH = SCENE_H * tonight.scale;
+    const ox = tonight.x + (tonight.w - drawnW) / 2;
+    const oy = tonight.y + (tonight.h - drawnH) / 2;
+    for (const spot of scene.spots) {
+      const cx = ox + spot.x * tonight.scale;
+      const cy = oy + spot.y * tonight.scale;
+      expect(spotPropAt(scene, cx, cy)?.spotId).toBe(spot.id);
+    }
+  });
+
+  it("returns null for clicks outside the TONIGHT panel", () => {
+    const scene = TAMPER_SCENES[0]!;
+    const { tonight } = getTamperPanelRects();
+    expect(spotPropAt(scene, tonight.x - 50, tonight.y - 50)).toBeNull();
+    expect(
+      spotPropAt(scene, tonight.x + tonight.w + 50, tonight.y + tonight.h / 2),
+    ).toBeNull();
+  });
+});
+
+describe("tamper confident-catch bonus", () => {
+  it("awards +100 when caught lie has confidence >= 85", () => {
+    const lyingCallHi = {
+      callIndex: 0,
+      bugbotPointsAtSpotId: "irrelevant",
+      bugbotClaim: "clean" as const,
+      bugbotConfidencePct: 92,
+      bugbotIsLying: true,
+    };
+    const r = scoreCall(
+      lyingCallHi,
+      { kind: "disagree-point", spotId: "real" },
+      "real",
+    );
+    expect(r.rightCall).toBe(true);
+    expect(r.caughtLie).toBe(true);
+    expect(r.confidentCatch).toBe(true);
+    // RIGHT_CALL (150) + CAUGHT_LIE (250) + CONFIDENT_CATCH_BONUS (100) = 500.
+    expect(r.delta).toBe(500);
+  });
+
+  it("does NOT award the bonus when confidence < 85", () => {
+    const lyingCallLo = {
+      callIndex: 0,
+      bugbotPointsAtSpotId: "irrelevant",
+      bugbotClaim: "clean" as const,
+      bugbotConfidencePct: 70,
+      bugbotIsLying: true,
+    };
+    const r = scoreCall(
+      lyingCallLo,
+      { kind: "disagree-point", spotId: "real" },
+      "real",
+    );
+    expect(r.caughtLie).toBe(true);
+    expect(r.confidentCatch).toBe(false);
+    expect(r.delta).toBe(400);
   });
 });
 

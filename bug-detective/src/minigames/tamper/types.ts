@@ -69,6 +69,11 @@ export const TAMPER_SCORE = {
   RIGHT_CALL: 150,
   WRONG_CALL: -75,
   CAUGHT_LIE: 250,
+  /** Extra reward when the caught lie was high-confidence (>= 85%). */
+  CONFIDENT_CATCH_BONUS: 100,
 } as const;
+
+/** Threshold used to decide whether a caught lie earns the confident-catch bonus. */
+export const TAMPER_CONFIDENT_THRESHOLD = 85;
 
 export const TAMPER_CALLS_PER_ROUND = 6;

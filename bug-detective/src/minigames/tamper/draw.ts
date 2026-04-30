@@ -9,7 +9,9 @@ import {
   drawAiButton,
   drawAiCard,
   drawAiProgressLine,
-  inRect,
+  drawAiResultStrip,
+  truncateOnWord,
+  wrapAndDraw,
   type Rect,
 } from "../desk/aiCard";
 import type { TamperCall, TamperScene, TamperSpot } from "./types";
@@ -23,18 +25,16 @@ export type TamperChatActionMode =
   | "hidden"
   | "idle";
 
-/** One-line label for the Bugbot call (plain language, matches row highlight). */
+/** One-line label for the Bugbot call (plain language, names the prop). */
 export function bugbotRowClaimLine(
   call: TamperCall,
   scene: TamperScene,
 ): string {
-  const rowIdx = scene.spots.findIndex(
-    (s) => s.id === call.bugbotPointsAtSpotId,
-  );
-  const n = rowIdx >= 0 ? rowIdx + 1 : "?";
+  const spot = scene.spots.find((s) => s.id === call.bugbotPointsAtSpotId);
+  const name = spot?.label ?? "this prop";
   return call.bugbotClaim === "tampered"
-    ? `Bugbot says: Row ${n} changed`
-    : `Bugbot says: Row ${n} is clean`;
+    ? `Bugbot says: the ${name} changed`
+    : `Bugbot says: the ${name} is clean`;
 }
 
 // ---------------------------------------------------------------------
@@ -55,15 +55,77 @@ export const TAMPER_LAYOUT = {
   rowH: 18,
 } as const;
 
-/** Reference rect for a TONIGHT spot row — exported for future overlays. */
-export function spotRowRect(
-  _spot: TamperSpot,
-  half: "original" | "tonight",
-): Rect {
+/**
+ * Source coordinate space for `TamperSpot.(x, y, r)`. Spots in scenes.ts are
+ * authored against this grid; both the panel renderer and the hit-tester
+ * project from this space into screen pixels via {@link panelRect}.
+ */
+const SCENE_SOURCE = { w: 256, h: 200 } as const;
+
+/** Geometry of one ORIGINAL/TONIGHT panel inside the diff card. */
+export interface PanelRect {
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  /** Uniform scale from `SCENE_SOURCE` → panel pixels. */
+  readonly scale: number;
+}
+
+/**
+ * Geometry of the two scene panels inside the diff card. Computed once at
+ * module load — inputs are compile-time constants (`TAMPER_LAYOUT` /
+ * `SCENE_SOURCE`).
+ */
+const TAMPER_PANEL_RECTS: {
+  original: PanelRect;
+  tonight: PanelRect;
+} = (() => {
   const L = TAMPER_LAYOUT;
-  const yBase =
-    half === "original" ? L.diffY + 38 : L.diffY + 38 + L.rowH * 5 + 22;
-  return { x: L.diffX + 12, y: yBase, w: L.diffW - 24, h: L.rowH };
+  const innerX = L.diffX + 10;
+  const innerY = L.diffY + 30; // below filename strip
+  const innerW = L.diffW - 20;
+  const innerH = L.diffH - 40;
+  const gutter = 8;
+  const panelW = (innerW - gutter) / 2;
+  const panelH = innerH;
+  const scale = Math.min(panelW / SCENE_SOURCE.w, panelH / SCENE_SOURCE.h);
+  return {
+    original: { x: innerX, y: innerY, w: panelW, h: panelH, scale },
+    tonight: {
+      x: innerX + panelW + gutter,
+      y: innerY,
+      w: panelW,
+      h: panelH,
+      scale,
+    },
+  };
+})();
+
+/** Public accessor preserved for the tests that import it. */
+export function getTamperPanelRects(): {
+  original: PanelRect;
+  tonight: PanelRect;
+} {
+  return TAMPER_PANEL_RECTS;
+}
+
+/** Project a spot's (x, y) from source space into a panel's pixel space. */
+function projectSpot(
+  spot: TamperSpot,
+  panel: PanelRect,
+): { cx: number; cy: number; r: number } {
+  // Center the source grid inside the panel (spots author near the top of
+  // their grid, so a small Y nudge keeps them inside the visible scene).
+  const drawnW = SCENE_SOURCE.w * panel.scale;
+  const drawnH = SCENE_SOURCE.h * panel.scale;
+  const ox = panel.x + (panel.w - drawnW) / 2;
+  const oy = panel.y + (panel.h - drawnH) / 2;
+  return {
+    cx: ox + spot.x * panel.scale,
+    cy: oy + spot.y * panel.scale,
+    r: Math.max(10, spot.r * panel.scale),
+  };
 }
 
 // ---------------------------------------------------------------------
@@ -123,75 +185,183 @@ export function drawDiffCard(
   ctx.font = "600 10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textBaseline = "middle";
   ctx.fillText(
-    `${scene.displayName.toLowerCase().replace(/\s+/g, "-")}.diff`,
+    `${scene.displayName.toLowerCase().replace(/\s+/g, "-")}.scene`,
     L.diffX + 12,
     L.diffY + 12,
   );
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textAlign = "right";
-  ctx.fillText("TONIGHT vs ORIGINAL", L.diffX + L.diffW - 12, L.diffY + 12);
+  ctx.fillText("ORIGINAL ↔ TONIGHT", L.diffX + L.diffW - 12, L.diffY + 12);
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.restore();
 
-  // Section header — ORIGINAL
-  const origHeaderY = L.diffY + 32;
-  drawHalfLabel(ctx, L.diffX + 12, origHeaderY, "ORIGINAL", CURSOR_AI.green);
-  // Section header — TONIGHT (sits below the ORIGINAL block + 10px gap)
-  const tonightHeaderY = origHeaderY + 6 + scene.spots.length * L.rowH + 12;
-  drawHalfLabel(ctx, L.diffX + 12, tonightHeaderY, "TONIGHT", CURSOR_AI.accent);
+  const { original, tonight } = getTamperPanelRects();
+  drawScenePanel(ctx, scene, original, "original", null, false, false);
+  drawScenePanel(
+    ctx,
+    scene,
+    tonight,
+    "tonight",
+    pointAtSpotId,
+    showRealTamper,
+    pickingSpot,
+  );
+}
 
-  // Subtle column rule between the two halves
+function drawScenePanel(
+  ctx: CanvasRenderingContext2D,
+  scene: TamperScene,
+  panel: PanelRect,
+  half: "original" | "tonight",
+  pointAtSpotId: string | null,
+  showRealTamper: boolean,
+  pickingSpot: boolean,
+): void {
+  // Panel background — slightly different paper for ORIGINAL vs TONIGHT so
+  // the eye registers them as two separate scenes at a glance.
   ctx.save();
-  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.fillStyle =
+    half === "original"
+      ? "rgba(244, 240, 226, 0.9)"
+      : "rgba(238, 232, 218, 0.9)";
+  ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+
+  // Faint grid for "scene" feel.
+  ctx.strokeStyle = "rgba(20, 18, 11, 0.06)";
+  ctx.lineWidth = 1;
+  const grid = 16;
   ctx.beginPath();
-  const ruleY = tonightHeaderY - 6;
-  ctx.moveTo(L.diffX + 12, ruleY);
-  ctx.lineTo(L.diffX + L.diffW - 12, ruleY);
+  for (let gx = panel.x + grid; gx < panel.x + panel.w; gx += grid) {
+    ctx.moveTo(gx, panel.y);
+    ctx.lineTo(gx, panel.y + panel.h);
+  }
+  for (let gy = panel.y + grid; gy < panel.y + panel.h; gy += grid) {
+    ctx.moveTo(panel.x, gy);
+    ctx.lineTo(panel.x + panel.w, gy);
+  }
   ctx.stroke();
+
+  // Panel border + header pill.
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(panel.x + 0.5, panel.y + 0.5, panel.w - 1, panel.h - 1);
+
+  const accent = half === "original" ? CURSOR_AI.green : CURSOR_AI.accent;
+  drawHalfLabel(
+    ctx,
+    panel.x + 8,
+    panel.y + 14,
+    half === "original" ? "ORIGINAL" : "TONIGHT",
+    accent,
+  );
   ctx.restore();
 
-  // Rows
-  const spots = scene.spots;
-  for (let i = 0; i < spots.length; i++) {
-    const spot = spots[i] as TamperSpot;
-    const oy = origHeaderY + 6 + i * L.rowH;
-    const ty = tonightHeaderY + 6 + i * L.rowH;
-    drawSpotRow(
-      ctx,
-      spot,
-      L.diffX + 12,
-      oy,
-      L.diffW - 24,
-      L.rowH,
-      "original",
-      false,
-      false,
-    );
-    const bugbotHere = pointAtSpotId !== null && pointAtSpotId === spot.id;
-    const isReveal = showRealTamper && spot.tampered;
-    drawSpotRow(
-      ctx,
-      spot,
-      L.diffX + 12,
-      ty,
-      L.diffW - 24,
-      L.rowH,
-      "tonight",
-      bugbotHere,
-      isReveal,
-    );
-    if (pickingSpot) {
+  // Pick-mode dashed accent border on TONIGHT.
+  if (pickingSpot && half === "tonight") {
+    ctx.save();
+    ctx.strokeStyle = CURSOR_AI.accent;
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(panel.x + 1, panel.y + 1, panel.w - 2, panel.h - 2);
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Props.
+  for (const spot of scene.spots) {
+    const isTamperHere = half === "tonight" && spot.tampered;
+    const sketchKey =
+      isTamperHere && spot.tonightSketchKey
+        ? spot.tonightSketchKey
+        : spot.sketchKey;
+    const { cx, cy, r } = projectSpot(spot, panel);
+    const sketchSize = Math.max(12, Math.min(18, r * 0.85));
+
+    // Pick-mode hover halo on TONIGHT props.
+    if (pickingSpot && half === "tonight") {
       ctx.save();
-      ctx.strokeStyle = CURSOR_AI.accent;
-      ctx.setLineDash([3, 3]);
+      ctx.fillStyle = "rgba(245,78,0,0.08)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(245,78,0,0.5)";
+      ctx.setLineDash([2, 2]);
       ctx.lineWidth = 1;
-      ctx.strokeRect(L.diffX + 12, ty, L.diffW - 24, L.rowH);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.setLineDash([]);
       ctx.restore();
     }
+
+    // Real-tamper reveal (post-verdict miss): pulse halo + "real" tag.
+    if (showRealTamper && isTamperHere) {
+      ctx.save();
+      ctx.fillStyle = "rgba(60, 145, 80, 0.18)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = CURSOR_AI.green;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    drawPropSketch(ctx, sketchKey, cx, cy, sketchSize);
+
+    // Bugbot pointer arrow on the prop in TONIGHT.
+    if (pointAtSpotId === spot.id && half === "tonight") {
+      drawBugbotPointer(ctx, cx, cy, r);
+    }
+
+    // Small label badge under the prop — text stays as a secondary signal.
+    if (showRealTamper && isTamperHere) {
+      ctx.save();
+      ctx.fillStyle = CURSOR_AI.green;
+      ctx.font = "700 8px 'Cursor Mono', ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("real", cx, cy + r + 9);
+      ctx.textAlign = "left";
+      ctx.restore();
+    }
   }
+}
+
+function drawBugbotPointer(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  ctx.save();
+  // Halo ring around the prop.
+  ctx.strokeStyle = "rgba(245,78,0,0.85)";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 1, 0, Math.PI * 2);
+  ctx.stroke();
+  // Arrow above-left pointing at the prop.
+  const ax = cx - r - 10;
+  const ay = cy - r - 10;
+  ctx.fillStyle = "rgba(245,78,0,0.95)";
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(ax + 8, ay + 2);
+  ctx.lineTo(ax + 4, ay + 4);
+  ctx.lineTo(cx - r * 0.7, cy - r * 0.7);
+  ctx.lineTo(ax + 2, ay + 8);
+  ctx.lineTo(ax + 4, ay + 4);
+  ctx.closePath();
+  ctx.fill();
+  // "bot" tag near the arrow tail.
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.font = "700 7px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText("bot", ax - 14, ay + 4);
+  ctx.restore();
 }
 
 /** One-line micro-hint in the gap below the diff card (avoids crowding the rows). */
@@ -206,14 +376,9 @@ export function drawTamperDiffHintGutter(
   const y = L.diffY + L.diffH + 9;
   ctx.save();
   ctx.font = "8px 'Cursor Mono', ui-monospace, monospace";
-  let t = line;
-  while (t.length > 3 && ctx.measureText(`${t}…`).width > maxW) {
-    t = t.slice(0, -1);
-  }
-  if (t !== line) t += "…";
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.textAlign = "left";
-  ctx.fillText(t, x, y);
+  ctx.fillText(truncateOnWord(ctx, line, maxW), x, y);
   ctx.restore();
 }
 
@@ -231,71 +396,6 @@ function drawHalfLabel(
   ctx.font = "700 9px 'Cursor Mono', ui-monospace, monospace";
   ctx.textBaseline = "middle";
   ctx.fillText(label, x + 12, y - 1);
-  ctx.textBaseline = "alphabetic";
-  ctx.restore();
-}
-
-function drawSpotRow(
-  ctx: CanvasRenderingContext2D,
-  spot: TamperSpot,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  half: "original" | "tonight",
-  bugbotPointsHere: boolean,
-  revealRealTamper: boolean,
-): void {
-  const lineText =
-    half === "tonight" && spot.tampered
-      ? spot.tonightIfThisTampered
-      : spot.label;
-  const sketchKey =
-    half === "tonight" && spot.tampered && spot.tonightSketchKey
-      ? spot.tonightSketchKey
-      : spot.sketchKey;
-  ctx.save();
-  if (revealRealTamper) {
-    ctx.fillStyle = CURSOR_AI.greenMute;
-    ctx.fillRect(x, y, w, h);
-  }
-  if (bugbotPointsHere && half === "tonight") {
-    ctx.strokeStyle = "rgba(245,78,0,0.7)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x, y + h);
-    ctx.stroke();
-  }
-  drawPropSketch(ctx, sketchKey, x + 12, y + h / 2, 9);
-  ctx.fillStyle = CURSOR_AI.ink;
-  ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
-  ctx.textBaseline = "middle";
-  const textX = x + 28;
-  const maxW = w - 34 - (bugbotPointsHere && half === "tonight" ? 42 : 0);
-  let short = lineText;
-  if (ctx.measureText(short).width > maxW) {
-    for (let n = lineText.length; n >= 1; n--) {
-      const cand = n < lineText.length ? `${lineText.slice(0, n)}…` : lineText;
-      if (n === 1 || ctx.measureText(cand).width <= maxW) {
-        short = cand;
-        break;
-      }
-    }
-  }
-  ctx.fillText(short, textX, y + h / 2 + 1);
-  if (bugbotPointsHere && half === "tonight") {
-    ctx.fillStyle = CURSOR_AI.inkSubtle;
-    ctx.font = "8px 'Cursor Mono', ui-monospace, monospace";
-    ctx.textAlign = "right";
-    ctx.fillText("bot", x + w - 4, y + h / 2 + 1);
-  } else if (revealRealTamper) {
-    ctx.fillStyle = CURSOR_AI.green;
-    ctx.font = "700 8px 'Cursor Mono', ui-monospace, monospace";
-    ctx.textAlign = "right";
-    ctx.fillText("real", x + w - 4, y + h / 2 + 1);
-  }
-  ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   ctx.restore();
 }
@@ -386,7 +486,7 @@ export function drawChatCard(
     const claim = bugbotRowClaimLine(call, scene);
     ctx.fillStyle = CURSOR_AI.ink;
     ctx.font = "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText(claim, L.chatX + 14, L.chatY + 60);
+    wrapAndDraw(ctx, claim, L.chatX + 14, L.chatY + 60, L.chatW - 28, 14);
     ctx.fillStyle = CURSOR_AI.inkMute;
     ctx.font = "500 11px 'Cursor Gothic', sans-serif";
     wrapAndDraw(
@@ -435,7 +535,7 @@ export function drawChatCard(
     ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
     wrapAndDraw(
       ctx,
-      "Click the real changed row in TONIGHT (left).",
+      "Click the changed prop in TONIGHT.",
       bx,
       approveY - 2,
       bw,
@@ -483,34 +583,6 @@ export function drawChatCard(
   return emptyChatHits();
 }
 
-function wrapAndDraw(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  width: number,
-  lineH: number,
-): number {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    const cand = cur ? `${cur} ${w}` : w;
-    if (ctx.measureText(cand).width <= width) cur = cand;
-    else {
-      if (cur) lines.push(cur);
-      cur = w;
-    }
-  }
-  if (cur) lines.push(cur);
-  let yy = y;
-  for (const line of lines) {
-    ctx.fillText(line, x, yy);
-    yy += lineH;
-  }
-  return yy;
-}
-
 // ---------------------------------------------------------------------
 // Cards: intro + result
 // ---------------------------------------------------------------------
@@ -538,16 +610,22 @@ export function drawIntroCard(
   ctx.fillText(`scene · ${scene.displayName} · Bugbot review`, x + 60, y + 50);
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
-  ctx.fillText(
-    "Compare ORIGINAL vs TONIGHT. One row really changed. Bugbot can be wrong about a row.",
+  const bodyY = wrapAndDraw(
+    ctx,
+    "Compare ORIGINAL vs TONIGHT. One prop really changed. Bugbot can be wrong about a prop.",
     x + 24,
     y + 82,
+    w - 48,
+    16,
   );
   ctx.fillStyle = CURSOR_AI.inkMute;
-  ctx.fillText(
-    "If Bugbot is wrong, use Point to real change, then click the true changed row.",
+  wrapAndDraw(
+    ctx,
+    "If Bugbot is wrong, use Point to real change, then click the true changed prop.",
     x + 24,
-    y + 100,
+    bodyY + 4,
+    w - 48,
+    16,
   );
   drawAiProgressLine(ctx, x + 24, y + h - 22, w - 48, progress01);
   ctx.restore();
@@ -576,8 +654,8 @@ export function drawInstructionCard(
   ctx.font = "12px 'Cursor Gothic', sans-serif";
   const lines = [
     "First: find the one real change in TONIGHT.",
-    "Then: Bugbot will call out rows. Say if Bugbot is right.",
-    "If Bugbot is wrong, click the real changed TONIGHT row.",
+    "Then: Bugbot will call out props. Say if Bugbot is right.",
+    "If Bugbot is wrong, click the real changed prop in TONIGHT.",
   ];
   let ly = y + 70;
   for (const line of lines) {
@@ -597,39 +675,54 @@ export function drawInstructionCard(
   ctx.restore();
 }
 
+export interface TamperResultCardInfo {
+  readonly score: number;
+  readonly rightCalls: number;
+  readonly caughtLies: number;
+  /** True when the round earned a desk clue token. */
+  readonly earnedClue: boolean;
+  /** TONIGHT variant text for the tampered prop ("key (bent)"). */
+  readonly tamperedVariant: string;
+}
+
 export function drawResultCard(
   ctx: CanvasRenderingContext2D,
   W: number,
   H: number,
-  result: { score: number; rightCalls: number; caughtLies: number },
+  info: TamperResultCardInfo,
   total: number,
 ): void {
   ctx.save();
   ctx.fillStyle = CURSOR_AI.scrim;
   ctx.fillRect(0, 0, W, H);
   const w = 380;
-  const h = 180;
+  const h = 196;
   const x = (W - w) / 2;
   const y = (H - h) / 2;
   drawAiCard(ctx, x, y, w, h, { radius: 14 });
-  ctx.fillStyle = CURSOR_AI.inkMute;
-  ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText("REVIEW SUMMARY", x + 24, y + 26);
-  ctx.fillStyle = CURSOR_AI.ink;
-  ctx.font = "700 36px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText(String(result.score), x + 24, y + 70);
-  ctx.fillStyle = CURSOR_AI.inkSubtle;
-  ctx.font = "500 11px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText("score", x + 24, y + 86);
-  // Stat strip on the right
-  const stripX = x + w - 152;
-  ctx.fillStyle = CURSOR_AI.inkMute;
-  ctx.font = "500 11px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText(`accuracy   ${result.rightCalls}/${total}`, stripX, y + 56);
-  ctx.fillText(`caught lying   ${result.caughtLies}`, stripX, y + 74);
-  ctx.fillStyle = CURSOR_AI.inkSubtle;
-  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText("click anywhere to close", x + 24, y + h - 16);
+
+  const teach = info.earnedClue
+    ? `Real change: ${info.tamperedVariant}.`
+    : `Real change: ${info.tamperedVariant}. Need 3+ correct AND 1+ caught lie for a clue.`;
+
+  drawAiResultStrip(ctx, x, y, w, h, {
+    headline: String(info.score),
+    headlineCaption: "score",
+    stats: [
+      {
+        label: "accuracy",
+        value: `${info.rightCalls} / ${total}`,
+        accent: info.rightCalls >= 3 ? CURSOR_AI.green : CURSOR_AI.ink,
+      },
+      {
+        label: "caught lies",
+        value: String(info.caughtLies),
+        accent: info.caughtLies > 0 ? CURSOR_AI.green : CURSOR_AI.inkMute,
+      },
+    ],
+    teach,
+    footer: "click anywhere to close",
+  });
   ctx.restore();
 }
 
@@ -652,7 +745,6 @@ export interface TamperTutorialDiagramLayout {
   readonly disagree: Rect;
 }
 
-const TAMPER_TUTORIAL_LABEL = "Match panels";
 const TAMPER_TUTORIAL_LABEL_WIDTH = 74;
 const TAMPER_TUTORIAL_AVATAR_SIZE = 16;
 const TAMPER_TUTORIAL_ICON_GAP = 10;
@@ -717,32 +809,93 @@ export function drawTamperTutorialDiagram(
   w: number,
   h: number,
 ): void {
+  // Touch the layout helper so its geometry stays exercised — tests assert
+  // the layout maths, but the visualisation is two mini-panels showing one
+  // prop changed between ORIGINAL and TONIGHT.
+  void getTamperTutorialDiagramLayout(x, y, w, h, TAMPER_TUTORIAL_LABEL_WIDTH);
+
   ctx.save();
-  ctx.fillStyle = CURSOR_AI.inkMute;
-  ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
-  ctx.textBaseline = "middle";
-  const layout = getTamperTutorialDiagramLayout(
-    x,
-    y,
-    w,
-    h,
-    ctx.measureText(TAMPER_TUTORIAL_LABEL).width,
+  const gutter = 12;
+  const panelW = Math.min(120, (w - gutter) / 2);
+  const panelH = Math.min(64, h - 8);
+  const totalW = panelW * 2 + gutter;
+  const px = x + (w - totalW) / 2;
+  const py = y + (h - panelH) / 2;
+
+  drawTutorialMiniPanel(ctx, px, py, panelW, panelH, "ORIGINAL", false);
+  drawTutorialMiniPanel(
+    ctx,
+    px + panelW + gutter,
+    py,
+    panelW,
+    panelH,
+    "TONIGHT",
+    true,
   );
-  drawAiAvatar(ctx, layout.avatar.cx, layout.avatar.cy, {
-    size: layout.avatar.size,
-  });
-  ctx.fillText(TAMPER_TUTORIAL_LABEL, layout.label.x, layout.label.y);
-  drawAiButton(ctx, layout.agree, "Right", {
-    tone: "approve",
-    leading: "✓",
-    font: "600 10px 'Cursor Gothic', sans-serif",
-  });
-  drawAiButton(ctx, layout.disagree, "Wrong", {
-    tone: "reject",
-    leading: "✗",
-    font: "600 10px 'Cursor Gothic', sans-serif",
-  });
+
+  // Connector + caption between the panels.
+  ctx.strokeStyle = CURSOR_AI.inkSubtle;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 2]);
+  ctx.beginPath();
+  ctx.moveTo(px + panelW + 1, py + panelH / 2);
+  ctx.lineTo(px + panelW + gutter - 1, py + panelH / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText("spot the one prop that changed", x + w / 2, py + panelH + 6);
+  ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}
+
+function drawTutorialMiniPanel(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  changed: boolean,
+): void {
+  ctx.save();
+  ctx.fillStyle =
+    label === "ORIGINAL"
+      ? "rgba(244, 240, 226, 0.95)"
+      : "rgba(238, 232, 218, 0.95)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = CURSOR_AI.border;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+  // Tiny header badge.
+  const accent = label === "ORIGINAL" ? CURSOR_AI.green : CURSOR_AI.accent;
+  ctx.fillStyle = accent;
+  ctx.fillRect(x + 6, y + 6, 5, 5);
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "700 8px 'Cursor Mono', ui-monospace, monospace";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + 14, y + 8);
+  ctx.textBaseline = "alphabetic";
+
+  // Three demo props — second one swaps to a "changed" sketch in TONIGHT.
+  const cy = y + h * 0.62;
+  const xs = [x + w * 0.25, x + w * 0.5, x + w * 0.75];
+  drawPropSketch(ctx, "key", xs[0]!, cy, 9);
+  drawPropSketch(ctx, changed ? "key_bent" : "key", xs[1]!, cy, 9);
+  drawPropSketch(ctx, "stamp", xs[2]!, cy, 9);
+
+  if (changed) {
+    ctx.strokeStyle = CURSOR_AI.accent;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(xs[1]!, cy, 11, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -1062,21 +1215,46 @@ export interface SpotRowHit {
   readonly spotId: string;
 }
 
+/**
+ * Hit-test a click against props in the TONIGHT panel. Uses the same
+ * `projectSpot` transform the renderer uses, so click accuracy matches
+ * what the player sees.
+ */
+export function spotPropAt(
+  scene: TamperScene,
+  x: number,
+  y: number,
+): SpotRowHit | null {
+  const { tonight } = getTamperPanelRects();
+  // Cheap bounds reject — outside the TONIGHT panel never hits.
+  if (
+    x < tonight.x ||
+    x > tonight.x + tonight.w ||
+    y < tonight.y ||
+    y > tonight.y + tonight.h
+  ) {
+    return null;
+  }
+  let best: { spotId: string; distSq: number } | null = null;
+  for (const spot of scene.spots) {
+    const { cx, cy, r } = projectSpot(spot, tonight);
+    const dx = x - cx;
+    const dy = y - cy;
+    const distSq = dx * dx + dy * dy;
+    if (distSq <= r * r && (best === null || distSq < best.distSq)) {
+      best = { spotId: spot.id, distSq };
+    }
+  }
+  return best ? { spotId: best.spotId } : null;
+}
+
+/** Back-compat shim — old call sites keep working while we rename. */
 export function spotRowAt(
   scene: TamperScene,
   x: number,
   y: number,
 ): SpotRowHit | null {
-  const L = TAMPER_LAYOUT;
-  const origHeaderY = L.diffY + 32;
-  const tonightHeaderY = origHeaderY + 6 + scene.spots.length * L.rowH + 12;
-  for (let i = 0; i < scene.spots.length; i++) {
-    const spot = scene.spots[i] as TamperSpot;
-    const ty = tonightHeaderY + 6 + i * L.rowH;
-    const r: Rect = { x: L.diffX + 12, y: ty, w: L.diffW - 24, h: L.rowH };
-    if (inRect(x, y, r)) return { spotId: spot.id };
-  }
-  return null;
+  return spotPropAt(scene, x, y);
 }
 
 export { spotById };

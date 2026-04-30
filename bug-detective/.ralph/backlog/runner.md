@@ -5,7 +5,7 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 ## High leverage (onboarding + feel)
 
 - [x] **R-1 Pre-run "READY → GO" overlay with key legend** — `INTRO_MS=1500` hold with `isIntroActive()` + `introProgress01()`; new `drawRunnerIntroOverlay`. Skip with SPACE/→. (+8) **[done iter-5]**
-- [ ] **R-2 Coyote-time + jump-buffer** — `sim.ts:660-668`. 80ms grace after walking off, 100ms input buffer. Standard platformer feel-fix. (+4)
+- [x] **R-2 Coyote-time + jump-buffer** — `COYOTE_TIME_MS=80`, `JUMP_BUFFER_MS=100`. State carries `lastGroundedAtMs`, `bufferedJumpAtMs`, `prevWantJump` (edge-detect). Tests: jump buffer fires on land + neutral init values. (+4) **[done iter-9]**
 - [ ] **R-3 Plank pre-fade warning** — `draw.ts:733-769`. When alpha < 0.35, pulse red + 1px shake. Tells player "leave NOW." (+3)
 - [ ] **R-4 Speed-line FX during boost** — new fx layer in `draw.ts`, triggered while `wantBoost`. 4-6 horizontal motion lines + 1.02× zoom. Most exciting input has smallest visual reaction today. (+2)
 

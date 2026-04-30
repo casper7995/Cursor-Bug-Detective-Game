@@ -67,7 +67,18 @@ export interface RunnerSimState {
    * so the player can keep going (and we can append more course).
    */
   readonly dailyLineCrossed: boolean;
+  /** Sim time of last grounded frame; used for coyote-time jumps. */
+  readonly lastGroundedAtMs: number;
+  /** Sim time of last `wantJump` press while airborne; used for jump buffer. */
+  readonly bufferedJumpAtMs: number;
+  /** Edge-tracker so a held jump key only buffers once per press. */
+  readonly prevWantJump: boolean;
 }
+
+/** Jump still allowed within this window of leaving the ground without jumping. */
+export const COYOTE_TIME_MS = 80;
+/** Jump press within this window before grounding triggers on land. */
+export const JUMP_BUFFER_MS = 100;
 
 /** Default world-scroll distance to count as the daily “finish line” (HUD + score). */
 export const DEFAULT_DAILY_GOAL_SCROLL = 4000;
@@ -604,6 +615,9 @@ function finalizeNewSim(
     projectiles: [],
     nextProjectileSpawnAtMs: mode === "endless" ? 5000 : 0,
     dailyLineCrossed: false,
+    lastGroundedAtMs: 0,
+    bufferedJumpAtMs: -Infinity,
+    prevWantJump: false,
   };
 }
 
@@ -663,9 +677,24 @@ export function stepRunnerSim(
     Math.abs(playerVy) < 420 &&
     Number.isFinite(surfaceY);
 
-  if (grounded && wantJump) {
+  // Edge-detect a fresh jump press so a held key buffers exactly once.
+  const justPressedJump = wantJump && !state.prevWantJump;
+
+  // Update buffer timestamp on a fresh press (regardless of grounded).
+  let bufferedJumpAtMs = state.bufferedJumpAtMs;
+  if (justPressedJump) bufferedJumpAtMs = nextElapsed;
+
+  // Coyote allowance: did we leave ground (without jumping) very recently?
+  const coyoteOK =
+    !grounded && nextElapsed - state.lastGroundedAtMs <= COYOTE_TIME_MS;
+
+  // Buffer allowance: did we press jump just before landing?
+  const bufferOK = grounded && nextElapsed - bufferedJumpAtMs <= JUMP_BUFFER_MS;
+
+  if ((grounded && wantJump) || coyoteOK || bufferOK) {
     playerVy = JUMP_V0;
     grounded = false;
+    bufferedJumpAtMs = -Infinity; // consume the buffer
   }
 
   if (!grounded) {
@@ -862,6 +891,9 @@ export function stepRunnerSim(
     runStartFeetY: state.runStartFeetY,
     projectiles,
     nextProjectileSpawnAtMs,
+    lastGroundedAtMs: grounded ? nextElapsed : state.lastGroundedAtMs,
+    bufferedJumpAtMs,
+    prevWantJump: wantJump,
   };
 }
 

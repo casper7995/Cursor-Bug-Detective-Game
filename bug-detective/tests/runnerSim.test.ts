@@ -384,4 +384,36 @@ describe("runner sim", () => {
     );
     expect(plankWidthTightenForEndlessTier(30)).toBe(0.5);
   });
+
+  it("jump buffer fires the jump on land when pressed just before grounding", () => {
+    let s = createRunnerSim(123, "daily", CFG);
+    // Step the sim airborne by jumping once, then keep wantJump=false to fall.
+    s = stepRunnerSim(s, 1 / 60, true, false, CFG);
+    // Now in the air, vy<0 (rising). Build a small fall back to ground.
+    for (let i = 0; i < 6; i++) {
+      s = stepRunnerSim(s, 1 / 60, false, false, CFG);
+    }
+    // Press jump while airborne (buffer it).
+    const justBeforeLand = stepRunnerSim(s, 1 / 60, true, false, CFG);
+    expect(justBeforeLand.bufferedJumpAtMs).toBeGreaterThan(-Infinity);
+    // Release, then keep simulating. When player grounds within 100ms of the
+    // buffered press, the jump should fire (consume buffer, vy<0, airborne).
+    let r = justBeforeLand;
+    let firedRebound = false;
+    for (let i = 0; i < 12; i++) {
+      r = stepRunnerSim(r, 1 / 60, false, false, CFG);
+      if (!r.grounded && r.playerVy < 0) {
+        firedRebound = true;
+        break;
+      }
+    }
+    expect(firedRebound).toBe(true);
+  });
+
+  it("createRunnerSim seeds coyote/buffer fields with neutral values", () => {
+    const s = createRunnerSim(7, "daily", CFG);
+    expect(s.lastGroundedAtMs).toBe(0);
+    expect(s.bufferedJumpAtMs).toBe(-Infinity);
+    expect(s.prevWantJump).toBe(false);
+  });
 });

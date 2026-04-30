@@ -4,10 +4,10 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 ## High leverage (the gameplay-critical items)
 
-- [ ] **S-1 KILL THE ANSWER-KEY SPOILERS** — `sentence/draw.ts:238-240` literally writes `"case"` / `"alt"` / `"nope"` next to each choice. Delete those badges; replace with neutral `1 / 2 / 3` if needed. **+15 alone, single biggest fix anywhere.**
+- [x] **S-1 KILL THE ANSWER-KEY SPOILERS** — done iter-4, validated +14 by reviewer (64→78).
 - [ ] **S-2 Editor auto-scroll to active slot** — `sentence/draw.ts:130-146` clips after 8 lines. Past slot 6, the player can't see the prefix they're completing. Render the last 8 lines OR the active-slot window. (+5)
 - [ ] **S-3 Loosen the 6/8 fail gate** — `sentence/scoring.ts:89` requires 6+ blues to emit any clue; 5 forfeits the entire envelope. Allow partial credit (e.g., 4-5 blues = lowercase clue at half score). (+4)
-- [ ] **S-4 Reconcile idle vs orange contradiction** — `types.ts:40` has IDLE=-25 ORANGE=0. Tutorial says they're equivalent. Either set IDLE=ORANGE=0, or change copy. **PICK ONE.** (+3)
+- [x] **S-4 Reconcile idle vs orange contradiction** — set IDLE=ORANGE=0; verified by reviewer iter-4. (+3) **[done iter-4]**
 
 ## Medium leverage
 

@@ -277,7 +277,7 @@ function drawScenePanel(
         ? spot.tonightSketchKey
         : spot.sketchKey;
     const { cx, cy, r } = projectSpot(spot, panel);
-    const sketchSize = Math.max(12, Math.min(18, r * 0.85));
+    const sketchSize = Math.max(14, Math.min(22, r * 0.95));
 
     // Pick-mode hover halo on TONIGHT props.
     if (pickingSpot && half === "tonight") {
@@ -916,19 +916,20 @@ function drawPropSketch(
   ctx.fillStyle = CURSOR_AI.ink;
   switch (sketchKey) {
     case "stamp":
-    case "stamp_offset":
+    case "stamp_offset": {
+      const offset = sketchKey === "stamp_offset";
+      if (offset) {
+        ctx.save();
+        ctx.rotate(0.18);
+      }
       ctx.strokeRect(-size * 0.5, -size * 0.4, size, size * 0.8);
       ctx.fillStyle = CURSOR_AI.accent;
       ctx.beginPath();
-      ctx.arc(
-        sketchKey === "stamp_offset" ? size * 0.12 : 0,
-        0,
-        size * 0.22,
-        0,
-        Math.PI * 2,
-      );
+      ctx.arc(offset ? size * 0.32 : 0, 0, size * 0.22, 0, Math.PI * 2);
       ctx.fill();
+      if (offset) ctx.restore();
       break;
+    }
     case "photo":
     case "photo_glare":
       ctx.strokeRect(-size * 0.5, -size * 0.4, size, size * 0.8);
@@ -993,9 +994,14 @@ function drawPropSketch(
       );
       ctx.stroke();
       if (sketchKey === "signature_loopy") {
+        // Bigger second loop + redder ink so the change reads at 16px.
+        ctx.strokeStyle = CURSOR_AI.accent;
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
-        ctx.arc(-size * 0.2, 0, size * 0.1, 0, Math.PI * 1.2);
+        ctx.arc(-size * 0.15, size * 0.05, size * 0.22, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = CURSOR_AI.ink;
       }
       break;
     case "vial":
@@ -1088,10 +1094,17 @@ function drawPropSketch(
       }
       ctx.stroke();
       if (sketchKey === "ledger_fold") {
+        // Big triangular fold filled with shadow tint — visible at 16px.
+        ctx.fillStyle = "rgba(20,18,11,0.35)";
         ctx.beginPath();
-        ctx.moveTo(size * 0.25, -size * 0.4);
-        ctx.lineTo(size * 0.35, -size * 0.25);
-        ctx.lineTo(size * 0.25, -size * 0.1);
+        ctx.moveTo(size * 0.4, -size * 0.4);
+        ctx.lineTo(size * 0.05, -size * 0.4);
+        ctx.lineTo(size * 0.4, -size * 0.05);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(size * 0.05, -size * 0.4);
+        ctx.lineTo(size * 0.4, -size * 0.05);
         ctx.stroke();
       }
       break;
@@ -1106,8 +1119,13 @@ function drawPropSketch(
       ctx.closePath();
       ctx.stroke();
       if (sketchKey === "lampshade_tape") {
-        ctx.fillStyle = "rgba(245,78,0,0.35)";
-        ctx.fillRect(-size * 0.15, -size * 0.35, size * 0.12, size * 0.1);
+        // Wide orange tape strip spanning the rim — unmistakable at 16px.
+        ctx.fillStyle = "rgba(245,78,0,0.85)";
+        ctx.fillRect(-size * 0.4, -size * 0.45, size * 0.8, size * 0.18);
+        ctx.strokeStyle = CURSOR_AI.accent;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-size * 0.4, -size * 0.45, size * 0.8, size * 0.18);
+        ctx.strokeStyle = CURSOR_AI.ink;
       }
       break;
     case "switch":
@@ -1165,20 +1183,50 @@ function drawPropSketch(
       break;
     case "puddle":
     case "puddle_oil": {
-      const fill =
-        sketchKey === "puddle_oil"
-          ? "rgba(192, 96, 32, 0.55)"
-          : "rgba(20,18,11,0.55)";
-      ctx.fillStyle = fill;
       if (sketchKey === "puddle_oil") {
+        // Iridescent oil sheen — three concentric rings, blue/orange/yellow.
+        ctx.fillStyle = "rgba(40, 30, 20, 0.7)";
         ctx.beginPath();
         ctx.ellipse(0, size * 0.1, size * 0.55, size * 0.25, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "rgba(255, 200, 80, 0.2)";
+        ctx.fillStyle = "rgba(245, 78, 0, 0.55)";
         ctx.beginPath();
-        ctx.ellipse(-size * 0.1, 0, size * 0.2, size * 0.1, 0, 0, Math.PI * 2);
+        ctx.ellipse(
+          -size * 0.05,
+          size * 0.05,
+          size * 0.4,
+          size * 0.18,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+        ctx.fillStyle = "rgba(140, 200, 255, 0.45)";
+        ctx.beginPath();
+        ctx.ellipse(
+          size * 0.1,
+          size * 0.0,
+          size * 0.22,
+          size * 0.1,
+          0,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
+        ctx.fillStyle = "rgba(255, 240, 120, 0.55)";
+        ctx.beginPath();
+        ctx.ellipse(
+          -size * 0.15,
+          size * 0.12,
+          size * 0.12,
+          size * 0.06,
+          0,
+          0,
+          Math.PI * 2,
+        );
         ctx.fill();
       } else {
+        ctx.fillStyle = "rgba(20,18,11,0.55)";
         ctx.beginPath();
         ctx.ellipse(0, size * 0.1, size * 0.55, size * 0.25, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -1188,8 +1236,15 @@ function drawPropSketch(
     case "book":
     case "book_shifted":
       if (sketchKey === "book_shifted") {
-        ctx.translate(size * 0.06, -size * 0.04);
-        ctx.rotate(0.08);
+        // Ghost outline at the original position.
+        ctx.save();
+        ctx.strokeStyle = "rgba(20,18,11,0.25)";
+        ctx.setLineDash([2, 2]);
+        ctx.strokeRect(-size * 0.4, -size * 0.3, size * 0.8, size * 0.6);
+        ctx.setLineDash([]);
+        ctx.restore();
+        ctx.translate(size * 0.18, -size * 0.1);
+        ctx.rotate(0.22);
       }
       ctx.strokeRect(-size * 0.4, -size * 0.3, size * 0.8, size * 0.6);
       ctx.beginPath();

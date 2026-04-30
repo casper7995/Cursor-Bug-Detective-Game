@@ -1,5 +1,5 @@
 {
-  "iteration": 5,
+  "iteration": 6,
   "max_iterations": null,
   "target": 90,
   "games": {
@@ -43,5 +43,5 @@
   "phase_2_complete": false,
   "phase_3_complete": false,
   "blocked_items": [],
-  "notes": "Iter 4: sentence S-1 (kill answer-key spoiler badges) + S-4 (idle/orange reconcile) implemented + simplify cleanup landed. Iter 5: runner R-1 (READY→GO intro overlay + key legend). Playwright MCP disconnected mid-iter-4; reviews for iter-4/5 deferred until MCP reconnects. typecheck + 260/260 tests still green."
+  "notes": "Iter 4: sentence S-1 + S-4 + simplify cleanup. Iter 5: runner R-1 (READY→GO overlay). Iter 6: tamper T-2 (6 subtle variants rewritten + sketchSize 18→22). Playwright MCP still disconnected; reviews for iter-4/5/6 deferred. typecheck + 260/260 tests pass."
 }

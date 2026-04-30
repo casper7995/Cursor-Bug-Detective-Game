@@ -5,7 +5,7 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 ## High leverage (gameplay + worst visible bugs)
 
 - [x] **T-1 Wrap Bugbot claim line + intro body** — replace `fillText` at `tamper/draw.ts:479` and `:631-641` with `wrapAndDraw` (Phase 1.1). Truncated text is the worst visible defect in every screenshot. (+5) **[done iter-01]**
-- [ ] **T-2 Punch up subtle prop variants** — in `tamper/draw.ts:902-1206`, rewrite invisible variants: `puddle_oil`, `book_shifted`, `lampshade_tape`, `ledger_fold`, `signature_loopy`, `stamp_offset`. AND raise `sketchSize` ceiling from 18 → 24. (+6)
+- [x] **T-2 Punch up subtle prop variants** — rewrote 6 subtle variants (stamp_offset rotated+shifted, signature_loopy red big-loop, ledger_fold filled triangular flap, lampshade_tape wide orange strip, puddle_oil 3-color iridescent, book_shifted dashed ghost outline + bigger rotation). Raised sketchSize ceiling 18→22. (+6) **[done iter-6]**
 - [x] **T-3 Persist real-tamper reveal on success + on result card** — `tamperSession.ts:484-485` change `showRealTamper = phase.kind === "verdict" || phase.kind === "result"`. Surface tampered prop's label on result card. (+3) **[done iter-02]**
 
 ## Medium leverage

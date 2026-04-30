@@ -1,5 +1,5 @@
 import type { AnomalyId } from "../../scene/anomalies";
-import { wrapLines } from "../desk/aiCard";
+import { clipToRect, wrapLines } from "../desk/aiCard";
 import type { CodePlank } from "./sim";
 import {
   endlessTierFromMaxClimbM,
@@ -713,72 +713,95 @@ export function drawRunnerFrame(
     modeLabel.includes("endless") ? maxClimbM : 0,
   );
 
-  for (const p of planks) {
-    const sx0 = p.x0 - scroll;
-    const sx1 = p.x1 - scroll;
-    if (sx1 < -20 || sx0 > W + 20) continue;
+  // Clip world content (planks + snippets + player + projectiles) to the
+  // playfield rect below the HUD + clue strip. Without this, plank text
+  // bleeds into the HUD when the camera scrolls high. R-7.
+  const playfield = {
+    x: 0,
+    y: RUNNER_HUD_TOP_PX + CLUE_STRIP_H,
+    w: W,
+    h: H - (RUNNER_HUD_TOP_PX + CLUE_STRIP_H),
+  };
+  clipToRect(ctx, playfield, () => {
+    for (const p of planks) {
+      const sx0 = p.x0 - scroll;
+      const sx1 = p.x1 - scroll;
+      if (sx1 < -20 || sx0 > W + 20) continue;
 
-    const alpha =
-      p.touchedAtMs === null
-        ? Math.max(0, 1 - (elapsedMs - p.bornAtMs) / pristineLife)
-        : Math.max(0, 1 - (elapsedMs - p.touchedAtMs) / PLANK_LIFE_MS);
-    ctx.save();
-    ctx.globalAlpha = alpha;
+      const lifeT =
+        p.touchedAtMs === null
+          ? (elapsedMs - p.bornAtMs) / pristineLife
+          : (elapsedMs - p.touchedAtMs) / PLANK_LIFE_MS;
+      const alpha = Math.max(0, 1 - lifeT);
+      // R-3: pulse red when the plank is about to disappear so the player
+      // sees "leave NOW" instead of the floor silently fading.
+      const warning = lifeT > 0.65 && lifeT < 1;
+      ctx.save();
+      ctx.globalAlpha = alpha;
 
-    const yTop = p.yTop + cameraY;
-    const baselineY = yTop + SNIPPET_BASELINE_OFFSET;
-    const snippet = snippetTextForPlankId(p.id, anomalyId);
-    const showClue =
-      activeToks.length > 0 &&
-      plankHasClueToken(p.id) &&
-      clueSet.tokens.length > 0;
+      const yTop = p.yTop + cameraY;
+      const baselineY = yTop + SNIPPET_BASELINE_OFFSET;
+      const snippet = snippetTextForPlankId(p.id, anomalyId);
+      const showClue =
+        activeToks.length > 0 &&
+        plankHasClueToken(p.id) &&
+        clueSet.tokens.length > 0;
 
-    if (showClue) {
-      drawClueSnippetLine(
-        ctx,
-        snippet,
-        sx0 + 4,
-        baselineY,
-        activeToks,
-        clueSet.palette,
-        onClueTokenSeen,
-      );
-    } else {
-      drawPlainSnippetRow(ctx, snippet, sx0 + 4, baselineY);
+      if (showClue) {
+        drawClueSnippetLine(
+          ctx,
+          snippet,
+          sx0 + 4,
+          baselineY,
+          activeToks,
+          clueSet.palette,
+          onClueTokenSeen,
+        );
+      } else {
+        drawPlainSnippetRow(ctx, snippet, sx0 + 4, baselineY);
+      }
+
+      // Underline — pulses red and shakes 1px while the plank is about to
+      // disappear (R-3 warning).
+      const pulse = warning
+        ? 0.55 + 0.35 * Math.abs(Math.sin(elapsedMs / 90))
+        : 0;
+      const wobble = warning ? Math.round(Math.sin(elapsedMs / 60) * 1) : 0;
+      ctx.strokeStyle = warning
+        ? `rgba(245, 78, 0, ${pulse})`
+        : "rgba(192,133,50,0.55)";
+      ctx.lineWidth = warning ? 1.6 : 1;
+      ctx.beginPath();
+      ctx.moveTo(sx0, baselineY + 1 + wobble);
+      ctx.lineTo(sx1, baselineY + 1 + wobble);
+      ctx.stroke();
+
+      ctx.restore();
     }
 
-    ctx.strokeStyle = "rgba(192,133,50,0.55)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(sx0, baselineY + 1);
-    ctx.lineTo(sx1, baselineY + 1);
-    ctx.stroke();
+    if (!gameOver) {
+      drawRunnerProjectiles(ctx, scroll, cameraY, projectiles, W);
+    }
 
+    const px = PLAYER_SCREEN_X;
+    const py = playerY + cameraY;
+    const pose = pickPose(scroll, grounded);
+    const runPhase = (scroll * 0.012) % 1;
+    drawGroundShadow(ctx, px, feetW + cameraY, grounded);
+    const tumble01 = failAnim !== undefined ? Math.min(1, failAnim / 280) : 0;
+    const mascAlpha = failAnim !== undefined ? 1 - 0.7 * tumble01 : 1;
+    const feetPivotX = px + 22;
+    const feetPivotY = feetW + cameraY;
+    ctx.save();
+    ctx.globalAlpha = mascAlpha;
+    if (tumble01 > 0.001) {
+      ctx.translate(feetPivotX, feetPivotY);
+      ctx.rotate(tumble01 * (Math.PI / 3));
+      ctx.translate(-feetPivotX, -feetPivotY);
+    }
+    drawChibiThreeQuarterMascot(ctx, px, py, pose, runPhase);
     ctx.restore();
-  }
-
-  if (!gameOver) {
-    drawRunnerProjectiles(ctx, scroll, cameraY, projectiles, W);
-  }
-
-  const px = PLAYER_SCREEN_X;
-  const py = playerY + cameraY;
-  const pose = pickPose(scroll, grounded);
-  const runPhase = (scroll * 0.012) % 1;
-  drawGroundShadow(ctx, px, feetW + cameraY, grounded);
-  const tumble01 = failAnim !== undefined ? Math.min(1, failAnim / 280) : 0;
-  const mascAlpha = failAnim !== undefined ? 1 - 0.7 * tumble01 : 1;
-  const feetPivotX = px + 22;
-  const feetPivotY = feetW + cameraY;
-  ctx.save();
-  ctx.globalAlpha = mascAlpha;
-  if (tumble01 > 0.001) {
-    ctx.translate(feetPivotX, feetPivotY);
-    ctx.rotate(tumble01 * (Math.PI / 3));
-    ctx.translate(-feetPivotX, -feetPivotY);
-  }
-  drawChibiThreeQuarterMascot(ctx, px, py, pose, runPhase);
-  ctx.restore();
+  }); // end clipToRect(playfield)
 
   drawClueStrip(ctx, W, clueSet, clueTooltipHint, activeToks, hintFlash);
 

@@ -1,25 +1,17 @@
-/** Errand Race round builder + scoring. Pure logic. */
+/** Lane defense — pure helpers (determinism + scoring + clue lock). */
 
 import { makeSeededRng } from "../../api/seedClient";
 import {
-  ERRAND_NUM_DRAWERS,
-  ERRAND_SCORE,
-  type AgentTrait,
-  type Drawer,
-  type DrawerContent,
-  type DrawerIndex,
-  type ErrandRound,
-  type HintIcon,
-  type TaskSignalProfile,
+  AGENT_TRAY,
+  ENEMY_STATS,
+  LANE_COUNT,
+  LANE_DEFENSE,
+  type AgentKind,
+  type EnemyKind,
+  type EnemyUnit,
+  type LaneIndex,
+  type PlacedAgent,
 } from "./types";
-
-const HINT_ICONS: readonly HintIcon[] = [
-  "cup",
-  "feather",
-  "key",
-  "question",
-  "warn",
-];
 
 export function namespacedSeed(base: number, label: string): number {
   let h = base >>> 0;
@@ -30,184 +22,435 @@ export function namespacedSeed(base: number, label: string): number {
   return h >>> 0;
 }
 
-function lerp01(a: number, b: number, t: number): number {
-  return Math.min(1, Math.max(0, a + (b - a) * t));
+/** Notebook clue locks when current wave reaches `clueLockWaves`, or time exceeds `clueLockSeconds`. */
+export function survivalNotebookLock(
+  waveNumber: number,
+  secondsHeld: number,
+): boolean {
+  return (
+    waveNumber >= LANE_DEFENSE.clueLockWaves ||
+    secondsHeld >= LANE_DEFENSE.clueLockSeconds
+  );
 }
 
-function taskSignalProfileFor(
-  content: DrawerContent,
-  drawerIdx: number,
-  rng: () => number,
-): TaskSignalProfile {
-  const wobble = 0.18;
-  let rRel: number;
-  let rSafe: number;
-  let rUrg: number;
-  switch (content) {
-    case "clue":
-      rRel = 0.55 + rng() * 0.45;
-      rSafe = 0.5 + rng() * 0.4;
-      rUrg = 0.2 + rng() * 0.6;
-      break;
-    case "junk":
-      rRel = 0.2 + rng() * 0.4;
-      rSafe = 0.4 + rng() * 0.45;
-      rUrg = 0.2 + rng() * 0.6;
-      break;
-    case "trap":
-      rRel = 0.25 + rng() * 0.5;
-      rSafe = 0.1 + rng() * 0.35;
-      rUrg = 0.45 + rng() * 0.5;
-      break;
-    default: {
-      const _e: never = content;
-      throw new Error(String(_e));
-    }
+export interface LaneDefenseScoreInput {
+  readonly clueLocked: boolean;
+  readonly bossesDefeated: number;
+  readonly completedWaves: number;
+  readonly secondsHeld: number;
+}
+
+/**
+ * 0 if no clue locked (early defeat). Otherwise tiered 400 / 700 / 1000.
+ */
+export function scoreLaneDefense(i: LaneDefenseScoreInput): number {
+  if (!i.clueLocked) return 0;
+  let s = 400;
+  if (i.bossesDefeated >= 1) s = LANE_DEFENSE.scoreTierBoss;
+  if (
+    i.completedWaves >= LANE_DEFENSE.marathonWaves ||
+    i.secondsHeld >= LANE_DEFENSE.marathonSeconds
+  ) {
+    s = LANE_DEFENSE.scoreTierMarathon;
   }
-  const f = (x: number) => lerp01(x, rng(), wobble * (0.5 + drawerIdx * 0.1));
-  return {
-    relevance01: f(rRel),
-    safety01: f(rSafe),
-    urgency01: f(rUrg),
-  };
+  return Math.max(0, Math.min(1000, s));
 }
 
-/** After Inspect, nudge the visible meters toward a blend with the true drawer content. */
-export function nudgeSignalsAfterInspect(
-  content: DrawerContent,
-  p: TaskSignalProfile,
-): TaskSignalProfile {
-  let t: TaskSignalProfile;
-  switch (content) {
-    case "clue":
-      t = { relevance01: 0.9, safety01: 0.75, urgency01: 0.5 };
-      break;
-    case "junk":
-      t = { relevance01: 0.3, safety01: 0.65, urgency01: 0.4 };
-      break;
-    case "trap":
-      t = { relevance01: 0.45, safety01: 0.15, urgency01: 0.85 };
-      break;
-    default: {
-      const _e: never = content;
-      throw new Error(String(_e));
-    }
+export interface WaveSpawnPlan {
+  readonly wave: number;
+  readonly kind: EnemyKind;
+  readonly lane: LaneIndex;
+}
+
+function laneFromRng(rng: () => number): LaneIndex {
+  return Math.floor(rng() * LANE_COUNT) as LaneIndex;
+}
+
+/** Picks non-boss enemy for filler spawns. */
+export function pickSkirmishEnemy(wave: number, rng: () => number): EnemyKind {
+  const roll = rng();
+  if (wave <= 2) {
+    if (roll < 0.65) return "syntaxBug";
+    return "phishingPacket";
   }
-  const blend = 0.55;
-  return {
-    relevance01: lerp01(p.relevance01, t.relevance01, blend),
-    safety01: lerp01(p.safety01, t.safety01, blend),
-    urgency01: lerp01(p.urgency01, t.urgency01, blend),
-  };
-}
-
-function makeAgentTraits(
-  rng: () => number,
-): [AgentTrait, AgentTrait, AgentTrait] {
-  const pool: AgentTrait[] = [
-    { label: "fast", paceScale: 0.9 },
-    { label: "steady", paceScale: 1.0 },
-    { label: "careful", paceScale: 1.12 },
-  ];
-  shuffle(pool, rng);
-  return [pool[0]!, pool[1]!, pool[2]!];
-}
-
-function shuffle<T>(arr: T[], rng: () => number): T[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    const a = arr[i] as T;
-    const b = arr[j] as T;
-    arr[i] = b;
-    arr[j] = a;
+  if (wave <= 5) {
+    if (roll < 0.35) return "syntaxBug";
+    if (roll < 0.7) return "regressionBug";
+    if (roll < 0.88) return "phishingPacket";
+    return "ransomwareBlob";
   }
-  return arr;
+  if (roll < 0.22) return "syntaxBug";
+  if (roll < 0.5) return "regressionBug";
+  if (roll < 0.78) return "phishingPacket";
+  return "ransomwareBlob";
 }
 
-export function buildErrandRound(seed: number): ErrandRound {
-  const rng = makeSeededRng(seed);
-  const agentTraits = makeAgentTraits(rng);
-  const tendencies: Record<HintIcon, DrawerContent> = {
-    cup: "clue",
-    feather: "junk",
-    key: "clue",
-    question: "junk",
-    warn: "trap",
-  };
-  const distribution: DrawerContent[] = [
-    "clue",
-    "clue",
-    "junk",
-    "junk",
-    "trap",
-  ];
-  shuffle(distribution, rng);
-  const noise = 0.2;
-  const drawers: Drawer[] = [];
-  for (let i = 0; i < ERRAND_NUM_DRAWERS; i++) {
-    const content = distribution[i] as DrawerContent;
-    const matchingIcons = HINT_ICONS.filter(
-      (icon) => tendencies[icon] === content,
-    );
-    let hint: HintIcon;
-    if (matchingIcons.length > 0 && rng() > noise) {
-      hint = matchingIcons[
-        Math.floor(rng() * matchingIcons.length)
-      ] as HintIcon;
-    } else {
-      hint = HINT_ICONS[Math.floor(rng() * HINT_ICONS.length)] as HintIcon;
-    }
-    const fillRateMs = 1500 + Math.floor(rng() * 1500);
-    const signalProfile = taskSignalProfileFor(content, i, rng);
-    const trapAlertAt01 = 0.3 + rng() * 0.4;
-    const trapPushIsClue = rng() < 0.5;
-    drawers.push({
-      index: i as DrawerIndex,
-      hint,
-      content,
-      fillRateMs,
-      signalProfile,
-      trapAlertAt01,
-      trapPushIsClue,
+/**
+ * Deterministic roster for a wave (excluding tutorial-scripted spawns).
+ * Wave `w` has `3 + w * 2` bodies; boss waves append one Zero-Day at end.
+ */
+export function buildWaveSpawnRoster(
+  seed: number,
+  wave: number,
+): readonly WaveSpawnPlan[] {
+  const rng = makeSeededRng(namespacedSeed(seed, `wave:${wave}`));
+  const count = 3 + wave * 2;
+  const plans: WaveSpawnPlan[] = [];
+  const bossThisWave = wave >= LANE_DEFENSE.firstBossWave && wave % 4 === 0;
+
+  for (let i = 0; i < count; i++) {
+    plans.push({
+      wave,
+      kind: pickSkirmishEnemy(wave, rng),
+      lane: laneFromRng(rng),
     });
   }
-  return { drawers, hintTruthMap: tendencies, agentTraits };
+  if (bossThisWave) {
+    plans.push({
+      wave,
+      kind: "zeroDay",
+      lane: laneFromRng(rng),
+    });
+  }
+  return plans;
 }
 
-export interface ErrandTotals {
-  readonly clues: number;
-  readonly helpersSafe: number;
-  readonly helpersLost: number;
+export function spawnIntervalForWave(wave: number): number {
+  return Math.max(0.85, 2.05 - wave * 0.07);
 }
 
-export function scoreErrandRun(t: ErrandTotals): number {
-  let base = 0;
-  if (t.clues >= 3) base = ERRAND_SCORE.THREE;
-  else if (t.clues === 2) base = ERRAND_SCORE.TWO;
-  else if (t.clues === 1) base = ERRAND_SCORE.ONE;
-  else base = ERRAND_SCORE.ZERO;
-  if (t.clues === 0) return 0;
-  if (t.helpersLost === 0) base += ERRAND_SCORE.SAFE_BONUS;
-  base += t.helpersLost * ERRAND_SCORE.LOST_PENALTY;
-  return Math.max(0, Math.min(1000, base));
+export function makeEnemyIdStream(seed: number): () => number {
+  const rng = makeSeededRng(namespacedSeed(seed, "enemyIds"));
+  let n = 1;
+  return () => {
+    n += 1 + Math.floor(rng() * 3);
+    return n;
+  };
 }
 
-/** Desk clue: 2+ clue picks, or 1 clue with zero traps. */
-export function errandEarnsDeskClue(
-  clueCount: number,
-  trapCount: number,
-): boolean {
-  if (clueCount >= 2) return true;
-  if (clueCount === 1 && trapCount === 0) return true;
-  return false;
+export interface AgentQueueEntry {
+  readonly kind: AgentKind;
+  readyAt: number;
+  promoted: boolean;
 }
 
-export function canAssignHelper(
-  helpers: readonly { drawerAssigned: number | null }[],
-  helperIdx: number,
-  drawerIdx: number,
-): boolean {
-  return helpers.every(
-    (h, i) => i === helperIdx || h.drawerAssigned !== drawerIdx,
+/** Create a unit at spawn line. */
+export function spawnEnemyUnit(
+  id: number,
+  lane: LaneIndex,
+  kind: EnemyKind,
+): EnemyUnit {
+  const st = ENEMY_STATS[kind];
+  return {
+    id,
+    lane,
+    kind,
+    x: 1,
+    hp: st.maxHp,
+    maxHp: st.maxHp,
+    baseSpeed: st.speed,
+    leakDamage: st.leakDamage,
+    isBoss: st.isBoss,
+    bossSummonAcc: 0,
+  };
+}
+
+// --- Runtime simulation (lane defense survival) ---
+
+function rngStep(s: number): { u: number; next: number } {
+  let state = s | 0;
+  state = (state + 0x6d2b79f5) | 0;
+  let t = Math.imul(state ^ (state >>> 15), 1 | state);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  const u = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  return { u, next: state >>> 0 };
+}
+
+function pullU(rt: LaneDefenseRuntime): number {
+  const { u, next } = rngStep(rt.rng);
+  rt.rng = next;
+  return u;
+}
+
+export interface LaneDefenseRuntime {
+  seed: number;
+  rng: number;
+  elapsed: number;
+  baseHealth: number;
+  capacity: number;
+  focus: number;
+  defeated: boolean;
+  clueLocked: boolean;
+  wave: number;
+  roster: readonly WaveSpawnPlan[];
+  spawnIdx: number;
+  spawnAcc: number;
+  wavePause: number;
+  enemies: EnemyUnit[];
+  placed: PlacedAgent[];
+  nextEnemyId: number;
+  bossesDefeated: number;
+  wavesFinished: number;
+  queue: AgentQueueEntry[];
+  selectedTray: AgentKind | null;
+}
+
+export function createLaneDefenseRuntime(seed: number): LaneDefenseRuntime {
+  const rng0 = namespacedSeed(seed, "laneDefenseCore") >>> 0;
+  return {
+    seed,
+    rng: rng0,
+    elapsed: 0,
+    baseHealth: LANE_DEFENSE.baseHealthMax,
+    capacity: LANE_DEFENSE.startingCapacity,
+    focus: LANE_DEFENSE.startingFocus,
+    defeated: false,
+    clueLocked: false,
+    wave: 1,
+    roster: buildWaveSpawnRoster(seed, 1),
+    spawnIdx: 0,
+    spawnAcc: 0,
+    wavePause: 0,
+    enemies: [],
+    placed: [],
+    nextEnemyId: 1,
+    bossesDefeated: 0,
+    wavesFinished: 0,
+    queue: AGENT_TRAY.map((a) => ({
+      kind: a.kind,
+      readyAt: 0,
+      promoted: false,
+    })),
+    selectedTray: null,
+  };
+}
+
+export function queueHead(rt: LaneDefenseRuntime): AgentQueueEntry | null {
+  let best: { entry: AgentQueueEntry; index: number } | null = null;
+  for (let index = 0; index < rt.queue.length; index++) {
+    const entry = rt.queue[index]!;
+    if (entry.readyAt > rt.elapsed) continue;
+    if (best === null) {
+      best = { entry, index };
+      continue;
+    }
+    if (entry.promoted !== best.entry.promoted) {
+      if (entry.promoted) best = { entry, index };
+      continue;
+    }
+    if (index < best.index) best = { entry, index };
+  }
+  return best?.entry ?? null;
+}
+
+export function laneDefensePromoteAgent(
+  rt: LaneDefenseRuntime,
+  kind: AgentKind,
+): LaneDefenseRuntime {
+  if (rt.defeated || !rt.queue.some((q) => q.kind === kind)) return rt;
+  return {
+    ...rt,
+    queue: rt.queue.map((q) => ({ ...q, promoted: q.kind === kind })),
+  };
+}
+
+export function laneDefenseDeployToLane(
+  rt: LaneDefenseRuntime,
+  lane: LaneIndex,
+): LaneDefenseRuntime {
+  if (rt.defeated) return rt;
+  const head = queueHead(rt);
+  if (head === null) return rt;
+  const def = AGENT_TRAY.find((a) => a.kind === head.kind);
+  if (!def || rt.focus < def.cost) return rt;
+
+  const hadLane = rt.placed.some((p) => p.lane === lane);
+  const occupiedOther = rt.placed.filter((p) => p.lane !== lane).length;
+  if (!hadLane && occupiedOther >= LANE_DEFENSE.maxPlacedAgents) return rt;
+
+  return {
+    ...rt,
+    placed: rt.placed
+      .filter((p) => p.lane !== lane)
+      .concat({ lane, kind: def.kind }),
+    queue: rt.queue.map((q) =>
+      q.kind === def.kind
+        ? { ...q, readyAt: rt.elapsed + def.recharge, promoted: false }
+        : q,
+    ),
+    focus: rt.focus - def.cost,
+    selectedTray: null,
+  };
+}
+
+export function laneDefensePickTray(
+  rt: LaneDefenseRuntime,
+  kind: AgentKind | null,
+): LaneDefenseRuntime {
+  return { ...rt, selectedTray: kind };
+}
+
+export function laneDefenseTryPlace(
+  rt: LaneDefenseRuntime,
+  lane: LaneIndex,
+): LaneDefenseRuntime {
+  if (rt.defeated || rt.selectedTray === null) return rt;
+  const selected = rt.selectedTray;
+  const promoted = laneDefensePromoteAgent(rt, selected);
+  if (queueHead(promoted)?.kind !== selected) return rt;
+  return laneDefenseDeployToLane(promoted, lane);
+}
+
+function frontEnemy(
+  enemies: readonly EnemyUnit[],
+  lane: LaneIndex,
+): EnemyUnit | null {
+  let best: EnemyUnit | null = null;
+  let bx = Infinity;
+  for (const e of enemies) {
+    if (e.lane !== lane) continue;
+    if (e.x < bx) {
+      bx = e.x;
+      best = e;
+    }
+  }
+  return best;
+}
+
+function reviewerSlowLanes(placed: readonly PlacedAgent[]): Set<LaneIndex> {
+  const s = new Set<LaneIndex>();
+  for (const p of placed) {
+    if (p.kind === "reviewer") s.add(p.lane);
+  }
+  return s;
+}
+
+export function stepLaneDefenseRuntime(
+  rt: LaneDefenseRuntime,
+  dt: number,
+): LaneDefenseRuntime {
+  if (rt.defeated || dt <= 0) return rt;
+
+  const next: LaneDefenseRuntime = {
+    ...rt,
+    enemies: rt.enemies.map((e) => ({ ...e })),
+    placed: rt.placed.map((p) => ({ ...p })),
+    queue: rt.queue.map((q) => ({ ...q })),
+  };
+
+  next.elapsed += dt;
+  next.clueLocked = survivalNotebookLock(next.wave, next.elapsed);
+
+  if (next.wavePause > 0) {
+    next.wavePause -= dt;
+    if (next.wavePause <= 0) {
+      next.wavePause = 0;
+      next.wavesFinished++;
+      next.wave++;
+      next.roster = buildWaveSpawnRoster(next.seed, next.wave);
+      next.spawnIdx = 0;
+      next.spawnAcc = 0;
+    }
+    return next;
+  }
+
+  next.focus = Math.min(
+    LANE_DEFENSE.focusMax,
+    next.focus + LANE_DEFENSE.focusRegenPerSec * dt,
   );
+  next.capacity = Math.min(
+    LANE_DEFENSE.capacityMax,
+    next.capacity + LANE_DEFENSE.capacityRegenPerSec * dt,
+  );
+
+  const interval = spawnIntervalForWave(next.wave);
+  next.spawnAcc += dt;
+  while (next.spawnIdx < next.roster.length && next.spawnAcc >= interval) {
+    next.spawnAcc -= interval;
+    const plan = next.roster[next.spawnIdx]!;
+    next.spawnIdx++;
+    next.enemies.push(spawnEnemyUnit(next.nextEnemyId++, plan.lane, plan.kind));
+  }
+
+  const slow = reviewerSlowLanes(next.placed);
+
+  for (const p of next.placed) {
+    const front = frontEnemy(next.enemies, p.lane);
+    if (!front || front.hp <= 0) continue;
+    if (p.kind === "fixer") {
+      front.hp -= LANE_DEFENSE.fixerDps * dt;
+    }
+  }
+
+  const summons: EnemyUnit[] = [];
+  for (const e of next.enemies) {
+    if (e.isBoss) {
+      e.bossSummonAcc += dt;
+      if (e.bossSummonAcc >= LANE_DEFENSE.bossSummonInterval) {
+        e.bossSummonAcc = 0;
+        const lane = Math.floor(pullU(next) * LANE_COUNT) as LaneIndex;
+        summons.push(spawnEnemyUnit(next.nextEnemyId++, lane, "syntaxBug"));
+      }
+    }
+  }
+  if (summons.length > 0) next.enemies.push(...summons);
+
+  for (const e of next.enemies) {
+    const mul = slow.has(e.lane) ? LANE_DEFENSE.reviewerSlowMul : 1;
+    e.x -= e.baseSpeed * mul * dt;
+  }
+
+  let bossesDelta = 0;
+  next.enemies = next.enemies.filter((e) => {
+    if (e.hp > 0) return true;
+    if (e.isBoss) bossesDelta++;
+    return false;
+  });
+  next.bossesDefeated += bossesDelta;
+
+  const afterLeak: EnemyUnit[] = [];
+  for (const e of next.enemies) {
+    if (e.x <= 0) {
+      let dmg = e.leakDamage;
+      const firewallHere = next.placed.some(
+        (p) => p.lane === e.lane && p.kind === "firewall",
+      );
+      if (firewallHere) dmg *= LANE_DEFENSE.firewallLeakMul;
+      let cap = next.capacity;
+      const absorb = Math.min(cap, dmg);
+      cap -= absorb;
+      dmg -= absorb;
+      next.baseHealth -= dmg;
+      next.capacity = cap;
+      continue;
+    }
+    afterLeak.push(e);
+  }
+  next.enemies = afterLeak;
+
+  if (next.baseHealth <= 0) {
+    next.baseHealth = 0;
+    next.defeated = true;
+    next.enemies = [];
+    return next;
+  }
+
+  if (
+    next.spawnIdx >= next.roster.length &&
+    next.enemies.length === 0 &&
+    next.wavePause === 0
+  ) {
+    next.wavePause = LANE_DEFENSE.interWavePauseSec;
+  }
+
+  return next;
+}
+
+export function laneDefenseDeskScore(rt: LaneDefenseRuntime): number {
+  return scoreLaneDefense({
+    clueLocked: rt.clueLocked,
+    bossesDefeated: rt.bossesDefeated,
+    completedWaves: rt.wavesFinished,
+    secondsHeld: rt.elapsed,
+  });
 }

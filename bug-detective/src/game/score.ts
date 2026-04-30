@@ -83,7 +83,7 @@ export function computeScore(i: ScoreInputs): {
 export const GAME_SCORE_LABEL: Record<NotebookSlot, string> = {
   runner: "RUN",
   sentence: "WORD",
-  errand: "DASH",
+  errand: "DEF",
   tamper: "EYE",
 };
 
@@ -95,10 +95,7 @@ export function formatGameScoresDetail(b: GameScoreBreakdown): string {
 }
 
 function deriveFinalScoreFromBreakdown(b: GameScoreBreakdown): number {
-  return Math.max(
-    0,
-    Math.round(b.baseScore + b.weightedSum - b.timePenalty),
-  );
+  return Math.max(0, Math.round(b.baseScore + b.weightedSum - b.timePenalty));
 }
 
 export function formatGameScoreBreakdownLines(

@@ -59,7 +59,7 @@ const STYLE_LOUPE =
 const SLOT_LABEL: Record<string, string> = {
   runner: "MONITOR",
   sentence: "ENVELOPE",
-  errand: "REAGENT",
+  errand: "AGENTS",
   tamper: "LAMP",
 };
 
@@ -334,7 +334,7 @@ export function createHud(
     }
     if (n === 0) {
       explorationEl.textContent =
-        "Objective: hover the desk, spot what feels wrong, and open the monitor, envelope, reagent tray, and lamp for four cipher clues.";
+        "Objective: hover the desk, spot what feels wrong, and open the monitor, envelope, agents tray, and lamp for four cipher clues.";
       explorationEl.style.opacity = "1";
       return;
     }
@@ -347,7 +347,7 @@ export function createHud(
     const labels: Record<(typeof slots)[number], string> = {
       runner: "monitor",
       sentence: "envelope",
-      errand: "reagent tray",
+      errand: "agents tray",
       tamper: "lamp",
     };
     const missing = slots

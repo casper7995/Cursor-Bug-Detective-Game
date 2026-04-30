@@ -100,6 +100,12 @@ export class MascotController {
     );
   }
 
+  private applyGroundedY(groundedY: number, extraY: number): void {
+    // Bobbing should add life, but the local sole offset already puts feet on
+    // the desk. Never let animation push the soles below the tabletop.
+    this.pos.y = groundedY + Math.max(0, extraY);
+  }
+
   step(
     targetWorld: THREE.Vector3 | null,
     dtSec: number,
@@ -165,7 +171,7 @@ export class MascotController {
           Math.sin((nowMs - this.lastIdleAt) * IDLE_BOB_FREQ) * IDLE_BOB_AMP;
       }
       if (moving) this.lastIdleAt = nowMs;
-      this.pos.y = tgt.y + extraY;
+      this.applyGroundedY(tgt.y, extraY);
       this.group.position.copy(this.pos);
       if (moving) {
         const targetYaw = Math.atan2(this.vel.x, this.vel.z);
@@ -242,7 +248,7 @@ export class MascotController {
         Math.sin((nowMs - this.lastIdleAt) * IDLE_BOB_FREQ) * IDLE_BOB_AMP;
     }
 
-    this.pos.y = tgt.y + extraY;
+    this.applyGroundedY(tgt.y, extraY);
     this.group.position.copy(this.pos);
     this.group.rotation.y = this.yaw;
 

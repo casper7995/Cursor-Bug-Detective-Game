@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errandEarnsDeskClue } from "../../src/minigames/errand/round";
+import { survivalNotebookLock } from "../../src/minigames/errand/round";
 import { shouldEmitOutcome } from "../../src/minigames/sentence/scoring";
 import {
   buildTamperRound,
@@ -15,12 +15,12 @@ describe("desk mini clue gating helpers", () => {
     return colors.map((color, i) => ({ sentenceIdx: i, color }));
   }
 
-  it("errand: 2+ clues, or 1 clue with no trap", () => {
-    expect(errandEarnsDeskClue(0, 0)).toBe(false);
-    expect(errandEarnsDeskClue(1, 1)).toBe(false);
-    expect(errandEarnsDeskClue(1, 0)).toBe(true);
-    expect(errandEarnsDeskClue(2, 0)).toBe(true);
-    expect(errandEarnsDeskClue(2, 1)).toBe(true);
+  it("lane defense errand: clue locks at wave ≥ 3 or after 60s", () => {
+    expect(survivalNotebookLock(1, 0)).toBe(false);
+    expect(survivalNotebookLock(2, 30)).toBe(false);
+    expect(survivalNotebookLock(3, 10)).toBe(true);
+    expect(survivalNotebookLock(1, 60)).toBe(true);
+    expect(survivalNotebookLock(2, 59.9)).toBe(false);
   });
 
   it("sentence shouldEmitOutcome needs full round and at least 6 blues", () => {

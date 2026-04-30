@@ -17,16 +17,20 @@ import {
   scoreCall,
   scoreTamperRound,
   tamperEarnsDeskClue,
+  tamperVerdictFeedbackLine,
 } from "./round";
 import {
   drawChatCard,
   drawDiffCard,
+  drawInstructionCard,
   drawIntroCard,
   drawResultCard,
+  drawTamperDiffHintGutter,
   drawTamperTutorialDiagram,
   spotRowAt,
   TAMPER_LAYOUT,
   type ChatHits,
+  type TamperChatActionMode,
 } from "./draw";
 import {
   type CallVerdict,
@@ -44,6 +48,8 @@ const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
 
 const INTRO_DURATION_S = 1.5;
+/** How-to before the read beat (dismiss on click/keys or time). */
+const INSTRUCTIONS_MAX_S = 3.5;
 /** Quiet beat to read ORIGINAL / TONIGHT before timers start. */
 const READ_BEAT_S = 1.25;
 /** Per-call limit: must scan ORIGINAL + TONIGHT + Bugbot’s row claim, then act. */
@@ -65,6 +71,7 @@ type Hover = "approve" | "reject" | "suggestFix" | null;
 
 type Phase =
   | { kind: "intro"; t: number }
+  | { kind: "instructions"; t: number }
   | { kind: "read"; t: number }
   | {
       kind: "call";
@@ -82,6 +89,7 @@ type Phase =
       callIndex: number;
       t: number;
       result: { delta: number; rightCall: boolean; caughtLie: boolean };
+      verdict: CallVerdict;
     }
   | { kind: "result"; t: number };
 
@@ -103,8 +111,8 @@ export class TamperSession {
     tagline: "Compare ORIGINAL vs TONIGHT. Bugbot may be wrong about a row.",
     howToLines: [
       "Find the one line that really changed in TONIGHT (label + icon).",
-      "Bugbot makes 6 row calls with a confidence % — Agree or Disagree.",
-      "If Bugbot is lying, use Point to change and tap the real changed TONIGHT row.",
+      "You get 6 row calls — say whether Bugbot is right about the highlighted row.",
+      "If Bugbot is wrong, use Point to real change, then click the true changed TONIGHT row.",
     ],
     drawDiagram: drawTamperTutorialDiagram,
     storageKey: "bd:miniTutorial:tamper",
@@ -158,6 +166,30 @@ export class TamperSession {
         ] as TamperRound["calls"][number],
         callIndex: this.phase.callIndex,
       };
+    }
+    return null;
+  }
+
+  private actionModeForPhase(): TamperChatActionMode {
+    const k = this.phase.kind;
+    if (k === "intro") return "idle";
+    if (k === "instructions" || k === "result") return "hidden";
+    if (k === "read") return "readBeat";
+    if (k === "call") return "active";
+    if (k === "disagree-point") return "pointPick";
+    if (k === "verdict") return "verdict";
+    return "active";
+  }
+
+  private diffHintLine(): string | null {
+    if (this.phase.kind === "disagree-point") {
+      return "Click the real changed row in TONIGHT.";
+    }
+    if (this.phase.kind === "read" || this.phase.kind === "call") {
+      return "Compare ORIGINAL and TONIGHT, then judge Bugbot’s row claim.";
+    }
+    if (this.phase.kind === "instructions") {
+      return "Compare ORIGINAL and TONIGHT, then get ready to judge each call.";
     }
     return null;
   }
@@ -217,6 +249,10 @@ export class TamperSession {
         this.finalizeOutcome();
         return;
       }
+      if (this.phase.kind === "instructions") {
+        this.phase = { kind: "read", t: 0 };
+        return;
+      }
       if (this.phase.kind === "call") {
         const hits = this.chatHits;
         if (!hits) return;
@@ -274,14 +310,25 @@ export class TamperSession {
       passive: true,
     });
     const key = (e: KeyboardEvent): void => {
-      if (e.key !== "Escape") return;
-      if (this.gate.isBlocking()) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.gate.dismissFromKey();
+      if (e.key === "Escape") {
+        if (this.gate.isBlocking()) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.gate.dismissFromKey();
+          return;
+        }
+        this.onExit();
         return;
       }
-      this.onExit();
+      if (e.key === "Enter" || e.key === " ") {
+        if (this.gate.isBlocking()) return;
+        if (this.outcome) return;
+        if (this.phase.kind === "instructions") {
+          e.preventDefault();
+          e.stopPropagation();
+          this.phase = { kind: "read", t: 0 };
+        }
+      }
     };
     window.addEventListener("keydown", key, true);
     (this as unknown as { _cleanup?: () => void })._cleanup = (): void => {
@@ -304,7 +351,7 @@ export class TamperSession {
     this.verdicts.push(v);
     const r = scoreCall(call, v, this.round.tamperedSpotId);
     sfxTamperVerdict(r);
-    this.phase = { kind: "verdict", callIndex, t: 0, result: r };
+    this.phase = { kind: "verdict", callIndex, t: 0, result: r, verdict: v };
   }
 
   private autoForwardFromCall(): void {
@@ -349,6 +396,16 @@ export class TamperSession {
       case "intro": {
         this.phase = { kind: "intro", t: this.phase.t + dtSec };
         if (this.phase.t >= INTRO_DURATION_S) {
+          this.phase = { kind: "instructions", t: 0 };
+        }
+        break;
+      }
+      case "instructions": {
+        this.phase = {
+          kind: "instructions",
+          t: this.phase.t + dtSec,
+        };
+        if (this.phase.t >= INSTRUCTIONS_MAX_S) {
           this.phase = { kind: "read", t: 0 };
         }
         break;
@@ -386,6 +443,7 @@ export class TamperSession {
           callIndex: this.phase.callIndex,
           t: this.phase.t + dtSec,
           result: this.phase.result,
+          verdict: this.phase.verdict,
         };
         if (this.phase.t >= VERDICT_FLASH_S) this.advanceAfterVerdict();
         break;
@@ -428,6 +486,10 @@ export class TamperSession {
       showRealTamper,
       pickingSpot,
     );
+    const diffHint = this.diffHintLine();
+    if (diffHint) {
+      drawTamperDiffHintGutter(ctx, diffHint);
+    }
 
     let secsLeft01 = 0;
     if (this.phase.kind === "call") {
@@ -438,6 +500,11 @@ export class TamperSession {
       secsLeft01 = Math.max(0, 1 - this.phase.t / POINT_DURATION_S);
     } else if (this.phase.kind === "verdict") {
       secsLeft01 = 1;
+    } else if (
+      this.phase.kind === "instructions" ||
+      this.phase.kind === "intro"
+    ) {
+      secsLeft01 = 1;
     }
     const hover = this.phase.kind === "call" ? this.phase.hover : null;
     this.chatHits = drawChatCard(
@@ -447,6 +514,7 @@ export class TamperSession {
       hover,
       secsLeft01,
       pickingSpot,
+      this.actionModeForPhase(),
     );
 
     // Bottom strip — progress dots + verdict flash
@@ -461,6 +529,8 @@ export class TamperSession {
         this.round.scene,
         this.phase.t / INTRO_DURATION_S,
       );
+    } else if (this.phase.kind === "instructions") {
+      drawInstructionCard(ctx, W, H, this.phase.t / INSTRUCTIONS_MAX_S);
     } else if (this.phase.kind === "result") {
       const r = scoreTamperRound(this.round, this.verdicts);
       drawResultCard(ctx, W, H, r, TAMPER_CALLS_PER_ROUND);
@@ -500,15 +570,21 @@ export class TamperSession {
     }
     if (this.phase.kind === "verdict") {
       const r = this.phase.result;
-      const txt = r.caughtLie
-        ? "+400 caught lying!"
+      const v = this.phase.verdict;
+      const line = tamperVerdictFeedbackLine(v, r);
+      const scoreBit = r.caughtLie
+        ? " · +400"
         : r.rightCall
-          ? "+150 right call"
-          : "−75 missed";
+          ? " · +150"
+          : " · −75";
       ctx.fillStyle = r.rightCall ? CURSOR_AI.green : CURSOR_AI.red;
-      ctx.font = "700 11px 'Cursor Gothic', sans-serif";
+      ctx.font = "700 10px 'Cursor Gothic', sans-serif";
       ctx.textAlign = "right";
-      ctx.fillText(txt, TAMPER_LAYOUT.chatX + TAMPER_LAYOUT.chatW, stripY + 3);
+      ctx.fillText(
+        `${line}${scoreBit}`,
+        TAMPER_LAYOUT.chatX + TAMPER_LAYOUT.chatW,
+        stripY + 3,
+      );
       ctx.textAlign = "left";
     }
   }

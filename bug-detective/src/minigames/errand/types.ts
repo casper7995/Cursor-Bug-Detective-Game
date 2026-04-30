@@ -1,71 +1,112 @@
-/** Errand Race types — Cloud Agent themed. */
+/** Cursor Agents lane defense — desk mini (notebook slot remains `errand`). */
 
-export type HintIcon = "cup" | "feather" | "key" | "question" | "warn";
-export type DrawerContent = "clue" | "junk" | "trap";
+export const LANE_COUNT = 3;
+export type LaneIndex = 0 | 1 | 2;
 
-export type DrawerIndex = 0 | 1 | 2 | 3 | 4;
-export type HelperIndex = 0 | 1 | 2;
+export type AgentKind = "fixer" | "reviewer" | "firewall";
 
-export type InterventionKind = "inspect" | "abort" | "push";
+export type EnemyKind =
+  | "syntaxBug"
+  | "regressionBug"
+  | "phishingPacket"
+  | "ransomwareBlob"
+  | "zeroDay";
 
-export interface TaskSignalProfile {
-  readonly relevance01: number;
-  readonly safety01: number;
-  readonly urgency01: number;
+export interface AgentTrayDef {
+  readonly kind: AgentKind;
+  readonly label: string;
+  /** Short tooltip for queue / tutorial. */
+  readonly blurb: string;
+  readonly cost: number;
+  /** Seconds before this Hero can return to the head of the queue. */
+  readonly recharge: number;
 }
 
-export interface AgentTrait {
-  readonly paceScale: number;
-  readonly label: "steady" | "fast" | "careful";
+export const AGENT_TRAY: readonly AgentTrayDef[] = [
+  {
+    kind: "fixer",
+    label: "Fixer",
+    blurb: "Steady repair beam on the front threat in this lane.",
+    cost: 25,
+    recharge: 1.6,
+  },
+  {
+    kind: "reviewer",
+    label: "Reviewer",
+    blurb: "Slows everything pushing through this lane.",
+    cost: 35,
+    recharge: 2.2,
+  },
+  {
+    kind: "firewall",
+    label: "Firewall",
+    blurb: "Halves desk damage when leaks slip past in this lane.",
+    cost: 45,
+    recharge: 2.8,
+  },
+] as const;
+
+export interface EnemyArchetype {
+  readonly maxHp: number;
+  readonly speed: number;
+  readonly leakDamage: number;
+  readonly isBoss: boolean;
 }
 
-export interface Drawer {
-  readonly index: DrawerIndex;
-  readonly hint: HintIcon;
-  readonly content: DrawerContent;
-  readonly fillRateMs: number;
-  readonly signalProfile: TaskSignalProfile;
-  readonly trapAlertAt01: number;
-  readonly trapPushIsClue: boolean;
+export const ENEMY_STATS: Record<EnemyKind, EnemyArchetype> = {
+  syntaxBug: { maxHp: 22, speed: 0.17, leakDamage: 9, isBoss: false },
+  regressionBug: { maxHp: 52, speed: 0.11, leakDamage: 12, isBoss: false },
+  phishingPacket: { maxHp: 18, speed: 0.26, leakDamage: 10, isBoss: false },
+  ransomwareBlob: { maxHp: 110, speed: 0.055, leakDamage: 18, isBoss: false },
+  zeroDay: { maxHp: 380, speed: 0.075, leakDamage: 32, isBoss: true },
+};
+
+/** Lane-local agent (at most one per lane in v1). */
+export interface PlacedAgent {
+  readonly lane: LaneIndex;
+  readonly kind: AgentKind;
 }
 
-export type HelperState =
-  | "waiting"
-  | "moving"
-  | "filling"
-  | "alert"
-  | "returning"
-  | "lost";
-
-export interface Helper {
-  index: HelperIndex;
-  state: HelperState;
-  drawerAssigned: DrawerIndex | null;
-  fillProgress: number;
-  result: "clue" | "junk" | null;
-  /** Affects run pacing (fill speed). */
-  readonly trait: AgentTrait;
-  /** Elapsed seconds in the trap tripwire window while alerted (0 outside). */
-  tripwireT: number;
+export interface EnemyUnit {
+  id: number;
+  lane: LaneIndex;
+  kind: EnemyKind;
+  /** 1 = right/spawn, 0 = desk line. */
+  x: number;
+  hp: number;
+  maxHp: number;
+  baseSpeed: number;
+  leakDamage: number;
+  isBoss: boolean;
+  /** Boss: summon a syntax bug every N seconds. */
+  bossSummonAcc: number;
 }
 
-export interface ErrandRound {
-  readonly drawers: readonly Drawer[];
-  readonly hintTruthMap: Readonly<Record<HintIcon, DrawerContent>>;
-  readonly agentTraits: readonly [AgentTrait, AgentTrait, AgentTrait];
-}
-
-export const ERRAND_NUM_DRAWERS = 5;
-export const ERRAND_NUM_HELPERS = 3;
-
-/** Window to abort or push a trap before auto-abort. */
-export const ERRAND_TRIPWIRE_ABORT_S = 2.4;
-
-export const ERRAND_SCORE = {
-  ZERO: 0,
-  ONE: 400,
-  TWO: 700,
-  THREE: 1000,
-  SAFE_BONUS: 50,
-  LOST_PENALTY: -100,
+export const LANE_DEFENSE = {
+  baseHealthMax: 100,
+  /** Routing capacity — absorbs leaks before core desk HP. */
+  capacityMax: 56,
+  capacityRegenPerSec: 5.5,
+  startingCapacity: 56,
+  focusMax: 100,
+  focusRegenPerSec: 8.5,
+  startingFocus: 48,
+  maxPlacedAgents: 3,
+  /** DPS onto front enemy in lane. */
+  fixerDps: 13,
+  reviewerSlowMul: 0.52,
+  /** Leak damage multiplier when a firewall is present in that lane. */
+  firewallLeakMul: 0.5,
+  bossSummonInterval: 11,
+  bossWarningLeadSec: 9,
+  interWavePauseSec: 1.85,
+  /** First wave that spawns a Zero-Day (after warning). */
+  firstBossWave: 4,
+  /** Notebook locks once current wave index reaches this (1-based) or time gate hits. */
+  clueLockWaves: 3,
+  clueLockSeconds: 60,
+  scoreTierBoss: 700,
+  scoreTierMarathon: 1000,
+  marathonWaves: 8,
+  marathonSeconds: 180,
 } as const;

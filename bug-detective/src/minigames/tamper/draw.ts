@@ -15,6 +15,28 @@ import {
 import type { TamperCall, TamperScene, TamperSpot } from "./types";
 import { spotById } from "./round";
 
+export type TamperChatActionMode =
+  | "active"
+  | "readBeat"
+  | "pointPick"
+  | "verdict"
+  | "hidden"
+  | "idle";
+
+/** One-line label for the Bugbot call (plain language, matches row highlight). */
+export function bugbotRowClaimLine(
+  call: TamperCall,
+  scene: TamperScene,
+): string {
+  const rowIdx = scene.spots.findIndex(
+    (s) => s.id === call.bugbotPointsAtSpotId,
+  );
+  const n = rowIdx >= 0 ? rowIdx + 1 : "?";
+  return call.bugbotClaim === "tampered"
+    ? `Bugbot says: Row ${n} changed`
+    : `Bugbot says: Row ${n} is clean`;
+}
+
 // ---------------------------------------------------------------------
 // Layout (512 × 320 internal canvas)
 // ---------------------------------------------------------------------
@@ -172,6 +194,29 @@ export function drawDiffCard(
   }
 }
 
+/** One-line micro-hint in the gap below the diff card (avoids crowding the rows). */
+export function drawTamperDiffHintGutter(
+  ctx: CanvasRenderingContext2D,
+  line: string,
+): void {
+  if (!line) return;
+  const L = TAMPER_LAYOUT;
+  const maxW = L.diffW - 24;
+  const x = L.diffX + 12;
+  const y = L.diffY + L.diffH + 9;
+  ctx.save();
+  ctx.font = "8px 'Cursor Mono', ui-monospace, monospace";
+  let t = line;
+  while (t.length > 3 && ctx.measureText(`${t}…`).width > maxW) {
+    t = t.slice(0, -1);
+  }
+  if (t !== line) t += "…";
+  ctx.fillStyle = CURSOR_AI.inkSubtle;
+  ctx.textAlign = "left";
+  ctx.fillText(t, x, y);
+  ctx.restore();
+}
+
 function drawHalfLabel(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -264,6 +309,14 @@ export interface ChatHits {
   readonly suggestFix: Rect;
 }
 
+function emptyChatHits(): ChatHits {
+  return {
+    approve: { x: 0, y: 0, w: 0, h: 0 },
+    reject: { x: 0, y: 0, w: 0, h: 0 },
+    suggestFix: { x: 0, y: 0, w: 0, h: 0 },
+  };
+}
+
 export function drawChatCard(
   ctx: CanvasRenderingContext2D,
   call: TamperCall | null,
@@ -271,6 +324,7 @@ export function drawChatCard(
   hover: "approve" | "reject" | "suggestFix" | null,
   secondsLeft01: number,
   pickingSpot: boolean,
+  actionMode: TamperChatActionMode = "active",
 ): ChatHits {
   const L = TAMPER_LAYOUT;
   drawAiCard(ctx, L.chatX, L.chatY, L.chatW, L.chatH);
@@ -284,18 +338,55 @@ export function drawChatCard(
   ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillText("code review · daily", L.chatX + 42, L.chatY + 33);
 
-  // Claim line — which row Bugbot is talking about
-  if (call) {
-    const rowIdx = scene
-      ? scene.spots.findIndex((s) => s.id === call.bugbotPointsAtSpotId)
-      : -1;
-    const rowLead = rowIdx >= 0 ? `Row ${rowIdx + 1} — ` : "";
-    const claim =
-      call.bugbotClaim === "tampered" ? "says TAMPERED" : "says CLEAN";
+  if (actionMode === "hidden") {
+    ctx.fillStyle = CURSOR_AI.inkMute;
+    ctx.font = "500 12px 'Cursor Gothic', sans-serif";
+    wrapAndDraw(
+      ctx,
+      "Bugbot’s timed row calls are next. Read the short how-to in the center to continue…",
+      L.chatX + 14,
+      L.chatY + 64,
+      L.chatW - 28,
+      16,
+    );
+    drawAiProgressLine(
+      ctx,
+      L.chatX + 14,
+      L.chatY + L.chatH - 14,
+      L.chatW - 28,
+      1,
+      { tone: "default" },
+    );
+    return emptyChatHits();
+  }
+
+  if (actionMode === "idle") {
+    ctx.fillStyle = CURSOR_AI.inkMute;
+    ctx.font = "500 12px 'Cursor Gothic', sans-serif";
+    wrapAndDraw(
+      ctx,
+      "Quick intro on the left. The compare tools unlock after this splash.",
+      L.chatX + 14,
+      L.chatY + 64,
+      L.chatW - 28,
+      16,
+    );
+    drawAiProgressLine(
+      ctx,
+      L.chatX + 14,
+      L.chatY + L.chatH - 14,
+      L.chatW - 28,
+      1,
+      { tone: "default" },
+    );
+    return emptyChatHits();
+  }
+
+  if (call && scene) {
+    const claim = bugbotRowClaimLine(call, scene);
     ctx.fillStyle = CURSOR_AI.ink;
     ctx.font = "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText(`${rowLead}${claim}`, L.chatX + 14, L.chatY + 60);
-    // Quip
+    ctx.fillText(claim, L.chatX + 14, L.chatY + 60);
     ctx.fillStyle = CURSOR_AI.inkMute;
     ctx.font = "500 11px 'Cursor Gothic', sans-serif";
     wrapAndDraw(
@@ -306,7 +397,6 @@ export function drawChatCard(
       L.chatW - 28,
       14,
     );
-    // Confidence
     ctx.fillStyle = CURSOR_AI.inkSubtle;
     ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
     ctx.fillText(
@@ -316,7 +406,7 @@ export function drawChatCard(
     );
   }
 
-  // Buttons stacked
+  // Buttons or alternate guidance
   const bx = L.chatX + 14;
   const bw = L.chatW - 28;
   const bh = 30;
@@ -326,41 +416,71 @@ export function drawChatCard(
   const approve: Rect = { x: bx, y: approveY, w: bw, h: bh };
   const reject: Rect = { x: bx, y: rejectY, w: bw, h: bh };
   const suggestFix: Rect = { x: bx, y: suggestY, w: bw, h: bh };
-  drawAiButton(ctx, approve, "Agree", {
-    tone: "approve",
-    leading: "✓",
-    hovered: hover === "approve",
-    font: "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
-  });
-  drawAiButton(ctx, reject, "Disagree", {
-    tone: "reject",
-    leading: "✗",
-    hovered: hover === "reject",
-    font: "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
-  });
-  drawAiButton(
-    ctx,
-    suggestFix,
-    pickingSpot ? "Pick TONIGHT row…" : "Point to change",
-    {
-      tone: "ghost",
-      leading: "→",
-      hovered: hover === "suggestFix",
-      disabled: pickingSpot,
-      font: "600 11px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
-    },
-  );
 
-  // Slim timer line at the very bottom of the card
+  if (actionMode === "readBeat") {
+    ctx.fillStyle = CURSOR_AI.inkMute;
+    ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
+    wrapAndDraw(
+      ctx,
+      "Get ready — the timer starts on the first timed call. Scan ORIGINAL and TONIGHT first.",
+      bx,
+      approveY - 2,
+      bw,
+      12,
+    );
+  } else if (actionMode === "verdict") {
+    // Call summary only; no action row.
+  } else if (actionMode === "pointPick") {
+    ctx.fillStyle = CURSOR_AI.accent;
+    ctx.font = "500 10px 'Cursor Mono', ui-monospace, monospace";
+    wrapAndDraw(
+      ctx,
+      "Click the real changed row in TONIGHT (left).",
+      bx,
+      approveY - 2,
+      bw,
+      12,
+    );
+  } else {
+    drawAiButton(ctx, approve, "Bugbot is right", {
+      tone: "approve",
+      leading: "✓",
+      hovered: hover === "approve",
+      font: "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
+    });
+    drawAiButton(ctx, reject, "Bugbot is wrong", {
+      tone: "reject",
+      leading: "✗",
+      hovered: hover === "reject",
+      font: "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
+    });
+    drawAiButton(
+      ctx,
+      suggestFix,
+      pickingSpot ? "Pick TONIGHT row…" : "Point to real change",
+      {
+        tone: "ghost",
+        leading: "→",
+        hovered: hover === "suggestFix",
+        disabled: pickingSpot,
+        font: "600 10px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
+      },
+    );
+  }
+
+  const lineTone: "alert" | "default" = pickingSpot ? "alert" : "default";
   drawAiProgressLine(
     ctx,
     L.chatX + 14,
     L.chatY + L.chatH - 14,
     L.chatW - 28,
     secondsLeft01,
-    { tone: pickingSpot ? "alert" : "default" },
+    { tone: lineTone },
   );
-  return { approve, reject, suggestFix };
+  if (actionMode === "active") {
+    return { approve, reject, suggestFix };
+  }
+  return emptyChatHits();
 }
 
 function wrapAndDraw(
@@ -419,17 +539,61 @@ export function drawIntroCard(
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
   ctx.fillText(
-    "Compare ORIGINAL vs TONIGHT. One row really changed. Bugbot can be wrong.",
+    "Compare ORIGINAL vs TONIGHT. One row really changed. Bugbot can be wrong about a row.",
     x + 24,
     y + 82,
   );
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.fillText(
-    "Agree/Disagree with Bugbot. If Bugbot is lying, Point to the changed TONIGHT row.",
+    "If Bugbot is wrong, use Point to real change, then click the true changed row.",
     x + 24,
     y + 100,
   );
   drawAiProgressLine(ctx, x + 24, y + h - 22, w - 48, progress01);
+  ctx.restore();
+}
+
+/** Full-screen how-to, after intro, before the read beat. */
+export function drawInstructionCard(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  progress01: number,
+): void {
+  ctx.save();
+  ctx.fillStyle = CURSOR_AI.scrim;
+  ctx.fillRect(0, 0, W, H);
+  const w = 400;
+  const h = 198;
+  const x = (W - w) / 2;
+  const y = (H - h) / 2;
+  drawAiCard(ctx, x, y, w, h, { radius: 14 });
+  drawAiAvatar(ctx, x + 28, y + 36, { size: 28 });
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "700 15px 'Cursor Gothic', sans-serif";
+  ctx.fillText("How this round works", x + 64, y + 30);
+  ctx.fillStyle = CURSOR_AI.ink;
+  ctx.font = "12px 'Cursor Gothic', sans-serif";
+  const lines = [
+    "First: find the one real change in TONIGHT.",
+    "Then: Bugbot will call out rows. Say if Bugbot is right.",
+    "If Bugbot is wrong, click the real changed TONIGHT row.",
+  ];
+  let ly = y + 70;
+  for (const line of lines) {
+    ctx.fillText(line, x + 28, ly);
+    ly += 20;
+  }
+  ctx.fillStyle = CURSOR_AI.inkMute;
+  ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
+  ctx.fillText(
+    "Press Enter, Space, or click — or wait for the next step.",
+    x + 28,
+    y + h - 38,
+  );
+  drawAiProgressLine(ctx, x + 24, y + h - 22, w - 48, progress01, {
+    tone: "default",
+  });
   ctx.restore();
 }
 
@@ -568,12 +732,12 @@ export function drawTamperTutorialDiagram(
     size: layout.avatar.size,
   });
   ctx.fillText(TAMPER_TUTORIAL_LABEL, layout.label.x, layout.label.y);
-  drawAiButton(ctx, layout.agree, "Agree", {
+  drawAiButton(ctx, layout.agree, "Right", {
     tone: "approve",
     leading: "✓",
     font: "600 10px 'Cursor Gothic', sans-serif",
   });
-  drawAiButton(ctx, layout.disagree, "Disagree", {
+  drawAiButton(ctx, layout.disagree, "Wrong", {
     tone: "reject",
     leading: "✗",
     font: "600 10px 'Cursor Gothic', sans-serif",

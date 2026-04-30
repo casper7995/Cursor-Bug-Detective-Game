@@ -5,8 +5,12 @@ import {
   scoreTamperRound,
   namespacedSeed,
   spotById,
+  tamperVerdictFeedbackLine,
 } from "../../src/minigames/tamper/round";
-import { getTamperTutorialDiagramLayout } from "../../src/minigames/tamper/draw";
+import {
+  bugbotRowClaimLine,
+  getTamperTutorialDiagramLayout,
+} from "../../src/minigames/tamper/draw";
 import { clueTokenForTamper } from "../../src/minigames/tamper/clueTokens";
 import { TAMPER_CALLS_PER_ROUND } from "../../src/minigames/tamper/types";
 import type { CallVerdict } from "../../src/minigames/tamper/types";
@@ -180,6 +184,65 @@ describe("tamper helpers", () => {
     const first = r.scene.spots[0]!;
     expect(spotById(r.scene, first.id)?.id).toBe(first.id);
     expect(spotById(r.scene, "nope")).toBeNull();
+  });
+});
+
+describe("tamper copy helpers", () => {
+  it("bugbotRowClaimLine uses 1-based row and plain-English claim", () => {
+    const scene = TAMPER_SCENES[0]!;
+    const s0 = scene.spots[0] as { id: string };
+    const s1 = scene.spots[1] as { id: string };
+    expect(
+      bugbotRowClaimLine(
+        {
+          callIndex: 0,
+          bugbotPointsAtSpotId: s0.id,
+          bugbotClaim: "tampered",
+          bugbotConfidencePct: 70,
+          bugbotIsLying: false,
+        },
+        scene,
+      ),
+    ).toBe("Bugbot says: Row 1 changed");
+    expect(
+      bugbotRowClaimLine(
+        {
+          callIndex: 0,
+          bugbotPointsAtSpotId: s1.id,
+          bugbotClaim: "clean",
+          bugbotConfidencePct: 70,
+          bugbotIsLying: false,
+        },
+        scene,
+      ),
+    ).toBe("Bugbot says: Row 2 is clean");
+  });
+
+  it("tamperVerdictFeedbackLine matches the rule the player just applied", () => {
+    expect(
+      tamperVerdictFeedbackLine(
+        { kind: "agree" },
+        { rightCall: true, caughtLie: false },
+      ),
+    ).toBe("Correct: Bugbot was right.");
+    expect(
+      tamperVerdictFeedbackLine(
+        { kind: "disagree" },
+        { rightCall: true, caughtLie: false },
+      ),
+    ).toBe("Correct: Bugbot was wrong.");
+    expect(
+      tamperVerdictFeedbackLine(
+        { kind: "disagree-point", spotId: "x" },
+        { rightCall: true, caughtLie: true },
+      ),
+    ).toBe("Caught: you pointed to the real change.");
+    expect(
+      tamperVerdictFeedbackLine(
+        { kind: "disagree-point", spotId: "x" },
+        { rightCall: false, caughtLie: false },
+      ),
+    ).toBe("That was not the changed row.");
   });
 });
 

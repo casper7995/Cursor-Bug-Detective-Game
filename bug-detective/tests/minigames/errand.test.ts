@@ -1,124 +1,170 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildErrandRound,
-  nudgeSignalsAfterInspect,
-  scoreErrandRun,
-  canAssignHelper,
-  errandEarnsDeskClue,
+  buildWaveSpawnRoster,
+  createLaneDefenseRuntime,
+  laneDefenseDeployToLane,
+  laneDefenseDeskScore,
+  laneDefensePromoteAgent,
+  laneDefenseTryPlace,
   namespacedSeed,
+  queueHead,
+  scoreLaneDefense,
+  spawnEnemyUnit,
+  stepLaneDefenseRuntime,
+  survivalNotebookLock,
 } from "../../src/minigames/errand/round";
 import {
-  taskCardDropRect,
-  taskCardRect,
+  laneDefenseLaneRects,
+  laneDefenseQueueRects,
+  laneDefenseRowPlaySpan,
+  laneDefenseTrayRects,
 } from "../../src/minigames/errand/draw";
 import { clueTokenForErrand } from "../../src/minigames/errand/clueTokens";
-import { ERRAND_NUM_DRAWERS } from "../../src/minigames/errand/types";
 
-describe("errand round", () => {
-  it("same seed produces same drawer layout", () => {
-    const a = buildErrandRound(123);
-    const b = buildErrandRound(123);
-    expect(a).toEqual(b);
+describe("lane defense errand", () => {
+  it("namespacedSeed is stable", () => {
+    expect(namespacedSeed(1, "errand")).toBe(namespacedSeed(1, "errand"));
+    expect(namespacedSeed(1, "errand:A")).not.toBe(
+      namespacedSeed(1, "errand:B"),
+    );
   });
 
-  it("five drawers with deterministic 2/2/1 distribution", () => {
-    const r = buildErrandRound(777);
-    expect(r.drawers.length).toBe(ERRAND_NUM_DRAWERS);
-    const counts = { clue: 0, junk: 0, trap: 0 };
-    for (const d of r.drawers) counts[d.content]++;
-    expect(counts).toEqual({ clue: 2, junk: 2, trap: 1 });
-    expect(r.agentTraits).toHaveLength(3);
-    for (const d of r.drawers) {
-      for (const k of ["relevance01", "safety01", "urgency01"] as const) {
-        expect(d.signalProfile[k]).toBeGreaterThanOrEqual(0);
-        expect(d.signalProfile[k]).toBeLessThanOrEqual(1);
-      }
+  it("wave roster is deterministic", () => {
+    const a = buildWaveSpawnRoster(99, 2);
+    const b = buildWaveSpawnRoster(99, 2);
+    expect(a).toEqual(b);
+    expect(a.length).toBe(3 + 2 * 2);
+  });
+
+  it("survivalNotebookLock matches waves or time gate", () => {
+    expect(survivalNotebookLock(1, 0)).toBe(false);
+    expect(survivalNotebookLock(2, 30)).toBe(false);
+    expect(survivalNotebookLock(3, 10)).toBe(true);
+    expect(survivalNotebookLock(1, 60)).toBe(true);
+  });
+
+  it("scoreLaneDefense is tiered when clue locked", () => {
+    expect(
+      scoreLaneDefense({
+        clueLocked: false,
+        bossesDefeated: 0,
+        completedWaves: 9,
+        secondsHeld: 200,
+      }),
+    ).toBe(0);
+    expect(
+      scoreLaneDefense({
+        clueLocked: true,
+        bossesDefeated: 0,
+        completedWaves: 0,
+        secondsHeld: 10,
+      }),
+    ).toBe(400);
+    expect(
+      scoreLaneDefense({
+        clueLocked: true,
+        bossesDefeated: 1,
+        completedWaves: 3,
+        secondsHeld: 30,
+      }),
+    ).toBe(700);
+    expect(
+      scoreLaneDefense({
+        clueLocked: true,
+        bossesDefeated: 0,
+        completedWaves: 8,
+        secondsHeld: 10,
+      }),
+    ).toBe(1000);
+  });
+
+  it("queue deployment spends focus, recharges the hero, and occupies lane", () => {
+    let rt = createLaneDefenseRuntime(1);
+    const startFocus = rt.focus;
+    const head = queueHead(rt);
+    expect(head?.kind).toBe("fixer");
+    rt = laneDefenseDeployToLane(rt, 0);
+    expect(rt.focus).toBeLessThan(startFocus);
+    expect(rt.placed.some((p) => p.lane === 0 && p.kind === "fixer")).toBe(
+      true,
+    );
+    const fixer = rt.queue.find((q) => q.kind === "fixer");
+    expect(fixer?.readyAt).toBeGreaterThan(rt.elapsed);
+  });
+
+  it("queue head returns first ready hero and respects promotion", () => {
+    let rt = createLaneDefenseRuntime(1);
+    expect(queueHead(rt)?.kind).toBe("fixer");
+    rt = laneDefensePromoteAgent(rt, "firewall");
+    expect(queueHead(rt)?.kind).toBe("firewall");
+    rt = laneDefenseDeployToLane(rt, 1);
+    expect(queueHead(rt)?.kind).toBe("fixer");
+  });
+
+  it("queue deployment no-ops when all heroes are recharging", () => {
+    const rt = {
+      ...createLaneDefenseRuntime(1),
+      queue: createLaneDefenseRuntime(1).queue.map((q) => ({
+        ...q,
+        readyAt: 99,
+      })),
+    };
+    const next = laneDefenseDeployToLane(rt, 0);
+    expect(next).toBe(rt);
+  });
+
+  it("runtime step ticks elapsed and can defeat", () => {
+    let rt = createLaneDefenseRuntime(42);
+    for (let i = 0; i < 20; i++) {
+      rt = stepLaneDefenseRuntime(rt, 5);
+      if (rt.defeated) break;
+    }
+    expect(rt.elapsed).toBeGreaterThan(0);
+  });
+
+  it("laneDefenseDeskScore respects clue lock", () => {
+    const rt = {
+      ...createLaneDefenseRuntime(5),
+      clueLocked: true,
+      bossesDefeated: 0,
+      wavesFinished: 0,
+      elapsed: 5,
+    };
+    expect(laneDefenseDeskScore(rt)).toBe(400);
+  });
+
+  it("hit rects are usable", () => {
+    expect(laneDefenseQueueRects().length).toBe(3);
+    expect(laneDefenseTrayRects()).toEqual(laneDefenseQueueRects());
+    expect(laneDefenseLaneRects().length).toBe(3);
+    for (const r of laneDefenseLaneRects()) {
+      expect(r.w).toBeGreaterThan(10);
+      expect(r.h).toBeGreaterThan(10);
+    }
+    for (const r of laneDefenseQueueRects()) {
+      expect(r.w).toBeGreaterThan(0);
+      expect(r.h).toBeGreaterThan(0);
     }
   });
 
-  it("namespacedSeed is stable", () => {
-    expect(namespacedSeed(1, "errand")).toBe(namespacedSeed(1, "errand"));
-    expect(namespacedSeed(1, "errand:CLUE")).not.toBe(
-      namespacedSeed(1, "errand:OTHER"),
-    );
-  });
-});
-
-describe("errand scoring", () => {
-  it("3 clues + all safe → 1000 (1000+50 clamped)", () => {
-    expect(scoreErrandRun({ clues: 3, helpersSafe: 3, helpersLost: 0 })).toBe(
-      1000,
-    );
+  it("lane row play span leaves room for marching", () => {
+    for (let lane = 0; lane < 3; lane++) {
+      const { playLeft, playRight } = laneDefenseRowPlaySpan(lane as 0 | 1 | 2);
+      expect(playRight - playLeft).toBeGreaterThan(24);
+    }
   });
 
-  it("0 clues → 0", () => {
-    expect(scoreErrandRun({ clues: 0, helpersSafe: 3, helpersLost: 0 })).toBe(
-      0,
-    );
-  });
-
-  it("2 clues + 1 lost → 700-100 = 600", () => {
-    expect(scoreErrandRun({ clues: 2, helpersSafe: 2, helpersLost: 1 })).toBe(
-      600,
-    );
-  });
-
-  it("1 clue + all safe → 400+50 = 450", () => {
-    expect(scoreErrandRun({ clues: 1, helpersSafe: 3, helpersLost: 0 })).toBe(
-      450,
-    );
-  });
-
-  it("aborted-trap helpers count safe + empty (3 helpers all safe, 2 clues)", () => {
-    // Player aborted the third (trap) helper → 2 clues, 3 safe, 0 lost.
-    expect(scoreErrandRun({ clues: 2, helpersSafe: 3, helpersLost: 0 })).toBe(
-      750,
-    );
-  });
-});
-
-describe("errand assignment", () => {
-  it("cannot place two helpers on the same drawer", () => {
-    const helpers = [
-      { drawerAssigned: 0 },
-      { drawerAssigned: null },
-      { drawerAssigned: null },
-    ];
-    expect(canAssignHelper(helpers, 1, 0)).toBe(false);
-    expect(canAssignHelper(helpers, 1, 1)).toBe(true);
-    // Reassigning the same helper to its own drawer is allowed.
-    expect(canAssignHelper(helpers, 0, 0)).toBe(true);
-  });
-});
-
-describe("errand triage (cursor agents)", () => {
-  it("inspect nudges signal profile toward true content", () => {
-    const p = { relevance01: 0.2, safety01: 0.5, urgency01: 0.4 };
-    const n = nudgeSignalsAfterInspect("clue", p);
-    expect(n.relevance01).toBeGreaterThan(p.relevance01);
-  });
-
-  it("earns the desk clue with 2+ clues, or 1 clue and no trap", () => {
-    expect(errandEarnsDeskClue(0, 0)).toBe(false);
-    expect(errandEarnsDeskClue(1, 1)).toBe(false);
-    expect(errandEarnsDeskClue(1, 0)).toBe(true);
-    expect(errandEarnsDeskClue(2, 1)).toBe(true);
-  });
-});
-
-describe("errand hit targets", () => {
-  it("task card hit rect is larger than the visible card", () => {
-    const card = taskCardRect(0);
-    const drop = taskCardDropRect(0);
-    expect(drop.w).toBeGreaterThan(card.w);
-    expect(drop.h).toBeGreaterThan(card.h);
+  it("spawnEnemyUnit starts at spawn line", () => {
+    const u = spawnEnemyUnit(1, 1, "syntaxBug");
+    expect(u.x).toBe(1);
+    expect(u.lane).toBe(1);
   });
 });
 
 describe("errand clue token", () => {
   it("normalises and clamps", () => {
     expect(clueTokenForErrand("backwards")).toBe("BACKWARD");
-    expect(clueTokenForErrand("")).toBe("RACE");
-    expect(clueTokenForErrand("3 . 2 . 1")).toBe("RACE");
+    expect(clueTokenForErrand("")).toBe("DEF");
+    expect(clueTokenForErrand("3 . 2 . 1")).toBe("DEF");
   });
 });

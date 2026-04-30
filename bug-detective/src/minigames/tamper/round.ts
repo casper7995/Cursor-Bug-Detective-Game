@@ -189,6 +189,32 @@ export function tamperEarnsDeskClue(result: TamperResult): boolean {
   return result.rightCalls >= 3 && result.caughtLies >= 1;
 }
 
+/**
+ * One-line result flash after each call, tied to the chosen verdict
+ * and `scoreCall`’s `rightCall` / `caughtLie`.
+ */
+export function tamperVerdictFeedbackLine(
+  verdict: CallVerdict,
+  o: { rightCall: boolean; caughtLie: boolean },
+): string {
+  if (o.caughtLie) {
+    return "Caught: you pointed to the real change.";
+  }
+  if (o.rightCall) {
+    if (verdict.kind === "agree") {
+      return "Correct: Bugbot was right.";
+    }
+    return "Correct: Bugbot was wrong.";
+  }
+  if (verdict.kind === "disagree-point") {
+    return "That was not the changed row.";
+  }
+  if (verdict.kind === "agree") {
+    return "Miss — Bugbot was wrong about this row.";
+  }
+  return "Miss — Bugbot was right about this row.";
+}
+
 export function spotById(scene: TamperScene, id: string): TamperSpot | null {
   return scene.spots.find((s) => s.id === id) ?? null;
 }

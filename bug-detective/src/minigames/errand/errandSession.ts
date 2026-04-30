@@ -1,4 +1,4 @@
-/** Errand Race — desk mini, restyled as Cursor Agents task triage. */
+/** Cursor Agents lane defense — desk mini (notebook slot `errand`). */
 
 import type { MiniGameOutcome } from "../types";
 import { CURSOR_AI } from "../../ui/cursorAiTheme";
@@ -12,31 +12,28 @@ import {
 } from "../desk/deskLayout";
 import { hitDeskHelpButton, TutorialGate } from "../desk/tutorialGate";
 import {
-  buildErrandRound,
-  errandEarnsDeskClue,
+  createLaneDefenseRuntime,
+  laneDefenseDeployToLane,
+  laneDefenseDeskScore,
+  laneDefensePromoteAgent,
   namespacedSeed,
-  scoreErrandRun,
+  queueHead,
+  stepLaneDefenseRuntime,
+  type LaneDefenseRuntime,
 } from "./round";
 import {
-  ERRAND_NUM_HELPERS,
-  type Drawer,
-  type DrawerContent,
-  type DrawerIndex,
-  type ErrandRound,
-  type Helper,
-  type HelperIndex,
-} from "./types";
-import {
-  drawAgentsCard,
   drawErrandIntro,
   drawErrandResult,
+  drawLaneDefenseField,
   drawErrandTutorialDiagram,
-  drawTasksCard,
-  taskCardAt,
+  hitLaneDefenseLane,
+  hitLaneDefenseQueueKind,
 } from "./draw";
+import { AGENT_TRAY, type AgentKind, type LaneIndex } from "./types";
 import { clueTokenForErrand } from "./clueTokens";
 import {
   sfxErrandDispatch,
+  sfxErrandGrab,
   sfxErrandReject,
   sfxErrandTrapPing,
 } from "../../audio/audio";
@@ -44,8 +41,8 @@ import {
 const W = RUNNER_DRAW.canvasW;
 const H = RUNNER_DRAW.canvasH;
 
-const INTRO_DURATION_S = 1.35;
-const RESULT_AUTOCLOSE_S = 3.2;
+const INTRO_DURATION_S = 1.55;
+const DEFEAT_AUTOCLOSE_S = 4;
 
 export interface ErrandSessionOpts {
   readonly overlayCtx: CanvasRenderingContext2D;
@@ -56,8 +53,8 @@ export interface ErrandSessionOpts {
 
 type Phase =
   | { kind: "intro"; t: number }
-  | { kind: "pick"; t: number }
-  | { kind: "result"; t: number };
+  | { kind: "play" }
+  | { kind: "defeat"; t: number };
 
 export class ErrandSession {
   private readonly overlayCtx: CanvasRenderingContext2D;
@@ -65,26 +62,27 @@ export class ErrandSession {
   private readonly onExit: () => void;
   private readonly renderCtx: CanvasRenderingContext2D;
   private readonly clueWord: string;
-  private readonly round: ErrandRound;
-  private helpers: Helper[];
+  private rt: LaneDefenseRuntime;
   private phase: Phase = { kind: "intro", t: 0 };
   private outcome: MiniGameOutcome | null = null;
   private pointerBound = false;
-  private hoverTaskIdx: number | null = null;
-  private agentsRemaining = ERRAND_NUM_HELPERS;
-  private playerPicks = 0;
-  private revealedTasks = new Map<DrawerIndex, DrawerContent>();
-  /** Brief footer hint after an invalid pick. */
+  private hoverQueue: AgentKind | null = null;
+  private hoverLane: LaneIndex | null = null;
+  /** Brief lane row highlight after 1/2/3 */
+  private keyLaneFlash: LaneIndex | null = null;
+  private keyLaneFlashT = 0;
   private transientFooter: string | null = null;
   private transientFooterClear: ReturnType<typeof setTimeout> | null = null;
+
   private readonly gate = new TutorialGate({
-    title: "Cursor Agents — task triage",
-    tagline: "Pick 3 task cards. Find a clue. Avoid the trap.",
+    title: "Cursor Agents — lane defense",
+    tagline:
+      "Hold three lanes against inbound defects—including Zero-Day bosses.",
     howToLines: [
-      "You have 3 agents. Click a task card, or press 1–5, to spend one.",
-      "Cards show relevance and risk before you pick — use them, then click.",
-      "Evidence locks with 2 clue tasks, or 1 clue and zero trap hits.",
-      "Cup / key are favorable hints; the warning mark is high risk.",
+      "Press 1, 2, or 3 to send the next Agent into the top, middle, or bottom lane.",
+      "Bugs march from the right toward your desk. Each Hero (Fixer / Reviewer / Firewall) recharges on the left rail.",
+      "Click a queue card to promote it, then click a lane or press 1 / 2 / 3 to deploy the ready head.",
+      "Evidence locks after 3 waves cleared or 60s survived. Hold the desk for a higher score.",
     ],
     drawDiagram: drawErrandTutorialDiagram,
     storageKey: "bd:miniTutorial:errand",
@@ -96,19 +94,7 @@ export class ErrandSession {
     this.onExit = opts.onExit;
     this.clueWord = opts.clueWord;
     const seed = namespacedSeed(0xa0b1c2d3, `errand:${opts.clueWord}`);
-    this.round = buildErrandRound(seed);
-    this.helpers = Array.from(
-      { length: ERRAND_NUM_HELPERS },
-      (_, i): Helper => ({
-        index: i as HelperIndex,
-        state: "waiting",
-        drawerAssigned: null,
-        fillProgress: 0,
-        result: null,
-        trait: this.round.agentTraits[i]!,
-        tripwireT: 0,
-      }),
-    );
+    this.rt = createLaneDefenseRuntime(seed);
     const c = document.createElement("canvas");
     c.width = W;
     c.height = H;
@@ -129,26 +115,59 @@ export class ErrandSession {
     );
   }
 
+  private flashFooter(msg: string): void {
+    this.transientFooter = msg;
+    if (this.transientFooterClear) clearTimeout(this.transientFooterClear);
+    this.transientFooterClear = setTimeout(() => {
+      this.transientFooter = null;
+      this.transientFooterClear = null;
+    }, 900);
+  }
+
+  private deployLane(laneHit: LaneIndex): void {
+    const head = queueHead(this.rt);
+    if (head === null) {
+      sfxErrandReject();
+      this.flashFooter("No agent ready — queue recharging.");
+      return;
+    }
+    const def = AGENT_TRAY.find((a) => a.kind === head.kind)!;
+    const next = laneDefenseDeployToLane(this.rt, laneHit);
+    if (next === this.rt) {
+      sfxErrandReject();
+      this.flashFooter(
+        this.rt.focus < def.cost
+          ? `Need ${def.cost} focus.`
+          : "No agent ready — queue recharging.",
+      );
+      return;
+    }
+    this.rt = next;
+    sfxErrandDispatch();
+  }
+
   attachPointer(root: HTMLElement): void {
     if (this.pointerBound) return;
     this.pointerBound = true;
-    const stopTutorialPropagation = (consumed: boolean): void => {
-      if (!consumed) return;
-      this.pointerBound = this.pointerBound;
-    };
     const routeTutorialPointer = (clientX: number, clientY: number): void => {
       if (!this.gate.isBlocking()) return;
       const p = this.gameFromClient(clientX, clientY);
-      stopTutorialPropagation(this.gate.handlePointer(p.x, p.y, W, H) !== null);
+      this.gate.handlePointer(p.x, p.y, W, H);
     };
     const move = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
       if (this.outcome || this.gate.isBlocking()) {
-        this.hoverTaskIdx = null;
+        this.hoverQueue = null;
+        this.hoverLane = null;
         return;
       }
-      this.hoverTaskIdx =
-        this.phase.kind === "pick" ? this.pickableTaskAt(p.x, p.y) : null;
+      if (this.phase.kind !== "play") {
+        this.hoverQueue = null;
+        this.hoverLane = null;
+        return;
+      }
+      this.hoverQueue = hitLaneDefenseQueueKind(p.x, p.y, this.rt);
+      this.hoverLane = hitLaneDefenseLane(p.x, p.y);
     };
     const down = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
@@ -169,16 +188,24 @@ export class ErrandSession {
         }
         return;
       }
-      if (this.phase.kind === "result") {
-        this.finalizeOutcome();
+      if (this.phase.kind === "defeat") {
+        this.finalizeDefeatOutcome();
         return;
       }
-      if (this.phase.kind === "pick") {
-        const taskIdx = taskCardAt(this.round.drawers, p.x, p.y);
-        if (taskIdx !== null) {
-          this.pickTask(taskIdx);
-          e.preventDefault();
-        }
+      if (this.phase.kind !== "play") return;
+
+      const queueHit = hitLaneDefenseQueueKind(p.x, p.y, this.rt);
+      if (queueHit !== null) {
+        this.rt = laneDefensePromoteAgent(this.rt, queueHit);
+        const label = AGENT_TRAY.find((a) => a.kind === queueHit)!.label;
+        sfxErrandGrab();
+        this.flashFooter(`${label} promoted to head.`);
+        return;
+      }
+
+      const laneHit = hitLaneDefenseLane(p.x, p.y);
+      if (laneHit !== null) {
+        this.deployLane(laneHit);
       }
     };
     root.addEventListener("pointermove", move, { passive: true });
@@ -193,12 +220,26 @@ export class ErrandSession {
         return;
       }
       if (this.gate.isBlocking() || this.outcome) return;
-      if (this.phase.kind !== "pick") return;
-      const m = /^Digit([1-5])$/.exec(e.code) ?? /^Numpad([1-5])$/.exec(e.code);
-      if (!m) return;
-      const taskIdx = Number.parseInt(m[1]!, 10) - 1;
-      this.pickTask(taskIdx);
-      e.preventDefault();
+      if (this.phase.kind === "defeat") {
+        if (e.code === "Enter" || e.code === "Space") {
+          this.finalizeDefeatOutcome();
+          e.preventDefault();
+        }
+        return;
+      }
+      if (this.phase.kind !== "play") return;
+      const laneKeys: Record<string, LaneIndex> = {
+        Digit1: 0,
+        Digit2: 1,
+        Digit3: 2,
+      };
+      const laneIdx = laneKeys[e.code];
+      if (laneIdx !== undefined) {
+        this.keyLaneFlash = laneIdx;
+        this.keyLaneFlashT = 0.28;
+        this.deployLane(laneIdx);
+        e.preventDefault();
+      }
     };
     const onDocPointerDown = (e: PointerEvent): void => {
       routeTutorialPointer(e.clientX, e.clientY);
@@ -237,120 +278,6 @@ export class ErrandSession {
     };
   }
 
-  private flashTransientFooter(msg: string): void {
-    this.transientFooter = msg;
-    if (this.transientFooterClear) clearTimeout(this.transientFooterClear);
-    this.transientFooterClear = setTimeout(() => {
-      this.transientFooter = null;
-      this.transientFooterClear = null;
-    }, 900);
-  }
-
-  private signalFeedbackLine(d: Drawer): string {
-    const rel = d.signalProfile.relevance01;
-    const risk = 1 - d.signalProfile.safety01;
-    const relL = rel >= 0.55 ? "high rel" : rel >= 0.35 ? "med rel" : "low rel";
-    const riskL =
-      risk >= 0.55 ? "high risk" : risk >= 0.35 ? "med risk" : "low risk";
-    return `${relL}, ${riskL}`;
-  }
-
-  private pickableTaskAt(x: number, y: number): number | null {
-    const taskIdx = taskCardAt(this.round.drawers, x, y);
-    if (taskIdx === null) return null;
-    if (this.agentsRemaining <= 0) return null;
-    if (this.revealedTasks.has(taskIdx as DrawerIndex)) return null;
-    return taskIdx;
-  }
-
-  private pickTask(taskIdx: number): void {
-    if (this.phase.kind !== "pick") return;
-    const drawer = this.round.drawers[taskIdx] as Drawer | undefined;
-    if (!drawer) return;
-    if (this.revealedTasks.has(drawer.index)) {
-      sfxErrandReject();
-      this.flashTransientFooter("That task was already picked.");
-      return;
-    }
-    if (this.agentsRemaining <= 0) {
-      sfxErrandReject();
-      this.flashTransientFooter("No agents left. Check the result.");
-      return;
-    }
-
-    const helper = this.helpers[this.playerPicks] as Helper | undefined;
-    if (helper) {
-      helper.drawerAssigned = drawer.index;
-      helper.fillProgress = 1;
-      helper.state = drawer.content === "trap" ? "lost" : "returning";
-      helper.result = drawer.content === "clue" ? "clue" : null;
-    }
-
-    this.revealedTasks.set(drawer.index, drawer.content);
-    this.playerPicks += 1;
-    this.agentsRemaining -= 1;
-    this.hoverTaskIdx = null;
-
-    if (drawer.content === "trap") {
-      sfxErrandTrapPing();
-      this.flashTransientFooter(
-        `Trap: ${this.signalFeedbackLine(drawer)} — one agent lost.`,
-      );
-    } else {
-      sfxErrandDispatch();
-      if (drawer.content === "clue") {
-        this.flashTransientFooter(`Clue: ${this.signalFeedbackLine(drawer)}`);
-      } else {
-        this.flashTransientFooter(
-          `Noise: ${this.signalFeedbackLine(drawer)} — keep looking.`,
-        );
-      }
-    }
-
-    if (this.shouldShowResult()) {
-      this.phase = { kind: "result", t: 0 };
-    }
-  }
-
-  private totalClueTasks(): number {
-    return this.round.drawers.filter((d) => d.content === "clue").length;
-  }
-
-  private clueCount(): number {
-    let clues = 0;
-    for (const outcome of this.revealedTasks.values()) {
-      if (outcome === "clue") clues++;
-    }
-    return clues;
-  }
-
-  private trapCount(): number {
-    let traps = 0;
-    for (const outcome of this.revealedTasks.values()) {
-      if (outcome === "trap") traps++;
-    }
-    return traps;
-  }
-
-  private resultTotals(): {
-    clues: number;
-    helpersSafe: number;
-    helpersLost: number;
-  } {
-    const helpersLost = this.trapCount();
-    return {
-      clues: this.clueCount(),
-      helpersSafe: ERRAND_NUM_HELPERS - helpersLost,
-      helpersLost,
-    };
-  }
-
-  private shouldShowResult(): boolean {
-    return (
-      this.agentsRemaining <= 0 || this.clueCount() >= this.totalClueTasks()
-    );
-  }
-
   step(dtSec: number): void {
     if (this.gate.isBlocking()) {
       this.draw();
@@ -358,19 +285,26 @@ export class ErrandSession {
     }
     switch (this.phase.kind) {
       case "intro": {
-        this.phase = { kind: "intro", t: this.phase.t + dtSec };
-        if (this.phase.t >= INTRO_DURATION_S) {
-          this.phase = { kind: "pick", t: 0 };
+        const t = this.phase.t + dtSec;
+        if (t >= INTRO_DURATION_S) this.phase = { kind: "play" };
+        else this.phase = { kind: "intro", t };
+        break;
+      }
+      case "play": {
+        this.keyLaneFlashT = Math.max(0, this.keyLaneFlashT - dtSec);
+        if (this.keyLaneFlashT <= 0) this.keyLaneFlash = null;
+        const prevHp = this.rt.baseHealth;
+        this.rt = stepLaneDefenseRuntime(this.rt, dtSec);
+        if (this.rt.baseHealth < prevHp) sfxErrandTrapPing();
+        if (this.rt.defeated) {
+          this.phase = { kind: "defeat", t: 0 };
+          sfxErrandTrapPing();
         }
         break;
       }
-      case "pick": {
-        this.phase = { kind: "pick", t: this.phase.t + dtSec };
-        break;
-      }
-      case "result": {
-        this.phase = { kind: "result", t: this.phase.t + dtSec };
-        if (this.phase.t >= RESULT_AUTOCLOSE_S) this.finalizeOutcome();
+      case "defeat": {
+        this.phase = { kind: "defeat", t: this.phase.t + dtSec };
+        if (this.phase.t >= DEFEAT_AUTOCLOSE_S) this.finalizeDefeatOutcome();
         break;
       }
       default: {
@@ -381,70 +315,60 @@ export class ErrandSession {
     this.draw();
   }
 
-  private finalizeOutcome(): void {
+  private finalizeDefeatOutcome(): void {
     if (this.outcome) return;
-    const totals = this.resultTotals();
-    const score = scoreErrandRun(totals);
-    if (totals.clues === 0) {
-      this.onExit();
-      return;
-    }
-    if (!errandEarnsDeskClue(totals.clues, this.trapCount())) {
+    if (!this.rt.defeated) return;
+    const deskScore = laneDefenseDeskScore(this.rt);
+    if (!this.rt.clueLocked) {
       this.onExit();
       return;
     }
     this.outcome = {
       clueToken: clueTokenForErrand(this.clueWord),
-      score,
+      score: deskScore,
     };
   }
 
   private draw(): void {
     const ctx = this.renderCtx;
-    // Light page background
     ctx.fillStyle = "#eceae3";
     ctx.fillRect(0, 0, W, H);
 
-    // Title strip
     ctx.fillStyle = CURSOR_AI.ink;
     ctx.font = "700 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
     ctx.fillText("Cursor Agents", 18, 26);
     ctx.fillStyle = CURSOR_AI.inkSubtle;
     ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
-    ctx.fillText("· task triage", 110, 26);
+    ctx.fillText("· lane defense", 110, 26);
 
-    drawTasksCard(
-      ctx,
-      this.round.drawers,
-      this.revealedTasks,
-      this.phase.kind === "pick" ? this.hoverTaskIdx : null,
-      this.agentsRemaining,
-    );
-    drawAgentsCard(
-      ctx,
-      this.agentsRemaining,
-      this.playerPicks,
-      this.clueCount(),
-      this.trapCount(),
-    );
+    if (this.phase.kind === "play" || this.phase.kind === "defeat") {
+      const laneHi =
+        this.hoverLane ?? (this.keyLaneFlashT > 0 ? this.keyLaneFlash : null);
+      drawLaneDefenseField(ctx, this.rt, {
+        queue: this.hoverQueue,
+        lane: laneHi,
+      });
+    }
 
-    // Footer status text
-    const phaseText = this.phaseFooterText();
-    if (phaseText) {
+    const footer = this.phaseFooterText();
+    if (footer) {
       ctx.fillStyle = CURSOR_AI.inkSubtle;
       ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
       ctx.textAlign = "center";
-      ctx.fillText(phaseText, W / 2, H - 10);
+      ctx.fillText(footer, W / 2, H - 10);
       ctx.textAlign = "left";
     }
 
-    // Phase overlays
     if (this.phase.kind === "intro") {
       drawErrandIntro(ctx, W, H, this.phase.t / INTRO_DURATION_S);
-    } else if (this.phase.kind === "result") {
-      const totals = this.resultTotals();
-      const score = scoreErrandRun(totals);
-      drawErrandResult(ctx, W, H, totals, score);
+    } else if (this.phase.kind === "defeat") {
+      drawErrandResult(ctx, W, H, {
+        deskScore: laneDefenseDeskScore(this.rt),
+        clueLocked: this.rt.clueLocked,
+        wavesFinished: this.rt.wavesFinished,
+        bossesDefeated: this.rt.bossesDefeated,
+        elapsedSec: this.rt.elapsed,
+      });
     }
 
     drawDeskChromeAi(ctx);
@@ -455,12 +379,12 @@ export class ErrandSession {
   private phaseFooterText(): string | null {
     if (this.transientFooter) return this.transientFooter;
     switch (this.phase.kind) {
-      case "pick":
-        return "read rel / risk on each card · 2 clues or 1 clue with no trap locks evidence";
-      case "result":
-        return this.clueCount() > 0
-          ? "evidence word locked · click to close"
-          : "no clue found · click to close";
+      case "play":
+        return "1 top · 2 mid · 3 bot deploy the ready queue head · click queue to promote · ESC exits";
+      case "defeat":
+        return this.rt.clueLocked
+          ? "evidence locked · click to pin cipher"
+          : "clue never locked · click to exit without cipher";
       default:
         return null;
     }

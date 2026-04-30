@@ -1,5 +1,5 @@
 {
-  "iteration": 27,
+  "iteration": 28,
   "max_iterations": null,
   "target": 90,
   "games": {
@@ -46,6 +46,6 @@
   "phase_1_complete": true,
   "phase_2_complete": false,
   "phase_3_complete": false,
-  "blocked_items": [],
+  "blocked_items": ["all per-game validation — see BLOCKED.md"],
   "notes": "Iter 9: runner R-2 (coyote 80ms + jump buffer 100ms). Sentence iter-4 reviewer returned 78 (+14) — S-1 spoilers + S-4 reconcile both verified. Playwright still flaky for new spawns; sentence reviewer that started earlier completed. Other reviews still pending. typecheck + 263/263 tests pass."
 }

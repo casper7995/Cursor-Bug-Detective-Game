@@ -919,12 +919,9 @@ export function drawErrandTutorialDiagram(
     ctx.fillStyle = "#e9fbff";
     ctx.fillText(["Fix", "Rev", "Wall"][i]!, x0 + 5, yy + rowH / 2 + 4);
   }
-  ctx.fillStyle = CURSOR_AI.inkSubtle;
-  ctx.font = "11px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText(
-    "left queue · 1/2/3 lanes · bugs march ←",
-    x0,
-    y0 + LANE_COUNT * (rowH + gap) + 18,
-  );
+  // Caption removed — the labels in each lane already say "Fix / Rev / Wall"
+  // with "1/2/3" beside them, and `← bugs march` is conveyed by the orange
+  // strip on the right of each lane row. The previous caption clipped under
+  // the Start button at the gate's fixed bottom inset.
   ctx.restore();
 }

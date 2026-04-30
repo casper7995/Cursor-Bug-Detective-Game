@@ -26,4 +26,4 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 ## Polish
 
 - [x] **E-10 Footer hint clipping** — shortened to "1/2/3 deploy lane · click queue to promote · ESC exit". (+1) **[done iter-3]**
-- [ ] **E-11 Tutorial Start button vs caption** — `draw.ts:805-811` caption sits under the orange Start pill. Layout-aware Y. (+1)
+- [x] **E-11 Tutorial Start button vs caption** — caption removed; lanes already self-label "Fix/Rev/Wall" + "1/2/3" and the orange strips on the right of each row already convey "← bugs march". (+1) **[done iter-10]**

@@ -458,6 +458,14 @@ export function createHud(
       tooltipEl.style.opacity = "1";
       tooltipEl.style.left = `${mouseClient.x}px`;
       tooltipEl.style.top = `${mouseClient.y}px`;
+      // SH-3: when the cursor is near the top, the tooltip's default
+      // (transform: translate(-50%, calc(-100% - 14px))) draws into the
+      // HUD evidence row. Flip below the cursor inside the HUD safe zone.
+      const HUD_SAFE_TOP = 110;
+      const flipBelow = mouseClient.y < HUD_SAFE_TOP;
+      tooltipEl.style.transform = flipBelow
+        ? "translate(-50%, 14px)"
+        : "translate(-50%, calc(-100% - 14px))";
       loupeEl.style.opacity = "0.95";
       loupeEl.style.left = `${mouseClient.x}px`;
       loupeEl.style.top = `${mouseClient.y}px`;

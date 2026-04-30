@@ -57,8 +57,12 @@ export function drawDeskChromeAi(ctx: CanvasRenderingContext2D): void {
   const cb = getDeskCloseButtonRect();
   ctx.save();
   ctx.lineWidth = 1;
-  ctx.strokeStyle = "#dfdcd3";
-  ctx.fillStyle = "rgba(253,253,250,0.9)";
+  // SH-5: previously drew opaque white-ish chips that visually competed
+  // with each minigame's title strip in the same y-band. Render with a
+  // softer fill + slightly muted glyphs so the chrome recedes without
+  // sacrificing the affordance.
+  ctx.strokeStyle = "rgba(223,220,211,0.6)";
+  ctx.fillStyle = "rgba(253,253,250,0.55)";
   ctx.beginPath();
   ctx.roundRect(hb.x, hb.y, hb.w, hb.h, 13);
   ctx.fill();
@@ -67,7 +71,7 @@ export function drawDeskChromeAi(ctx: CanvasRenderingContext2D): void {
   ctx.roundRect(cb.x, cb.y, cb.w, cb.h, 13);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = "#5a554a";
+  ctx.fillStyle = "rgba(90, 85, 74, 0.85)";
   ctx.font = "600 13px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";

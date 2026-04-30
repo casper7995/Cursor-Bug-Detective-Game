@@ -22,9 +22,9 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 - [x] **S-12 Share card vs chrome overlap** — title strip + progress dots + desk chrome hidden during result phase so the share card owns the screen. **[done iter-11]**
 - [x] **S-13 Score reveal juice** — `revealT` over 1.4s drives a count-up (ease-out quad) of the score and a soft headline pulse on the ending label. Score recolors to ending hue at the end of count. (+3) **[done iter-19]**
 - [x] **S-14 Per-pick commit flash** — new `reveal` phase between pick and next type (280ms). Picked row glows in its color, fading out. Idle defaults to orange. (+3) **[done iter-19]**
-- [ ] **S-15 Beat escalation** — tighten pick-timer 5-10% per beat, or add a "beat 7-8 panic" visual. (+2)
+- [x] **S-15 Beat escalation** — `pickTimeoutForSlot` shrinks ~7%/slot from 3.0s with a 1.6s floor; slot 4 ≈ 2.25s, slot 7 ≈ 1.85s. Round actually escalates instead of being 8 flat beats. (+2) **[done iter-20]**
 
 ## Polish
 
-- [ ] **S-9 Suggestion popover badge alignment** — `draw.ts:240, 244` both right-anchor at `r.x+r.w-{50,38}` and overlap. Move to a separate column. (+1)
-- [ ] **S-10 Share-card ending labels overflow** — "TYPEWRITER WROTE IT FOR YOU" overflows at 11px. Shrink to 10px or 2-line wrap. (+1)
+- [x] **S-9 Suggestion popover badge alignment** — overlap was caused by the case/alt/nope hint badge that S-1 already removed; only the number badge remains, no overlap. (+1) **[resolved by S-1]**
+- [x] **S-10 Share-card ending labels overflow** — `drawShareCard` auto-shrinks the ending font when the label width exceeds `w − 80`, with a 8.5px floor. Long labels like "THE TYPEWRITER WROTE IT FOR YOU" now fit. (+1) **[done iter-20]**

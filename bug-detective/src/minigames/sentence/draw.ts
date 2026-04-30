@@ -339,9 +339,18 @@ export function drawShareCard(
   const headlinePulse =
     revealT < 0.25 ? 1 + 0.18 * Math.sin(revealT * Math.PI * 8) : 1;
   ctx.fillStyle = endingColor;
-  ctx.font = `700 ${(11 * headlinePulse).toFixed(1)}px 'Cursor Gothic', sans-serif`;
+  // S-10: long ending labels (e.g. "THE TYPEWRITER WROTE IT FOR YOU")
+  // overflow at 11px. Auto-shrink to fit the right portion of the header.
+  const headerMaxW = w - 80; // leaves room for "RESULT" on the left
+  const baseSize = 11 * headlinePulse;
+  ctx.font = `700 ${baseSize.toFixed(1)}px 'Cursor Gothic', sans-serif`;
+  let labelText = endingLabel[ending];
+  if (ctx.measureText(labelText).width > headerMaxW) {
+    const shrunk = (baseSize * headerMaxW) / ctx.measureText(labelText).width;
+    ctx.font = `700 ${Math.max(8.5, shrunk).toFixed(1)}px 'Cursor Gothic', sans-serif`;
+  }
   ctx.textAlign = "right";
-  ctx.fillText(endingLabel[ending], x + w - 14, y + 18);
+  ctx.fillText(labelText, x + w - 14, y + 18);
   ctx.textAlign = "left";
 
   // Paragraph body (longer 8-beat runs)

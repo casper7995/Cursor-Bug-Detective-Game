@@ -40,3 +40,11 @@ export const SENTENCE_SCORE = {
   ORANGE: 0,
   IDLE: 0,
 } as const;
+
+/**
+ * Per-beat pick timeout. S-15: tightens by ~7% per slot so the round
+ * actually escalates instead of being 8 flat 3.0s beats. Floor 1.6s.
+ */
+export function pickTimeoutForSlot(sentenceIdx: number): number {
+  return Math.max(1.6, 3.0 * Math.pow(0.93, sentenceIdx));
+}

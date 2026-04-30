@@ -33,6 +33,7 @@ import {
   SENTENCE_LAYOUT,
 } from "./draw";
 import {
+  pickTimeoutForSlot,
   type PickColor,
   type PlayerPick,
   type SentenceTemplate,
@@ -51,7 +52,6 @@ const H = RUNNER_DRAW.canvasH;
 
 const INTRO_DURATION_S = 0.95;
 const TYPE_PER_SENTENCE_S = 1.15;
-const PICK_TIMEOUT_S = 3.0;
 /** Brief post-pick flash so the commit feels weighty (S-14). */
 const REVEAL_FLASH_S = 0.28;
 /**
@@ -454,7 +454,8 @@ export class SentenceSession {
           t: this.phase.t + dtSec,
           selectedRowIndex: this.phase.selectedRowIndex,
         };
-        if (this.phase.t >= PICK_TIMEOUT_S) this.commitIdle();
+        if (this.phase.t >= pickTimeoutForSlot(this.phase.sentenceIdx))
+          this.commitIdle();
         break;
       }
       case "reveal": {
@@ -548,7 +549,10 @@ export class SentenceSession {
       const slot = this.template.slots[this.phase.sentenceIdx];
       if (slot) {
         const rows = this.rowsForSlot(this.phase.sentenceIdx);
-        const remain = Math.max(0, 1 - this.phase.t / PICK_TIMEOUT_S);
+        const remain = Math.max(
+          0,
+          1 - this.phase.t / pickTimeoutForSlot(this.phase.sentenceIdx),
+        );
         drawSuggestionPopover(ctx, rows, this.phase.selectedRowIndex, remain);
       }
     } else if (this.phase.kind === "reveal") {

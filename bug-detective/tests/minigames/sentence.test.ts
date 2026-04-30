@@ -15,6 +15,7 @@ import {
   shouldEmitOutcome,
 } from "../../src/minigames/sentence/scoring";
 import { clueTokenForSentence } from "../../src/minigames/sentence/clueTokens";
+import { pickTimeoutForSlot } from "../../src/minigames/sentence/types";
 import {
   SENTENCE_SLOTS_PER_TEMPLATE,
   type PlayerPick,
@@ -204,5 +205,16 @@ describe("sentence clue token", () => {
   it("normalises and clamps", () => {
     expect(clueTokenForSentence("warning")).toBe("WARNING");
     expect(clueTokenForSentence("")).toBe("WORD");
+  });
+});
+
+describe("sentence beat escalation", () => {
+  it("pickTimeoutForSlot starts at 3.0s and shrinks per beat with a 1.6s floor", () => {
+    expect(pickTimeoutForSlot(0)).toBeCloseTo(3.0, 5);
+    // ~7% reduction per slot.
+    expect(pickTimeoutForSlot(1)).toBeLessThan(pickTimeoutForSlot(0));
+    expect(pickTimeoutForSlot(4)).toBeLessThan(pickTimeoutForSlot(3));
+    // Floor kicks in for very late slots.
+    expect(pickTimeoutForSlot(20)).toBe(1.6);
   });
 });

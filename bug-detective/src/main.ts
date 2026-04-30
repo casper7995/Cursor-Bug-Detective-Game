@@ -1306,8 +1306,8 @@ function bootGameInner(simplified: boolean): void {
     hud.setNotebook(state.phase.notebook);
     hud.setStatusText(
       state.phase.monitorDailyClear
-        ? "Shift+click monitor — daily practice · click monitor — endless code run"
-        : "sweep the desk — hover props and trust your tooltip",
+        ? "Shift+click monitor for practice · click for endless"
+        : "sweep the desk — trust the tooltip",
     );
     void cameraRig.scriptedTo(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT, 380);
     mascotController.setFrozen(false);
@@ -1425,7 +1425,7 @@ function bootGameInner(simplified: boolean): void {
     hud.hideTimer();
     hud.setNotebook({});
     hud.onMakeTheCall(() => enterAnsweringNow(performance.now()));
-    hud.setStatusText("sweep the desk — hover props and trust your tooltip");
+    hud.setStatusText("sweep the desk — trust the tooltip");
     resultsPanel.hide();
     answerPanel.hide();
     lastResults = null;

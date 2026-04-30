@@ -6,16 +6,17 @@ export const CASE_FILE_TAGLINE =
   "Confidential · scan the desk, collect four clues, then make the call";
 
 /**
- * Drawn on the case-file peel texture and 3D desk sheet — same story as `HOWTO_MODAL_STEPS`, fewer lines.
- * (Help modal / ?howto=1 has the fuller step list.)
+ * Drawn on the case-file peel texture and 3D desk sheet — short and
+ * punchy. Detailed controls live in the help modal (?howto=1) so first-run
+ * players aren't reading a wall of text. SH-1.
  */
 export const CASE_FILE_BODY_LINES: readonly string[] = [
   "HOW TO PLAY",
-  "• Hover the desk first — one prop is wrong today.",
-  "• Open the monitor, envelope, reagent tray, and lamp; each pays a clue word into Evidence.",
-  "• At 4/4 Evidence, make the call. Esc / Exit / Wider / scroll leave inspect zoom; − / + or scroll switch wide ↔ close desk view; X closes a desk mini.",
+  "• Scan the desk — one prop is wrong today.",
+  "• Open four stations to fill your clue board.",
+  "• Make the call when Evidence hits 4/4.",
   "",
-  "Peel the page, then hunt the live bug on the desk.",
+  "Peel the page, then hunt the live bug.",
 ];
 
 /** Richer steps for the optional DOM modal (?howto=1 or settings). */

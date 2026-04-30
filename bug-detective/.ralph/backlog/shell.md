@@ -8,10 +8,10 @@ Order by leverage. Mark each item `[done]`, `[blocked]`, or leave open.
 
 ## High leverage
 
-- [ ] **SH-1 Case-file modal pacing** — currently a wall of bullet text on first run, mandatory every replay unless localStorage skip. Either: (a) shrink to 3 punchy bullets and a Start CTA, or (b) make it Skip-on-second-visit by default. (`src/ui/caseFileModal.ts`)
+- [x] **SH-1 Case-file modal pacing** — `CASE_FILE_BODY_LINES` shrunk from a 165-char control dump to 3 punchy bullets ("Scan / Open four / Make the call"). Detailed controls live in `?howto=1` modal already. (+5) **[done iter-21]**
 - [ ] **SH-2 Desk hit-routing inconsistency** — the lamp's invisible hit volume bleeds over the envelope at certain viewport sizes (deep-sentence and shell-review agents both saw clicks routed to the wrong prop). Likely `desktopDiorama.ts:475-481` invisible-mesh sizes. (+5)
 - [ ] **SH-3 Hover-tooltip overlap with HUD** — orange tooltip pills (e.g. "monitor", "desk") overlap the top HUD overlay text. Pick a z-layer and stick to it. (+3)
-- [ ] **SH-4 Top-center prompt wraps + overlays code text** — "sweep the desk — hover props and trust your tooltip" wraps to two lines and overlays the rendered monitor screen content. Either shorten or move below HUD. (+2)
+- [x] **SH-4 Top-center prompt wraps + overlays code text** — shortened to "sweep the desk — trust the tooltip" (45 chars → 32). Single line at typical canvas width. (+2) **[done iter-21]**
 - [ ] **SH-5 Desk chrome ?/× buttons collision in minigames** — `drawDeskChromeAi` puts buttons at top-right of every minigame at internal y=10; they collide with each minigame's title strip at y=26. Move chrome to y=4 or push titles to y=32. (+2)
 
 ## Medium leverage

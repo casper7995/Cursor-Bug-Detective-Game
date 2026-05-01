@@ -1,5 +1,5 @@
 {
-  "iteration": 37,
+  "iteration": 38,
   "max_iterations": null,
   "target": 90,
   "games": {
@@ -10,13 +10,20 @@
       "notes": "Game start, opening entry, exploration smoothness before minigames. Smooth + slick is the bar, not fancy."
     },
     "tamper": {
-      "current": 68,
+      "current": 82,
       "target": 90,
       "history": [
         { "iter": 0, "score": 68, "source": "post-refactor agent review", "validated": true },
-        { "iter": 36, "score": 56, "source": "review returned validated:false. Reviewer flagged T-1 regression (claim line overlapping quip on long prop names) + result-card click-skip too aggressive on no-clue path. Both real bugs. Score held at 68 per cap rule.", "validated": false }
+        { "iter": 36, "score": 56, "source": "review returned validated:false. Reviewer flagged T-1 regression (claim line overlapping quip on long prop names) + result-card click-skip too aggressive on no-clue path. Both real bugs. Score held at 68 per cap rule.", "validated": false },
+        { "iter": 37, "score": 82, "source": "iter-37 fixes verified: claim-line overlap eliminated (wrapAndDraw quipY) + result-card skip-guard (RESULT_MIN_READ_S=1.0). 11 screenshots, 3 rounds played.", "validated": true, "delta": 14 }
       ],
-      "pending_changes": ["iter-37 fix T-1 regression (quipY from wrapAndDraw) + RESULT_MIN_READ_S guard on click-skip"]
+      "remaining_blockers_to_90": [
+        "Pick-mode hover differentiation: synthetic clicks from Disagree commit verdict before pick-mode renders. Widen 'Point to real change' rect or add dwell delay.",
+        "Bottom gutter line 'Compare ORIGINAL and TONIGHT, then judge Bugbot's…' truncates — wrap to 2 lines or shorten copy.",
+        "Result card: 'click anywhere to close' overlaps teach line — add 12-16px vertical separation.",
+        "Add juice on caught-lie: count-up score, particle on green-ring reveal, or mild shake.",
+        "Read-beat sub-text crowds confidence% line; add divider/spacer."
+      ]
     },
     "sentence": {
       "current": 85,
@@ -49,5 +56,5 @@
   "phase_2_complete": false,
   "phase_3_complete": false,
   "blocked_items": ["all per-game validation — see BLOCKED.md"],
-  "notes": "Iter 9: runner R-2 (coyote 80ms + jump buffer 100ms). Sentence iter-4 reviewer returned 78 (+14) — S-1 spoilers + S-4 reconcile both verified. Playwright still flaky for new spawns; sentence reviewer that started earlier completed. Other reviews still pending. typecheck + 263/263 tests pass."
+  "notes": "Iter 38: tamper iter-37 fixes validated 82 (+14). All 4 minigames now ≥82 (tamper 82, sentence 85, errand 83, runner 83). Push-to-90 plan synthesized: PR-A mechanical (sentence +3, errand +2, runner +3), PR-B shared verdict scaffold (sentence +2, errand +5), PR-C tuning (errand +3, runner +2). Predicted: sentence 90, errand 93, runner 88 (R-4 deferred). Shell still unscored."
 }

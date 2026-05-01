@@ -235,6 +235,10 @@ export interface LaneDefenseRuntime {
   nextEnemyId: number;
   bossesDefeated: number;
   wavesFinished: number;
+  /** E-1 PR-B: total enemies defeated this run (any archetype). */
+  bugsKilled: number;
+  /** E-1 PR-B: cumulative focus spent on agent deploys this run. */
+  focusSpent: number;
   queue: AgentQueueEntry[];
   deployFx: DeployEffect[];
   nextDeployFxId: number;
@@ -290,6 +294,8 @@ export function createLaneDefenseRuntime(seed: number): LaneDefenseRuntime {
     nextEnemyId: 1,
     bossesDefeated: 0,
     wavesFinished: 0,
+    bugsKilled: 0,
+    focusSpent: 0,
     queue: AGENT_TRAY.map((a) => ({
       kind: a.kind,
       readyAt: 0,
@@ -376,6 +382,7 @@ export function laneDefenseDeployToLane(
         : q,
     ),
     focus: rt.focus - def.cost,
+    focusSpent: rt.focusSpent + def.cost,
     selectedTray: null,
   };
 }
@@ -508,9 +515,11 @@ export function stepLaneDefenseRuntime(
   }
 
   let bossesDelta = 0;
+  let killsDelta = 0;
   next.enemies = next.enemies.filter((e) => {
     if (e.hp > 0) return true;
     if (e.isBoss) bossesDelta++;
+    killsDelta++;
     next.feedbackFx.push({
       id: next.nextFeedbackFxId++,
       kind: "kill",
@@ -523,6 +532,7 @@ export function stepLaneDefenseRuntime(
     return false;
   });
   next.bossesDefeated += bossesDelta;
+  next.bugsKilled += killsDelta;
 
   const afterLeak: EnemyUnit[] = [];
   for (const e of next.enemies) {

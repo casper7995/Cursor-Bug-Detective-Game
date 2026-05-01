@@ -307,6 +307,14 @@ export function drawIntroCard(
  * Keeps the kitsch art for "cursed" / "improv" / "typewriter" — only
  * the surrounding chrome is product-grade.
  */
+export interface SharePickTally {
+  readonly blue: number;
+  readonly purple: number;
+  readonly orange: number;
+  readonly idle: number;
+  readonly maxBlueStreak: number;
+}
+
 export function drawShareCard(
   ctx: CanvasRenderingContext2D,
   W: number,
@@ -315,6 +323,7 @@ export function drawShareCard(
   paragraph: string,
   score: number,
   revealT: number = 1,
+  tally?: SharePickTally,
 ): void {
   ctx.save();
   ctx.fillStyle = CURSOR_AI.scrim;
@@ -366,6 +375,36 @@ export function drawShareCard(
 
   // Paragraph body (longer 8-beat runs)
   drawParagraph(ctx, paragraph, x + 22, y + 50, w - 44, 14);
+
+  // S-2: per-color tally row above the score — shows how the player got
+  // here at a glance. Fades in over 0.4s starting at revealT≈0.55 so it
+  // lands after the paragraph has settled but before the score finishes.
+  if (tally) {
+    const tallyAlpha = Math.max(0, Math.min(1, (revealT - 0.55) / 0.4));
+    if (tallyAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = tallyAlpha;
+      const tallyY = y + h - 56;
+      const tallyX = x + w - 22;
+      ctx.font = "600 11px 'Cursor Mono', ui-monospace, monospace";
+      ctx.textAlign = "right";
+      const segs: Array<[string, number, string]> = [
+        [`★${tally.maxBlueStreak}`, tally.maxBlueStreak, CURSOR_AI.green],
+        [`${tally.idle}◌`, tally.idle, CURSOR_AI.inkMute],
+        [`${tally.orange}◆`, tally.orange, CURSOR_AI.accent],
+        [`${tally.purple}◆`, tally.purple, CURSOR_AI.purple],
+        [`${tally.blue}◆`, tally.blue, CURSOR_AI.blue],
+      ];
+      let cx = tallyX;
+      for (const [label, , color] of segs) {
+        ctx.fillStyle = color;
+        ctx.fillText(label, cx, tallyY);
+        cx -= ctx.measureText(label).width + 10;
+      }
+      ctx.textAlign = "left";
+      ctx.restore();
+    }
+  }
 
   // Footer score row — count-up tween on the big number.
   // S-13: 0 → score over the first 70% of reveal, then steady.

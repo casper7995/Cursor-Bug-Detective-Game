@@ -368,6 +368,8 @@ export class ErrandSession {
         wavesFinished: this.rt.wavesFinished,
         bossesDefeated: this.rt.bossesDefeated,
         elapsedSec: this.rt.elapsed,
+        bugsKilled: this.rt.bugsKilled,
+        focusSpent: this.rt.focusSpent,
       });
     }
 

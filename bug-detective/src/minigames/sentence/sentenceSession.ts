@@ -603,6 +603,13 @@ export class SentenceSession {
       ctx.save();
       ctx.globalAlpha = fadeAlpha;
       const screen = this.resultScreen;
+      const tallyFor = (r: ReturnType<typeof scoreSentenceRun>) => ({
+        blue: r.bluesPicked,
+        purple: r.purplesPicked,
+        orange: r.orangesPicked,
+        idle: r.idles,
+        maxBlueStreak: r.maxBlueStreak,
+      });
       if (screen) {
         drawShareCard(
           ctx,
@@ -612,6 +619,7 @@ export class SentenceSession {
           screen.finalParagraph,
           screen.result.score,
           revealT,
+          tallyFor(screen.result),
         );
       } else {
         const result = scoreSentenceRun(this.picks);
@@ -628,6 +636,7 @@ export class SentenceSession {
           finalParagraph,
           result.score,
           revealT,
+          tallyFor(result),
         );
       }
       ctx.restore();

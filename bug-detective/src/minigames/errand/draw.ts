@@ -821,6 +821,8 @@ export function drawErrandResult(
     wavesFinished: number;
     bossesDefeated: number;
     elapsedSec: number;
+    bugsKilled: number;
+    focusSpent: number;
   },
 ): void {
   ctx.save();
@@ -844,9 +846,11 @@ export function drawErrandResult(
   const sx = x + w - 192;
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "500 11px 'Cursor Mono', ui-monospace, monospace";
-  ctx.fillText(`waves cleared    ${o.wavesFinished}`, sx, y + 54);
-  ctx.fillText(`boss kills       ${o.bossesDefeated}`, sx, y + 74);
-  ctx.fillText(`held desk (s)    ${o.elapsedSec.toFixed(1)}`, sx, y + 94);
+  ctx.fillText(`waves cleared    ${o.wavesFinished}`, sx, y + 44);
+  ctx.fillText(`bugs killed      ${o.bugsKilled}`, sx, y + 60);
+  ctx.fillText(`boss kills       ${o.bossesDefeated}`, sx, y + 76);
+  ctx.fillText(`focus spent      ${o.focusSpent}`, sx, y + 92);
+  ctx.fillText(`held desk (s)    ${o.elapsedSec.toFixed(1)}`, sx, y + 108);
 
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "600 12px 'Cursor Mono', ui-monospace, monospace";

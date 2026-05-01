@@ -756,9 +756,15 @@ function bootGameInner(simplified: boolean): void {
     disposeDeskMiniOnly();
     // Bring the HUD back into view as we return to the desk.
     hud.element.style.opacity = "1";
+    // Always animate the camera back. Falling back to the desk-overview
+    // pose when `ret` is null (e.g. after a stale dispose/reset) prevents
+    // the player from getting stuck zoomed on the lamp / envelope / tray.
     if (ret) {
       void cameraRig.scriptedTo(ret.pos, ret.look, 420);
+    } else {
+      void cameraRig.scriptedTo(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT, 420);
     }
+    investigationZoomLevel = 0;
     if (runnerOverlay) {
       // SH-8: 180→280ms so the desk-mini overlay rides the camera move
       // back to the desk view instead of snapping out before the rig

@@ -208,10 +208,10 @@ export class TamperSession {
       return "Click the real changed prop in TONIGHT.";
     }
     if (this.phase.kind === "read" || this.phase.kind === "call") {
-      return "Compare ORIGINAL and TONIGHT, then judge Bugbot’s prop claim.";
+      return "Compare panels — judge Bugbot’s prop claim.";
     }
     if (this.phase.kind === "instructions") {
-      return "Compare ORIGINAL and TONIGHT, then get ready to judge each call.";
+      return "Compare panels — get ready to judge each call.";
     }
     return null;
   }

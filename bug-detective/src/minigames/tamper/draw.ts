@@ -331,18 +331,34 @@ function drawScenePanel(
 
     drawPropSketch(ctx, sketchKey, cx, cy, sketchSize);
 
+    // Prop name under each sketch — labels are the load-bearing signal that
+    // turns abstract icons into a self-teaching vocabulary. Without these the
+    // player has to read Bugbot's claim line ("the puddle is clean") and
+    // visually decode which icon is "the puddle"; with them, sketch + word
+    // train the eye over a few rounds.
+    ctx.save();
+    ctx.fillStyle = CURSOR_AI.inkSubtle;
+    ctx.font = "500 8px 'Cursor Mono', ui-monospace, monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(spot.label, cx, cy + r + 9);
+    ctx.textAlign = "left";
+    ctx.restore();
+
     // Bugbot pointer arrow on the prop in TONIGHT.
     if (pointAtSpotId === spot.id && half === "tonight") {
       drawBugbotPointer(ctx, cx, cy, r, panel);
     }
 
-    // Small label badge under the prop — text stays as a secondary signal.
+    // "real" pill overlays the prop name on the revealed tampered prop —
+    // green-on-dark so it pops against both panel papers.
     if (showRealTamper && isTamperHere) {
       ctx.save();
       ctx.fillStyle = CURSOR_AI.green;
+      ctx.fillRect(cx - 14, cy + r + 2, 28, 11);
+      ctx.fillStyle = "#0b0d12";
       ctx.font = "700 8px 'Cursor Mono', ui-monospace, monospace";
       ctx.textAlign = "center";
-      ctx.fillText("real", cx, cy + r + 9);
+      ctx.fillText("real", cx, cy + r + 10);
       ctx.textAlign = "left";
       ctx.restore();
     }

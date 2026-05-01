@@ -1,5 +1,5 @@
 {
-  "iteration": 36,
+  "iteration": 37,
   "max_iterations": null,
   "target": 90,
   "games": {
@@ -18,11 +18,12 @@
       "pending_changes": ["iter-2 result-card teach line", "iter-6 6 subtle variants rewritten"]
     },
     "sentence": {
-      "current": 78,
+      "current": 85,
       "target": 90,
       "history": [
         { "iter": 0, "score": 64, "source": "deep agent review", "validated": true },
-        { "iter": 4, "score": 78, "source": "S-1 spoilers killed + S-4 idle/orange reconciled — both verified by agent screenshots", "validated": true, "delta": 14 }
+        { "iter": 4, "score": 78, "source": "S-1 spoilers killed + S-4 idle/orange reconciled — both verified by agent screenshots", "validated": true, "delta": 14 },
+        { "iter": 36, "score": 85, "source": "iter-11/19/20/26/27 batch validated: S-2 auto-scroll, S-11 12s hold, S-12 chrome hide, S-13 count-up, S-14 reveal flash, S-15 timer escalation, S-10 label auto-shrink, S-6/7/8 title+dots cleanup, S-3 partial-credit", "validated": true, "delta": 7 }
       ]
     },
     "errand": {

@@ -241,7 +241,9 @@ export function drawSuggestionPopover(
   const cardBottom = first.y + popH;
   const trackH = 4;
   const progressTop = cardBottom - 2 - trackH;
-  const hintBaseline = progressTop - 5;
+  // S-5: hint baseline sits 9px above the timer track so the descenders
+  // ("p", "g") don't kiss the progress bar on long hint copy.
+  const hintBaseline = progressTop - 9;
   ctx.fillStyle = CURSOR_AI.inkSubtle;
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
   ctx.textAlign = "left";

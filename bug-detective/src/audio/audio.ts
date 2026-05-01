@@ -4,9 +4,11 @@
  * graph stays warm. Persisted as "bd:muted".
  */
 
-const AC = new (window.AudioContext ??
+const AC = new (
+  window.AudioContext ??
   (window as unknown as { webkitAudioContext: typeof AudioContext })
-    .webkitAudioContext)();
+    .webkitAudioContext
+)();
 
 const master = AC.createGain();
 master.gain.value = 1.0;
@@ -247,7 +249,11 @@ function blip(
   osc.stop(now + duration + 0.05);
 }
 
-function chord(freqs: readonly number[], duration: number, gainAmp = 0.05): void {
+function chord(
+  freqs: readonly number[],
+  duration: number,
+  gainAmp = 0.05,
+): void {
   for (const f of freqs) blip(f, duration, "sine", gainAmp);
 }
 
@@ -264,7 +270,10 @@ function sweep(
   osc.type = type;
   const now = AC.currentTime;
   osc.frequency.setValueAtTime(fromFreq, now);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(1, toFreq), now + duration);
+  osc.frequency.exponentialRampToValueAtTime(
+    Math.max(1, toFreq),
+    now + duration,
+  );
   g.gain.setValueAtTime(0, now);
   g.gain.linearRampToValueAtTime(gainAmp, now + 0.01);
   g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
@@ -274,11 +283,7 @@ function sweep(
   osc.stop(now + duration + 0.05);
 }
 
-function noise(
-  duration: number,
-  gainAmp = 0.03,
-  highpassHz = 1200,
-): void {
+function noise(duration: number, gainAmp = 0.03, highpassHz = 1200): void {
   if (muted) return;
   const buffer = AC.createBuffer(
     1,
@@ -428,17 +433,19 @@ export function sfxSentenceSuggestionOpen(): void {
   setTimeout(() => blip(990, 0.06, "sine", 0.025), 55);
 }
 
-export function sfxSentencePick(color: "blue" | "purple" | "orange" | "idle"): void {
+export function sfxSentencePick(
+  color: "blue" | "purple" | "orange" | "idle",
+): void {
   if (color === "idle") {
     sweep(300, 140, 0.22, "triangle", 0.04);
     return;
   }
   if (color === "blue") {
-    chord([784, 988], 0.14, 0.034);
+    chord([784, 988], 0.14, 0.05);
   } else if (color === "purple") {
-    chord([622, 784], 0.14, 0.034);
+    chord([622, 784], 0.14, 0.05);
   } else {
-    chord([523, 659], 0.15, 0.036);
+    chord([523, 659], 0.15, 0.052);
   }
 }
 

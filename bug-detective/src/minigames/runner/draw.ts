@@ -740,12 +740,29 @@ export function drawRunnerFrame(
 
       const yTop = p.yTop + cameraY;
       const baselineY = yTop + SNIPPET_BASELINE_OFFSET;
-      const snippet = snippetTextForPlankId(p.id, anomalyId);
+      const rawSnippet = snippetTextForPlankId(p.id, anomalyId);
+      // R-5: truncate snippet so it fits the plank width — long ones used to
+      // bleed past the underline. We keep mono font while measuring.
+      ctx.save();
+      ctx.font = SNIPPET_MONO_FONT;
+      const snippet = truncateOnWord(
+        ctx,
+        rawSnippet,
+        Math.max(40, sx1 - sx0 - 8),
+      );
+      ctx.restore();
       const showClue =
         activeToks.length > 0 &&
         plankHasClueToken(p.id) &&
         clueSet.tokens.length > 0;
 
+      // R-2: warning planks get a soft red glow on the snippet text so the
+      // "leave NOW" signal hits the eye before the underline pulse.
+      if (warning) {
+        ctx.save();
+        ctx.shadowColor = "rgba(245, 78, 0, 0.85)";
+        ctx.shadowBlur = 6;
+      }
       if (showClue) {
         drawClueSnippetLine(
           ctx,
@@ -759,6 +776,7 @@ export function drawRunnerFrame(
       } else {
         drawPlainSnippetRow(ctx, snippet, sx0 + 4, baselineY);
       }
+      if (warning) ctx.restore();
 
       // Underline — pulses red and shakes 1px while the plank is about to
       // disappear (R-3 warning).
@@ -813,11 +831,17 @@ export function drawRunnerFrame(
         const phase = (elapsedMs * 0.9 + i * 47) % W;
         const lineLen = 70 + ((i * 23) % 60);
         const startX = W - phase;
-        ctx.strokeStyle = "rgba(255, 215, 199, 0.55)";
+        ctx.strokeStyle = "rgba(255, 215, 199, 0.85)";
         ctx.lineWidth = 1.4;
         ctx.beginPath();
         ctx.moveTo(startX, ly);
         ctx.lineTo(startX + lineLen, ly);
+        ctx.stroke();
+        // R-1 trail: a fainter offset pass behind the bright line for thickness
+        ctx.strokeStyle = "rgba(255, 215, 199, 0.35)";
+        ctx.beginPath();
+        ctx.moveTo(startX - 6, ly + 1);
+        ctx.lineTo(startX + lineLen - 6, ly + 1);
         ctx.stroke();
       }
       ctx.restore();

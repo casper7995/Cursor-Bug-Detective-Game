@@ -594,6 +594,14 @@ export class SentenceSession {
       // and ending pulse register before the player can read the paragraph.
       const REVEAL_DURATION_S = 1.4;
       const revealT = Math.min(1, this.phase.t / REVEAL_DURATION_S);
+      // S-3: fade the share card out over the last 0.6s before autoclose so
+      // the cut back to the desk reads as a transition, not a snap.
+      const FADE_OUT_S = 0.6;
+      const timeLeft = RESULT_AUTOCLOSE_S - this.phase.t;
+      const fadeAlpha =
+        timeLeft <= 0 ? 0 : timeLeft >= FADE_OUT_S ? 1 : timeLeft / FADE_OUT_S;
+      ctx.save();
+      ctx.globalAlpha = fadeAlpha;
       const screen = this.resultScreen;
       if (screen) {
         drawShareCard(
@@ -622,6 +630,7 @@ export class SentenceSession {
           revealT,
         );
       }
+      ctx.restore();
     }
 
     if (!showResult) {

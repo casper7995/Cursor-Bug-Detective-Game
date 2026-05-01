@@ -500,14 +500,25 @@ export function drawChatCard(
     const claim = bugbotRowClaimLine(call, scene);
     ctx.fillStyle = CURSOR_AI.ink;
     ctx.font = "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif";
-    wrapAndDraw(ctx, claim, L.chatX + 14, L.chatY + 60, L.chatW - 28, 14);
+    // wrapAndDraw returns the next baseline y so the quip flows BELOW the
+    // wrapped claim instead of stacking on top of it. Reviewer iter-36
+    // flagged the prior hardcoded y=80 as a regression — long prop names
+    // (e.g. "Bugbot says: the lampshade is clean") wrap to 2 lines.
+    const quipY = wrapAndDraw(
+      ctx,
+      claim,
+      L.chatX + 14,
+      L.chatY + 60,
+      L.chatW - 28,
+      14,
+    );
     ctx.fillStyle = CURSOR_AI.inkMute;
     ctx.font = "500 11px 'Cursor Gothic', sans-serif";
     wrapAndDraw(
       ctx,
       `“${bugbotQuip(call)}”`,
       L.chatX + 14,
-      L.chatY + 80,
+      quipY + 6,
       L.chatW - 28,
       14,
     );

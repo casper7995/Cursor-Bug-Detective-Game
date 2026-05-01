@@ -1,5 +1,5 @@
 {
-  "iteration": 39,
+  "iteration": 37,
   "max_iterations": null,
   "target": 90,
   "games": {
@@ -13,9 +13,10 @@
       "current": 68,
       "target": 90,
       "history": [
-        { "iter": 0, "score": 68, "source": "post-refactor agent review", "validated": true }
+        { "iter": 0, "score": 68, "source": "post-refactor agent review", "validated": true },
+        { "iter": 36, "score": 56, "source": "review returned validated:false. Reviewer flagged T-1 regression (claim line overlapping quip on long prop names) + result-card click-skip too aggressive on no-clue path. Both real bugs. Score held at 68 per cap rule.", "validated": false }
       ],
-      "pending_changes": ["iter-2 result-card teach line", "iter-6 6 subtle variants rewritten"]
+      "pending_changes": ["iter-37 fix T-1 regression (quipY from wrapAndDraw) + RESULT_MIN_READ_S guard on click-skip"]
     },
     "sentence": {
       "current": 85,

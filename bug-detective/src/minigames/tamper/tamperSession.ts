@@ -60,6 +60,10 @@ const POINT_DURATION_S = 2.25;
  * flagged 0.6s as "barely long enough to register the +500 catch". */
 const VERDICT_FLASH_S = 1.2;
 const RESULT_AUTOCLOSE_S = 3.2;
+/** Click-to-skip on the result card is disabled for this window so the
+ *  teach line ("Real change: …") gets read before dismissal. T-7 follow-up
+ *  flagged by iter-36 reviewer. */
+const RESULT_MIN_READ_S = 1.0;
 
 export interface TamperSessionOpts {
   readonly overlayCtx: CanvasRenderingContext2D;
@@ -262,7 +266,12 @@ export class TamperSession {
         return;
       }
       if (this.phase.kind === "result") {
-        this.finalizeOutcome();
+        // Hold the teach line on screen for a minimum read window even
+        // when the player clicks to skip — otherwise no-clue rounds dismiss
+        // before the player sees what was tampered.
+        if (this.phase.t >= RESULT_MIN_READ_S) {
+          this.finalizeOutcome();
+        }
         return;
       }
       if (this.phase.kind === "instructions") {

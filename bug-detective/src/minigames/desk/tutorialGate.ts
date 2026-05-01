@@ -17,6 +17,11 @@ export interface TutorialContent {
     w: number,
     h: number,
   ) => void;
+  /**
+   * Pixels reserved below the bullet list when `drawDiagram` is set.
+   * Must fit the diagram; Start is drawn beneath this band.
+   */
+  readonly diagramHeight?: number;
   readonly storageKey: string;
 }
 
@@ -48,6 +53,11 @@ export function hitDeskHelpButton(
 }
 
 export class TutorialGate {
+  private static readonly BULLET_LINE_SKIP = 17;
+  private static readonly BULLET_GAP_AFTER = 4;
+  /** Space from bullet-area top to first bullet baseline (matches draw). */
+  private static readonly BULLET_FIRST_BASELINE_OFFSET = 12;
+
   /** When true, puzzle input is blocked and the tutorial card is shown. */
   visible: boolean;
   private readonly content: TutorialContent;
@@ -55,6 +65,9 @@ export class TutorialGate {
   private startRect = { x: 0, y: 0, w: 0, h: 0 };
   private innerCloseRect = { x: 0, y: 0, w: 0, h: 0 };
   private panelRect = { x: 0, y: 0, w: 0, h: 0 };
+  /** Allocated diagram slot (game coords); null when no diagram. */
+  private diagramBounds: { x: number; y: number; w: number; h: number } | null =
+    null;
 
   constructor(content: TutorialContent) {
     this.content = content;
@@ -90,15 +103,19 @@ export class TutorialGate {
       return this.bulletsBlockMemo.height;
     }
     const ctx = TutorialGate.measureCtx();
-    ctx.font = "11px 'Cursor Gothic', sans-serif";
+    ctx.font = "12px 'Cursor Gothic', sans-serif";
     const innerW = cw - 36;
     let totalLines = 0;
     for (const line of this.content.howToLines) {
       const lines = wrappedLineCount(ctx, `• ${line}`, innerW);
       totalLines += lines;
     }
-    // Mirrors draw loop: 15px per wrapped line + 3px gap between bullets + 8px tail pad.
-    const height = totalLines * 15 + this.content.howToLines.length * 3 + 8;
+    // Mirrors draw loop: lead + lineSkip per wrapped line + gap after each bullet + tail.
+    const height =
+      TutorialGate.BULLET_FIRST_BASELINE_OFFSET +
+      totalLines * TutorialGate.BULLET_LINE_SKIP +
+      this.content.howToLines.length * TutorialGate.BULLET_GAP_AFTER +
+      8;
     this.bulletsBlockMemo = { cw, height };
     return height;
   }
@@ -136,22 +153,28 @@ export class TutorialGate {
 
   private layout(W: number, H: number): void {
     this.panelRect = { x: 0, y: 0, w: W, h: H };
-    const cw = Math.min(420, W - 56);
+    const cw = Math.min(460, W - 48);
     const padTop = 22;
     const titleBlock = 28;
-    const taglineBlock = 22;
+    const taglineBlock = 24;
     const bulletsBlock = this.estimateBulletsBlock(cw);
-    const diagramBlock = this.content.drawDiagram ? 56 : 0;
-    const buttonBlock = 36;
-    const footerBlock = 26;
-    const padBottom = 14;
+    const diagramGap = this.content.drawDiagram ? 12 : 0;
+    const diagramBlock = this.content.drawDiagram
+      ? (this.content.diagramHeight ?? 92)
+      : 0;
+    const gapDiagramToBtn = 14;
+    const buttonBlock = 38;
+    const footerBlock = 34;
+    const padBottom = 16;
     const ch = Math.min(
       H - 24,
       padTop +
         titleBlock +
         taglineBlock +
         bulletsBlock +
+        diagramGap +
         diagramBlock +
+        gapDiagramToBtn +
         buttonBlock +
         footerBlock +
         padBottom,
@@ -162,11 +185,28 @@ export class TutorialGate {
       w: cw,
       h: ch,
     };
-    const btnW = 160;
-    const btnH = 36;
+    const btnW = 176;
+    const btnH = buttonBlock;
+    const diagramTop =
+      this.cardRect.y +
+      padTop +
+      titleBlock +
+      taglineBlock +
+      bulletsBlock +
+      diagramGap;
+    if (this.content.drawDiagram && diagramBlock > 0) {
+      this.diagramBounds = {
+        x: this.cardRect.x + 18,
+        y: diagramTop,
+        w: this.cardRect.w - 36,
+        h: diagramBlock,
+      };
+    } else {
+      this.diagramBounds = null;
+    }
     this.startRect = {
       x: this.cardRect.x + (this.cardRect.w - btnW) / 2,
-      y: this.cardRect.y + this.cardRect.h - footerBlock - btnH - 4,
+      y: diagramTop + diagramBlock + gapDiagramToBtn,
       w: btnW,
       h: btnH,
     };
@@ -236,21 +276,30 @@ export class TutorialGate {
     ctx.fill();
     ctx.stroke();
 
-    let ly = cardRect.y + 24;
+    const padTop = 22;
+    const titleBlock = 28;
+    const taglineBlock = 24;
+    const bulletAreaTop = cardRect.y + padTop + titleBlock + taglineBlock;
+
     ctx.fillStyle = CURSOR.gold;
     ctx.font = "600 13px 'Cursor Gothic', ui-sans-serif, sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(c.title.toUpperCase(), cardRect.x + 18, ly);
-    ly += 22;
+    ctx.fillText(
+      c.title.toUpperCase(),
+      cardRect.x + 18,
+      bulletAreaTop - taglineBlock - 8,
+    );
 
     ctx.fillStyle = CURSOR.textHi;
     ctx.font = "12px 'Cursor Gothic', sans-serif";
-    ctx.fillText(c.tagline, cardRect.x + 18, ly);
-    ly += 22;
+    ctx.fillText(c.tagline, cardRect.x + 18, bulletAreaTop - 12);
 
-    ctx.font = "11px 'Cursor Gothic', sans-serif";
-    ctx.fillStyle = "rgba(247,247,244,0.92)";
+    ctx.font = "12px 'Cursor Gothic', sans-serif";
+    ctx.fillStyle = "rgba(247,247,244,0.94)";
     const bulletMaxW = cardRect.w - 36;
+    let ly = bulletAreaTop + TutorialGate.BULLET_FIRST_BASELINE_OFFSET;
+    const skip = TutorialGate.BULLET_LINE_SKIP;
+    const afterBullet = TutorialGate.BULLET_GAP_AFTER;
     for (const line of c.howToLines) {
       ly = wrapAndDraw(
         ctx,
@@ -258,14 +307,15 @@ export class TutorialGate {
         cardRect.x + 18,
         ly,
         bulletMaxW,
-        15,
+        skip,
       );
-      ly += 3;
+      ly += afterBullet;
     }
+    ly += 8;
 
-    if (c.drawDiagram) {
-      ly += 8;
-      c.drawDiagram(ctx, cardRect.x + 18, ly, cardRect.w - 36, 40);
+    if (c.drawDiagram && this.diagramBounds) {
+      const b = this.diagramBounds;
+      c.drawDiagram(ctx, b.x, b.y, b.w, b.h);
     }
 
     ctx.fillStyle = "rgba(245,78,0,0.95)";
@@ -275,8 +325,14 @@ export class TutorialGate {
     ctx.fillStyle = "#fff";
     ctx.font = "600 14px 'Cursor Gothic', sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("Start", startRect.x + startRect.w / 2, startRect.y + 23);
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      "Start",
+      startRect.x + startRect.w / 2,
+      startRect.y + startRect.h / 2,
+    );
     ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
 
     ctx.strokeStyle = "rgba(255,255,255,0.35)";
     ctx.strokeRect(
@@ -297,13 +353,13 @@ export class TutorialGate {
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
 
-    ctx.fillStyle = "rgba(237,236,236,0.7)";
-    ctx.font = "10px sans-serif";
+    ctx.fillStyle = "rgba(237,236,236,0.82)";
+    ctx.font = "600 11px 'Cursor Gothic', ui-sans-serif, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(
-      "Esc closes this card  \u00b7  Start hides it next time",
+      "Esc closes · Start hides this sheet next time",
       cardRect.x + cardRect.w / 2,
-      cardRect.y + cardRect.h - 12,
+      cardRect.y + cardRect.h - 13,
     );
     ctx.textAlign = "left";
     ctx.restore();

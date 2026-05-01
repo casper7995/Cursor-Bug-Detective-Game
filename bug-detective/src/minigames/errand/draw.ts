@@ -393,11 +393,25 @@ function drawQueueCard(
   ctx.fillStyle = "#e9fbff";
   ctx.font = "700 10px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillText(def.label, r.x + 40, r.y + 17);
-  ctx.fillStyle = ready ? NEON_GREEN : "rgba(231,250,255,0.55)";
+  let status: string;
+  if (isHead) {
+    status = !ready
+      ? `${remaining.toFixed(1)}s`
+      : canAfford
+        ? "DEPLOY"
+        : "WAIT";
+  } else {
+    status = ready ? "READY" : `${remaining.toFixed(1)}s`;
+  }
+  ctx.fillStyle =
+    isHead && ready && !canAfford
+      ? "rgba(255,170,120,0.95)"
+      : ready
+        ? NEON_GREEN
+        : "rgba(231,250,255,0.55)";
   ctx.font = "600 8px 'Cursor Mono', ui-monospace, monospace";
   // Status text must fit between glyph (r.x + 40) and recharge ring
   // (r.x + r.w - 27). Keep strings short to avoid clipping into the ring.
-  const status = isHead ? "GO" : ready ? "READY" : `${remaining.toFixed(1)}s`;
   ctx.fillText(status, r.x + 40, r.y + 30);
 
   ctx.fillStyle = canAfford ? "rgba(245,78,0,0.25)" : "rgba(255,255,255,0.08)";
@@ -866,13 +880,13 @@ export function drawErrandResult(
     ctx.fillText("No cipher token is pinned from this run.", x + 24, y + 154);
   } else {
     ctx.fillText(
-      "Clue was locked — cipher pins when you continue.",
+      "Clue was locked — returning pins the cipher to your notebook.",
       x + 24,
       y + 138,
     );
   }
   ctx.fillStyle = CURSOR_AI.inkSubtle;
-  ctx.fillText("click anywhere to continue", x + 24, y + h - 16);
+  ctx.fillText("click · Space · Enter · Esc — continue", x + 24, y + h - 16);
   ctx.restore();
 }
 
@@ -880,52 +894,88 @@ export function drawErrandTutorialDiagram(
   ctx: CanvasRenderingContext2D,
   dx: number,
   dy: number,
-  _w: number,
+  w: number,
   h: number,
 ): void {
   ctx.save();
-  const cy = dy + h / 2;
+  const pad = 8;
+  const innerX = dx + pad;
+  const innerY = dy + pad;
+  const innerW = Math.max(40, w - pad * 2);
+  const innerH = Math.max(36, h - pad * 2);
+
   const L = ERRAND_LAYOUT;
-  const scale = 0.38;
+  const baseScale = 0.42;
+  const laneStackH =
+    LANE_COUNT * L.laneRowH * baseScale +
+    (LANE_COUNT - 1) * L.laneGap * baseScale +
+    14;
+  const laneStackW =
+    L.queueW * baseScale +
+    (L.panelW - L.fieldPadX * 2 - L.queueW - L.queueLaneGap) * baseScale +
+    22 * baseScale +
+    14;
+  const scale =
+    Math.min(
+      baseScale,
+      innerW / Math.max(laneStackW, 1),
+      innerH / Math.max(laneStackH, 1),
+    ) * 0.96;
+
   const queueW = L.queueW * scale;
   const rowW = (L.panelW - L.fieldPadX * 2 - L.queueW - L.queueLaneGap) * scale;
   const rowH = L.laneRowH * scale;
   const gap = L.laneGap * scale;
-  const x0 = dx + 16;
-  const laneX = x0 + queueW + 12 * scale;
-  const y0 = cy - (LANE_COUNT * rowH + (LANE_COUNT - 1) * gap) / 2;
+  const drawnW = queueW + rowW + 22 * scale + 12;
+  const drawnH = LANE_COUNT * rowH + (LANE_COUNT - 1) * gap + 14;
+  const x0 = innerX + Math.max(0, (innerW - drawnW) / 2);
+  const y0 = innerY + Math.max(0, (innerH - drawnH) / 2);
+
+  ctx.beginPath();
+  ctx.rect(dx, dy, w, h);
+  ctx.clip();
+
   ctx.fillStyle = "rgba(11,13,18,0.92)";
-  ctx.fillRect(
-    x0 - 6,
-    y0 - 10,
-    queueW + rowW + 20 * scale,
-    LANE_COUNT * (rowH + gap) + 12,
-  );
+  ctx.beginPath();
+  ctx.roundRect(x0 - 5, y0 - 6, drawnW + 10, drawnH + 10, 8);
+  ctx.fill();
   ctx.strokeStyle = NEON_CYAN;
-  ctx.strokeRect(
-    x0 - 6,
-    y0 - 10,
-    queueW + rowW + 20 * scale,
-    LANE_COUNT * (rowH + gap) + 12,
-  );
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
   ctx.fillStyle = "rgba(123,224,255,0.12)";
-  ctx.fillRect(x0, y0, queueW, LANE_COUNT * rowH + (LANE_COUNT - 1) * gap);
+  ctx.fillRect(x0, y0 + 4, queueW, LANE_COUNT * rowH + (LANE_COUNT - 1) * gap);
+  const laneX = x0 + queueW + 10 * scale;
+
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  const labelFont = `${Math.max(10, Math.round(11 * scale))}px 'Cursor Mono', monospace`;
+  const heroLabels = ["Fixer", "Reviewer", "Firewall"] as const;
+  const laneKeys = ["1 — top", "2 — mid", "3 — bot"] as const;
+
   for (let i = 0; i < LANE_COUNT; i++) {
-    const yy = y0 + i * (rowH + gap);
+    const yy = y0 + 4 + i * (rowH + gap);
+    const midY = yy + rowH / 2;
     ctx.strokeStyle = "rgba(123,224,255,0.7)";
-    ctx.lineWidth = 1;
     ctx.strokeRect(laneX, yy, rowW, rowH);
-    ctx.fillStyle = "rgba(245,78,0,0.24)";
-    ctx.fillRect(laneX + rowW - 24 * scale, yy, 24 * scale, rowH);
-    ctx.fillStyle = NEON_CYAN;
-    ctx.font = `${Math.max(9, 10 * scale)}px 'Cursor Mono', monospace`;
-    ctx.fillText(["1", "2", "3"][i]!, laneX + 5, yy + rowH / 2 + 4);
+    ctx.fillStyle = "rgba(245,78,0,0.28)";
+    ctx.fillRect(
+      laneX + rowW - Math.max(18, 22 * scale),
+      yy,
+      Math.max(18, 22 * scale),
+      rowH,
+    );
+
+    ctx.font = labelFont;
     ctx.fillStyle = "#e9fbff";
-    ctx.fillText(["Fix", "Rev", "Wall"][i]!, x0 + 5, yy + rowH / 2 + 4);
+    ctx.fillText(heroLabels[i]!, x0 + 7, midY);
+
+    ctx.fillStyle = NEON_CYAN;
+    ctx.textAlign = "center";
+    ctx.fillText(laneKeys[i]!, laneX + rowW * 0.42, midY);
+    ctx.textAlign = "left";
   }
-  // Caption removed — the labels in each lane already say "Fix / Rev / Wall"
-  // with "1/2/3" beside them, and `← bugs march` is conveyed by the orange
-  // strip on the right of each lane row. The previous caption clipped under
-  // the Start button at the gate's fixed bottom inset.
+
+  ctx.textBaseline = "alphabetic";
   ctx.restore();
 }

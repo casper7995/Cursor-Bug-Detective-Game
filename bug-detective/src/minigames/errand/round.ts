@@ -339,19 +339,39 @@ export function laneDefensePromoteAgent(
   };
 }
 
+/** Why lane deploy might no-op (used for player-facing hints). */
+export type LaneDeployBlock =
+  | "none"
+  | "defeated"
+  | "no_head"
+  | "focus"
+  | "field_cap";
+
+export function laneDefenseDeployBlockReason(
+  rt: LaneDefenseRuntime,
+  lane: LaneIndex,
+): LaneDeployBlock {
+  if (rt.defeated) return "defeated";
+  const head = queueHead(rt);
+  if (head === null) return "no_head";
+  const def = AGENT_TRAY.find((a) => a.kind === head.kind);
+  if (!def || rt.focus < def.cost) return "focus";
+  const hadLane = rt.placed.some((p) => p.lane === lane);
+  const occupiedOther = rt.placed.filter((p) => p.lane !== lane).length;
+  if (!hadLane && occupiedOther >= LANE_DEFENSE.maxPlacedAgents)
+    return "field_cap";
+  return "none";
+}
+
 export function laneDefenseDeployToLane(
   rt: LaneDefenseRuntime,
   lane: LaneIndex,
 ): LaneDefenseRuntime {
-  if (rt.defeated) return rt;
+  if (laneDefenseDeployBlockReason(rt, lane) !== "none") return rt;
   const head = queueHead(rt);
   if (head === null) return rt;
   const def = AGENT_TRAY.find((a) => a.kind === head.kind);
-  if (!def || rt.focus < def.cost) return rt;
-
-  const hadLane = rt.placed.some((p) => p.lane === lane);
-  const occupiedOther = rt.placed.filter((p) => p.lane !== lane).length;
-  if (!hadLane && occupiedOther >= LANE_DEFENSE.maxPlacedAgents) return rt;
+  if (!def) return rt;
 
   return {
     ...rt,

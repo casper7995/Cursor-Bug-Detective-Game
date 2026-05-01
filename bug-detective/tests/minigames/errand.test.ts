@@ -3,6 +3,7 @@ import {
   buildWaveSpawnRoster,
   clueLockProgress01,
   createLaneDefenseRuntime,
+  laneDefenseDeployBlockReason,
   laneDefenseDeployToLane,
   laneDefenseDeskScore,
   laneDefensePromoteAgent,
@@ -97,6 +98,14 @@ describe("lane defense errand", () => {
         secondsHeld: 10,
       }),
     ).toBe(1000);
+  });
+
+  it("deploy block reason reports focus shortfall", () => {
+    let rt = createLaneDefenseRuntime(1);
+    expect(laneDefenseDeployBlockReason(rt, 0)).toBe("none");
+    rt = { ...rt, focus: 10 };
+    expect(laneDefenseDeployBlockReason(rt, 0)).toBe("focus");
+    expect(laneDefenseDeployToLane(rt, 0)).toBe(rt);
   });
 
   it("queue deployment spends focus, recharges the hero, and occupies lane", () => {

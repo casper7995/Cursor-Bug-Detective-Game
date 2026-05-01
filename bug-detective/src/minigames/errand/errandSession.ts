@@ -13,6 +13,7 @@ import {
 import { hitDeskHelpButton, TutorialGate } from "../desk/tutorialGate";
 import {
   createLaneDefenseRuntime,
+  laneDefenseDeployBlockReason,
   laneDefenseDeployToLane,
   laneDefenseDeskScore,
   laneDefensePromoteAgent,
@@ -78,11 +79,12 @@ export class ErrandSession {
     tagline:
       "Hold three lanes against inbound defects—including Zero-Day bosses.",
     howToLines: [
-      "Press 1, 2, or 3 to send the next Agent into the top, middle, or bottom lane.",
-      "Bugs march from the right toward your desk. Each Hero (Fixer / Reviewer / Firewall) recharges on the left rail.",
-      "Click a queue card to promote it, then click a lane or press 1 / 2 / 3 to deploy the ready head.",
-      "Evidence locks after 3 waves cleared or 60s survived. Hold the desk for a higher score.",
+      "Lanes: press 1–3, QWE, or numpad — top, middle, bottom (matches numbers on each lane row).",
+      "FOCUS (top-right) must be ≥ the Hero cost. WAIT = hero ready; earn more FOCUS before deploying.",
+      "Bugs march from the right. Deploy replaces that lane's hero. Click a left rail card to promote another hero first.",
+      "Evidence locks after 3 waves cleared or 60s survived.",
     ],
+    diagramHeight: 102,
     drawDiagram: drawErrandTutorialDiagram,
     storageKey: "bd:miniTutorial:errand",
   });
@@ -114,35 +116,44 @@ export class ErrandSession {
     );
   }
 
-  private flashFooter(msg: string): void {
+  private flashFooter(msg: string, clearMs = 900): void {
     this.transientFooter = msg;
     if (this.transientFooterClear) clearTimeout(this.transientFooterClear);
     this.transientFooterClear = setTimeout(() => {
       this.transientFooter = null;
       this.transientFooterClear = null;
-    }, 900);
+    }, clearMs);
   }
 
-  private deployLane(laneHit: LaneIndex): void {
-    const head = queueHead(this.rt);
-    if (head === null) {
+  /** @returns true when deploy succeeded (launch FX + spend). */
+  private deployLane(laneHit: LaneIndex): boolean {
+    const block = laneDefenseDeployBlockReason(this.rt, laneHit);
+    if (block !== "none") {
       sfxErrandReject();
-      this.flashFooter("No agent ready — queue recharging.");
-      return;
+      const head = queueHead(this.rt);
+      const def = head
+        ? AGENT_TRAY.find((a) => a.kind === head.kind)
+        : undefined;
+      if (block === "focus" && def) {
+        this.flashFooter(
+          `Need ${def.cost} focus — have ${Math.floor(this.rt.focus)} (regenerates).`,
+          2200,
+        );
+      } else if (block === "no_head") {
+        this.flashFooter("Hero recharging — wait for READY on the ring.", 1800);
+      } else if (block === "field_cap") {
+        this.flashFooter(
+          "Max heroes on field — deploy into a lane to swap.",
+          2000,
+        );
+      }
+      return false;
     }
-    const def = AGENT_TRAY.find((a) => a.kind === head.kind)!;
     const next = laneDefenseDeployToLane(this.rt, laneHit);
-    if (next === this.rt) {
-      sfxErrandReject();
-      this.flashFooter(
-        this.rt.focus < def.cost
-          ? `Need ${def.cost} focus.`
-          : "No agent ready — queue recharging.",
-      );
-      return;
-    }
+    if (next === this.rt) return false;
     this.rt = next;
     sfxErrandDispatch();
+    return true;
   }
 
   attachPointer(root: HTMLElement): void {
@@ -171,14 +182,6 @@ export class ErrandSession {
     const down = (e: PointerEvent): void => {
       const p = this.gameFromClient(e.clientX, e.clientY);
       if (this.outcome) return;
-      if (hitDeskCloseButton(p.x, p.y)) {
-        this.onExit();
-        return;
-      }
-      if (hitDeskHelpButton(p.x, p.y, W)) {
-        this.gate.reopen();
-        return;
-      }
       if (this.gate.isBlocking()) {
         const action = this.gate.handlePointer(p.x, p.y, W, H);
         if (action !== null) {
@@ -187,8 +190,18 @@ export class ErrandSession {
         }
         return;
       }
+      // Defeat must run before close-button handling so X / backdrop clicks
+      // pin notebook cipher when clueLocked (Escape shares this path).
       if (this.phase.kind === "defeat") {
         this.finalizeDefeatOutcome();
+        return;
+      }
+      if (hitDeskCloseButton(p.x, p.y)) {
+        this.onExit();
+        return;
+      }
+      if (hitDeskHelpButton(p.x, p.y, W)) {
+        this.gate.reopen();
         return;
       }
       if (this.phase.kind !== "play") return;
@@ -204,7 +217,7 @@ export class ErrandSession {
 
       const laneHit = hitLaneDefenseLane(p.x, p.y);
       if (laneHit !== null) {
-        this.deployLane(laneHit);
+        void this.deployLane(laneHit);
       }
     };
     root.addEventListener("pointermove", move, { passive: true });
@@ -213,6 +226,11 @@ export class ErrandSession {
       if (e.key === "Escape") {
         if (this.gate.isBlocking()) {
           this.gate.dismissFromKey();
+          return;
+        }
+        if (this.phase.kind === "defeat") {
+          this.finalizeDefeatOutcome();
+          e.preventDefault();
           return;
         }
         this.onExit();
@@ -231,12 +249,19 @@ export class ErrandSession {
         Digit1: 0,
         Digit2: 1,
         Digit3: 2,
+        Numpad1: 0,
+        Numpad2: 1,
+        Numpad3: 2,
+        KeyQ: 0,
+        KeyW: 1,
+        KeyE: 2,
       };
       const laneIdx = laneKeys[e.code];
       if (laneIdx !== undefined) {
-        this.keyLaneFlash = laneIdx;
-        this.keyLaneFlashT = 0.28;
-        this.deployLane(laneIdx);
+        if (this.deployLane(laneIdx)) {
+          this.keyLaneFlash = laneIdx;
+          this.keyLaneFlashT = 0.28;
+        }
         e.preventDefault();
       }
     };
@@ -382,11 +407,11 @@ export class ErrandSession {
     if (this.transientFooter) return this.transientFooter;
     switch (this.phase.kind) {
       case "play":
-        return "1/2/3 deploy lane · click queue to promote · ESC exit";
+        return "1–3 / QWE / numpad → lanes · FOCUS ≥ card · queue click = promote · ESC";
       case "defeat":
         return this.rt.clueLocked
-          ? "evidence locked · click to pin cipher"
-          : "clue never locked · click to exit without cipher";
+          ? "cipher pins on click / Space / Enter / Esc"
+          : "clue never locked · click / Esc — exit without cipher";
       default:
         return null;
     }

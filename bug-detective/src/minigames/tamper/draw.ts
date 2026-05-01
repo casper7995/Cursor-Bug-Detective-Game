@@ -164,6 +164,7 @@ function bugbotQuip(call: TamperCall): string {
 export function drawDiffCard(
   ctx: CanvasRenderingContext2D,
   scene: TamperScene,
+  currentTamperedSpotId: string,
   pointAtSpotId: string | null,
   showRealTamper: boolean,
   pickingSpot: boolean,
@@ -199,12 +200,23 @@ export function drawDiffCard(
   ctx.restore();
 
   const { original, tonight } = getTamperPanelRects();
-  drawScenePanel(ctx, scene, original, "original", null, false, false, null);
+  drawScenePanel(
+    ctx,
+    scene,
+    original,
+    "original",
+    currentTamperedSpotId,
+    null,
+    false,
+    false,
+    null,
+  );
   drawScenePanel(
     ctx,
     scene,
     tonight,
     "tonight",
+    currentTamperedSpotId,
     pointAtSpotId,
     showRealTamper,
     pickingSpot,
@@ -217,6 +229,7 @@ function drawScenePanel(
   scene: TamperScene,
   panel: PanelRect,
   half: "original" | "tonight",
+  currentTamperedSpotId: string,
   pointAtSpotId: string | null,
   showRealTamper: boolean,
   pickingSpot: boolean,
@@ -274,7 +287,8 @@ function drawScenePanel(
 
   // Props.
   for (const spot of scene.spots) {
-    const isTamperHere = half === "tonight" && spot.tampered;
+    const isTamperHere =
+      half === "tonight" && spot.id === currentTamperedSpotId;
     const sketchKey =
       isTamperHere && spot.tonightSketchKey
         ? spot.tonightSketchKey
@@ -706,8 +720,12 @@ export interface TamperResultCardInfo {
   readonly caughtLies: number;
   /** True when the round earned a desk clue token. */
   readonly earnedClue: boolean;
-  /** TONIGHT variant text for the tampered prop ("key (bent)"). */
-  readonly tamperedVariant: string;
+  /**
+   * Distinct TONIGHT variant strings seen across the round, in encounter
+   * order ("key (bent)", "wire (cut strand)", …). Each call rolls its own
+   * tampered prop, so the recap lists every prop the player had to spot.
+   */
+  readonly tamperedVariants: readonly string[];
 }
 
 export function drawResultCard(
@@ -726,9 +744,11 @@ export function drawResultCard(
   const y = (H - h) / 2;
   drawAiCard(ctx, x, y, w, h, { radius: 14 });
 
+  const variantList =
+    info.tamperedVariants.length > 0 ? info.tamperedVariants.join(", ") : "—";
   const teach = info.earnedClue
-    ? `Real change: ${info.tamperedVariant}.`
-    : `Real change: ${info.tamperedVariant}. Need 3+ correct AND 1+ caught lie for a clue.`;
+    ? `Tampers tonight: ${variantList}.`
+    : `Tampers tonight: ${variantList}. Need 3+ correct AND 1+ caught lie for a clue.`;
 
   drawAiResultStrip(ctx, x, y, w, h, {
     headline: String(info.score),

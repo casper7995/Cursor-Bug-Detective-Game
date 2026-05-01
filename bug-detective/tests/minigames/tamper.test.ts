@@ -69,20 +69,37 @@ describe("tamper round determinism", () => {
     );
   });
 
-  it("round has 6 calls and exactly one tampered spot", () => {
+  it("round has 6 calls, each tagged with a tamperedSpotId from the scene", () => {
     const r = buildTamperRound(42);
     expect(r.calls.length).toBe(TAMPER_CALLS_PER_ROUND);
-    const tamperedCount = r.scene.spots.filter((s) => s.tampered).length;
-    expect(tamperedCount).toBe(1);
+    const sceneIds = new Set(r.scene.spots.map((s) => s.id));
+    for (const c of r.calls) {
+      expect(sceneIds.has(c.tamperedSpotId)).toBe(true);
+    }
+    // Round-level tamperedSpotId is the last call's, used by the result-card
+    // teach line as a back-compat hook.
+    expect(r.tamperedSpotId).toBe(r.calls[r.calls.length - 1]!.tamperedSpotId);
   });
 
-  it("many seeds each mark exactly one tampered spot", () => {
+  it("per-call tampered spot rotates — round avg ≥3 distinct spots over 64 seeds", () => {
+    let totalDistinct = 0;
     for (let seed = 0; seed < 64; seed++) {
       const r = buildTamperRound(seed);
-      expect(r.scene.spots.filter((s) => s.tampered).length).toBe(1);
-      expect(r.tamperedSpotId).toBe(
-        r.scene.spots.find((s) => s.tampered)?.id ?? "",
+      const distinct = new Set(r.calls.map((c) => c.tamperedSpotId)).size;
+      totalDistinct += distinct;
+    }
+    // 6 independent rolls over 5–6 spots — expected distinct count is ~4.
+    // Asserting ≥3 average gives margin against RNG flake.
+    expect(totalDistinct / 64).toBeGreaterThanOrEqual(3);
+  });
+
+  it("tamperedSpotIdsThisRound matches the set of distinct call tampers", () => {
+    for (let seed = 0; seed < 16; seed++) {
+      const r = buildTamperRound(seed);
+      const expected = Array.from(
+        new Set(r.calls.map((c) => c.tamperedSpotId)),
       );
+      expect([...r.tamperedSpotIdsThisRound]).toEqual(expected);
     }
   });
 });
@@ -121,23 +138,16 @@ describe("tamper scoring", () => {
 
   it("disagree-point with the wrong spot is treated as a wrong call", () => {
     const r = buildTamperRound(99);
-    // Find a lying call to test the wrong-spot path.
     const lyingCallIdx = r.calls.findIndex((c) => c.bugbotIsLying);
-    if (lyingCallIdx < 0) {
-      // Lies are pseudo-random; if seed yields no lies, choose another.
-      const r2 = buildTamperRound(101);
-      const idx = r2.calls.findIndex((c) => c.bugbotIsLying);
-      expect(idx).toBeGreaterThanOrEqual(0);
-      return;
-    }
+    expect(lyingCallIdx).toBeGreaterThanOrEqual(0);
+    const lyingCall = r.calls[lyingCallIdx]!;
     const wrongSpot =
-      r.scene.spots.find((s) => s.id !== r.tamperedSpotId)?.id ?? "";
+      r.scene.spots.find((s) => s.id !== lyingCall.tamperedSpotId)?.id ?? "";
     expect(wrongSpot).not.toBe("");
-    const v = scoreCall(
-      r.calls[lyingCallIdx]!,
-      { kind: "disagree-point", spotId: wrongSpot },
-      r.tamperedSpotId,
-    );
+    const v = scoreCall(lyingCall, {
+      kind: "disagree-point",
+      spotId: wrongSpot,
+    });
     expect(v.rightCall).toBe(false);
     expect(v.delta).toBeLessThan(0);
   });
@@ -155,7 +165,7 @@ describe("tamper scoring", () => {
           : { kind: "agree" as const };
       }
       if (c.bugbotIsLying) {
-        return { kind: "disagree-point" as const, spotId: r.tamperedSpotId };
+        return { kind: "disagree-point" as const, spotId: c.tamperedSpotId };
       }
       // Honest call in the second half — agree to avoid penalty.
       return { kind: "agree" as const };
@@ -286,16 +296,16 @@ describe("tamper confident-catch bonus", () => {
   it("awards +100 when caught lie has confidence >= 85", () => {
     const lyingCallHi = {
       callIndex: 0,
+      tamperedSpotId: "real",
       bugbotPointsAtSpotId: "irrelevant",
       bugbotClaim: "clean" as const,
       bugbotConfidencePct: 92,
       bugbotIsLying: true,
     };
-    const r = scoreCall(
-      lyingCallHi,
-      { kind: "disagree-point", spotId: "real" },
-      "real",
-    );
+    const r = scoreCall(lyingCallHi, {
+      kind: "disagree-point",
+      spotId: "real",
+    });
     expect(r.rightCall).toBe(true);
     expect(r.caughtLie).toBe(true);
     expect(r.confidentCatch).toBe(true);
@@ -306,16 +316,16 @@ describe("tamper confident-catch bonus", () => {
   it("does NOT award the bonus when confidence < 85", () => {
     const lyingCallLo = {
       callIndex: 0,
+      tamperedSpotId: "real",
       bugbotPointsAtSpotId: "irrelevant",
       bugbotClaim: "clean" as const,
       bugbotConfidencePct: 70,
       bugbotIsLying: true,
     };
-    const r = scoreCall(
-      lyingCallLo,
-      { kind: "disagree-point", spotId: "real" },
-      "real",
-    );
+    const r = scoreCall(lyingCallLo, {
+      kind: "disagree-point",
+      spotId: "real",
+    });
     expect(r.caughtLie).toBe(true);
     expect(r.confidentCatch).toBe(false);
     expect(r.delta).toBe(400);

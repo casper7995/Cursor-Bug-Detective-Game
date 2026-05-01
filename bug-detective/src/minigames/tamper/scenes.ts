@@ -10,9 +10,9 @@ import type { TamperScene } from "./types";
  * Spot coords are local to the TONIGHT panel (256 wide × 200 tall, top-left at
  * (256, 64)). Draw maps them into world pixels by adding the panel offset.
  *
- * Every spot defines `tonightIfThisTampered`: when a round marks exactly one
- * `tampered: true`, that row’s TONIGHT line shows the variant; all other rows
- * match between ORIGINAL and TONIGHT so the player can compare in-panel.
+ * Every spot defines `tonightIfThisTampered`: when a call rolls this spot as
+ * its tampered prop, that row’s TONIGHT line shows the variant; all other
+ * rows match between ORIGINAL and TONIGHT so the player can compare in-panel.
  */
 export const TAMPER_SCENES: readonly TamperScene[] = [
   {
@@ -24,7 +24,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 38,
         y: 30,
         r: 22,
-        tampered: false,
         label: "stamp",
         tonightIfThisTampered: "stamp (offset)",
         sketchKey: "stamp",
@@ -35,7 +34,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 130,
         y: 50,
         r: 28,
-        tampered: false,
         label: "photo",
         tonightIfThisTampered: "photo (glare streak)",
         sketchKey: "photo",
@@ -46,7 +44,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 200,
         y: 30,
         r: 18,
-        tampered: false,
         label: "pen",
         tonightIfThisTampered: "pen (smudge on cap)",
         sketchKey: "pen",
@@ -57,7 +54,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 192,
         y: 110,
         r: 18,
-        tampered: false,
         label: "paperclip",
         tonightIfThisTampered: "paperclip + staple",
         sketchKey: "paperclip",
@@ -68,7 +64,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 60,
         y: 130,
         r: 24,
-        tampered: false,
         label: "signature",
         tonightIfThisTampered: "signature (second loop)",
         sketchKey: "signature",
@@ -85,7 +80,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 36,
         y: 40,
         r: 20,
-        tampered: false,
         label: "vial",
         tonightIfThisTampered: "vial (empty)",
         sketchKey: "vial",
@@ -96,7 +90,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 96,
         y: 32,
         r: 18,
-        tampered: false,
         label: "tag",
         tonightIfThisTampered: "tag (torn corner)",
         sketchKey: "tag",
@@ -107,7 +100,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 158,
         y: 64,
         r: 22,
-        tampered: false,
         label: "key",
         tonightIfThisTampered: "key (bent)",
         sketchKey: "key",
@@ -118,7 +110,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 60,
         y: 130,
         r: 26,
-        tampered: false,
         label: "boot print",
         tonightIfThisTampered: "boot print (smear)",
         sketchKey: "boot print",
@@ -129,7 +120,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 200,
         y: 130,
         r: 24,
-        tampered: false,
         label: "ledger",
         tonightIfThisTampered: "ledger (dog-eared page)",
         sketchKey: "ledger",
@@ -146,7 +136,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 70,
         y: 30,
         r: 24,
-        tampered: false,
         label: "lampshade",
         tonightIfThisTampered: "lampshade (tape on rim)",
         sketchKey: "lampshade",
@@ -157,7 +146,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 130,
         y: 60,
         r: 18,
-        tampered: false,
         label: "switch",
         tonightIfThisTampered: "switch (scuff marks)",
         sketchKey: "switch",
@@ -168,7 +156,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 196,
         y: 70,
         r: 20,
-        tampered: false,
         label: "wire",
         tonightIfThisTampered: "wire (cut strand)",
         sketchKey: "wire",
@@ -179,7 +166,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 60,
         y: 130,
         r: 28,
-        tampered: false,
         label: "puddle",
         tonightIfThisTampered: "puddle (oil sheen)",
         sketchKey: "puddle",
@@ -190,7 +176,6 @@ export const TAMPER_SCENES: readonly TamperScene[] = [
         x: 200,
         y: 132,
         r: 22,
-        tampered: false,
         label: "book",
         tonightIfThisTampered: "book (spine shifted)",
         sketchKey: "book",

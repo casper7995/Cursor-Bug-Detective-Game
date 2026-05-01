@@ -79,9 +79,13 @@ describe("desk mini clue gating helpers", () => {
 
     const lyingIdx = r.calls.findIndex((c) => c.bugbotIsLying);
     expect(lyingIdx).toBeGreaterThanOrEqual(0);
+    const lyingCall = r.calls[lyingIdx]!;
     const withCatch = honest.map((v, i) =>
       i === lyingIdx
-        ? ({ kind: "disagree-point", spotId: r.tamperedSpotId } as CallVerdict)
+        ? ({
+            kind: "disagree-point",
+            spotId: lyingCall.tamperedSpotId,
+          } as CallVerdict)
         : v,
     );
     const caught = scoreTamperRound(r, withCatch);

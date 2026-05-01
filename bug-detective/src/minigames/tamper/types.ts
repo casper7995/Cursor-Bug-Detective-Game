@@ -9,11 +9,6 @@ export interface TamperSpot {
   readonly x: number;
   readonly y: number;
   readonly r: number;
-  /**
-   * True if the spot is the real tampered prop in TONIGHT (the right-hand
-   * panel). Each round has exactly one tampered spot.
-   */
-  readonly tampered: boolean;
   /** ORIGINAL diff line (left / top block). */
   readonly label: string;
   /**
@@ -34,13 +29,19 @@ export interface TamperScene {
   readonly id: SceneId;
   /** Display name for the result card / Bugbot intro. */
   readonly displayName: string;
-  /** All candidate spots — at least 5 per scene; one of them carries
-   *  `tampered: true` when the round is built. */
+  /** All candidate spots — at least 5 per scene. Each call rolls its own
+   *  tampered spot, so the panel diff resets every call. */
   readonly spots: readonly TamperSpot[];
 }
 
 export interface TamperCall {
   readonly callIndex: number;
+  /**
+   * Which spot is the real tampered prop on TONIGHT for **this call**.
+   * Rerolled each call so every Bugbot decision asks the player to re-scan
+   * the panels rather than reusing call 1's deduction.
+   */
+  readonly tamperedSpotId: string;
   /** Which spot Bugbot is pointing at this call. */
   readonly bugbotPointsAtSpotId: string;
   /** What Bugbot is claiming about that spot. */
@@ -58,8 +59,14 @@ export type CallVerdict =
 
 export interface TamperRound {
   readonly scene: TamperScene;
-  /** Spot id of the real tampered evidence. */
+  /**
+   * Backwards-compat hook for the result-card teach line. Set to the **last**
+   * call's `tamperedSpotId`; the result-card lists the unique set of tampered
+   * props in `tamperedSpotIdsThisRound` for the player.
+   */
   readonly tamperedSpotId: string;
+  /** Distinct tampered spots seen across this round, in encounter order. */
+  readonly tamperedSpotIdsThisRound: readonly string[];
   /** 6 calls Bugbot makes during the round. */
   readonly calls: readonly TamperCall[];
 }

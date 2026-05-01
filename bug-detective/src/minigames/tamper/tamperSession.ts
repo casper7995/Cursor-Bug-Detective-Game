@@ -374,7 +374,7 @@ export class TamperSession {
     const call = this.round.calls[callIndex];
     if (!call) return;
     this.verdicts.push(v);
-    const r = scoreCall(call, v, this.round.tamperedSpotId);
+    const r = scoreCall(call, v);
     sfxTamperVerdict(r);
     this.phase = { kind: "verdict", callIndex, t: 0, result: r, verdict: v };
   }
@@ -510,6 +510,7 @@ export class TamperSession {
     drawDiffCard(
       ctx,
       this.round.scene,
+      cur?.call.tamperedSpotId ?? this.round.tamperedSpotId,
       cur?.call.bugbotPointsAtSpotId ?? null,
       showRealTamper,
       pickingSpot,
@@ -562,9 +563,13 @@ export class TamperSession {
       drawInstructionCard(ctx, W, H, this.phase.t / INSTRUCTIONS_MAX_S);
     } else if (this.phase.kind === "result") {
       const r = scoreTamperRound(this.round, this.verdicts);
-      const tamperedSpot = this.round.scene.spots.find(
-        (s) => s.id === this.round.tamperedSpotId,
-      );
+      const tamperedVariants = this.round.tamperedSpotIdsThisRound
+        .map(
+          (id) =>
+            this.round.scene.spots.find((s) => s.id === id)
+              ?.tonightIfThisTampered,
+        )
+        .filter((v): v is string => typeof v === "string");
       drawResultCard(
         ctx,
         W,
@@ -574,7 +579,7 @@ export class TamperSession {
           rightCalls: r.rightCalls,
           caughtLies: r.caughtLies,
           earnedClue: tamperEarnsDeskClue(r),
-          tamperedVariant: tamperedSpot?.tonightIfThisTampered ?? "?",
+          tamperedVariants,
         },
         TAMPER_CALLS_PER_ROUND,
       );

@@ -31,44 +31,43 @@ function pickSceneForSeed(rng: () => number): TamperScene {
 /**
  * Build a deterministic 6-call round from the (already-namespaced) seed.
  * - Picks one of the scenes.
- * - Marks exactly one spot as the real tampered spot.
- * - Generates 6 Bugbot calls. About a third of them lie (2 of 6 by default,
- *   can vary 1..3 per seed). Each lying call is the player's chance to score
- *   a +250 catch by clicking the real tampered spot.
+ * - Each of the 6 calls rolls its own `tamperedSpotId` so the panel diff
+ *   resets every call — knowing call 1's answer tells you nothing about
+ *   call 2.
+ * - About a third of calls lie (1..3 per seed). Lies cluster in the back
+ *   half; lying calls let the player score a +250 catch by clicking the
+ *   call's tampered spot (and +100 more if Bugbot was confident).
  */
 export function buildTamperRound(seed: number): TamperRound {
   const rng = makeSeededRng(seed);
-  const baseScene = pickSceneForSeed(rng);
-  const spots = baseScene.spots;
+  const scene = pickSceneForSeed(rng);
+  const spots = scene.spots;
   if (spots.length === 0) throw new Error("scene has no spots");
 
-  // Pick the tampered spot deterministically.
-  const tamperedIdx = Math.floor(rng() * spots.length) % spots.length;
-  const tamperedSpot = spots[tamperedIdx] as TamperSpot;
-
-  const scene: TamperScene = {
-    ...baseScene,
-    spots: spots.map((s, i) => ({ ...s, tampered: i === tamperedIdx })),
-  };
-
   const calls: TamperCall[] = [];
-  // Distribute 6 calls across spots so the player sees variety. Bugbot picks
-  // a random spot each call (with replacement). About 2 of 6 calls are lies
-  // — at least 1, at most 3 per seed. Lies cluster in the back half so the
-  // round ramps in tension; high-confidence lies are worth more (see scoreCall).
   const numLies = 1 + Math.floor(rng() * 3); // 1..3
   const lyingCallIndices = pickIndicesForLies(numLies, rng);
   // T-10: sample spots WITHOUT replacement so Bugbot doesn't point at the
-  // same prop 2-3 times per round. When the deck is exhausted, reshuffle.
-  let deck: TamperSpot[] = shuffle(spots, rng);
-  let deckIdx = 0;
+  // same prop back-to-back. Used for the *pointing* axis only.
+  let pointDeck: TamperSpot[] = shuffle(spots, rng);
+  let pointIdx = 0;
+  // Independent deck for the per-call tampered spot — fresh shuffle so the
+  // tampered prop is decorrelated from Bugbot's pointing target.
+  let tamperDeck: TamperSpot[] = shuffle(spots, rng);
+  let tamperIdx = 0;
+
   for (let i = 0; i < TAMPER_CALLS_PER_ROUND; i++) {
-    if (deckIdx >= deck.length) {
-      deck = shuffle(spots, rng);
-      deckIdx = 0;
+    if (pointIdx >= pointDeck.length) {
+      pointDeck = shuffle(spots, rng);
+      pointIdx = 0;
     }
-    const spot = deck[deckIdx++] as TamperSpot;
-    const truthIsTampered = spot.id === tamperedSpot.id;
+    if (tamperIdx >= tamperDeck.length) {
+      tamperDeck = shuffle(spots, rng);
+      tamperIdx = 0;
+    }
+    const pointSpot = pointDeck[pointIdx++] as TamperSpot;
+    const tamperedSpot = tamperDeck[tamperIdx++] as TamperSpot;
+    const truthIsTampered = pointSpot.id === tamperedSpot.id;
     const isLying = lyingCallIndices.has(i);
     const claim: "tampered" | "clean" = isLying
       ? truthIsTampered
@@ -85,14 +84,32 @@ export function buildTamperRound(seed: number): TamperRound {
     const conf = confFloor + Math.floor(rng() * confSpan); // [floor..99]
     calls.push({
       callIndex: i,
-      bugbotPointsAtSpotId: spot.id,
+      tamperedSpotId: tamperedSpot.id,
+      bugbotPointsAtSpotId: pointSpot.id,
       bugbotClaim: claim,
       bugbotConfidencePct: conf,
       bugbotIsLying: isLying,
     });
   }
 
-  return { scene, tamperedSpotId: tamperedSpot.id, calls };
+  // Distinct tampered spots (in encounter order) for the result-card teach
+  // line. Falls back to the last call when the round somehow only saw one.
+  const seen = new Set<string>();
+  const tamperedSpotIdsThisRound: string[] = [];
+  for (const c of calls) {
+    if (!seen.has(c.tamperedSpotId)) {
+      seen.add(c.tamperedSpotId);
+      tamperedSpotIdsThisRound.push(c.tamperedSpotId);
+    }
+  }
+  const lastTampered = calls[calls.length - 1]!.tamperedSpotId;
+
+  return {
+    scene,
+    tamperedSpotId: lastTampered,
+    tamperedSpotIdsThisRound,
+    calls,
+  };
 }
 
 /**
@@ -151,11 +168,7 @@ export interface CallScore {
  * additional CONFIDENT_CATCH_BONUS — the louder Bugbot is when wrong, the
  * more it's worth to call it out.
  */
-export function scoreCall(
-  call: TamperCall,
-  verdict: CallVerdict,
-  tamperedSpotId: string,
-): CallScore {
+export function scoreCall(call: TamperCall, verdict: CallVerdict): CallScore {
   const honest = !call.bugbotIsLying;
   switch (verdict.kind) {
     case "agree": {
@@ -178,8 +191,8 @@ export function scoreCall(
     }
     case "disagree-point": {
       // Player must (a) be right that Bugbot is lying AND (b) point at the
-      // truly tampered spot. Anything less is a wrong call.
-      const right = !honest && verdict.spotId === tamperedSpotId;
+      // truly tampered spot for *this call*. Anything less is a wrong call.
+      const right = !honest && verdict.spotId === call.tamperedSpotId;
       if (right) {
         const confident =
           call.bugbotConfidencePct >= TAMPER_CONFIDENT_THRESHOLD;
@@ -232,7 +245,7 @@ export function scoreTamperRound(
   for (let i = 0; i < n; i++) {
     const call = round.calls[i] as TamperCall;
     const v = verdicts[i] as CallVerdict;
-    const r = scoreCall(call, v, round.tamperedSpotId);
+    const r = scoreCall(call, v);
     total += r.delta;
     if (r.rightCall) right++;
     else wrong++;

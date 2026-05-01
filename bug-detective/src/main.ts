@@ -66,6 +66,16 @@ import { createSettingsPanel } from "./ui/settingsPanel";
 import { isSkipIntro } from "./ui/skipIntroPref";
 import { tryMountRunnerTutorialGate } from "./ui/runnerTutorialGate";
 import { recordRound, showStreakOutro } from "./ui/streakOutro";
+import {
+  buildExitUrl,
+  buildReturnUrl,
+  createExitPortal,
+  createReturnPortal,
+  parsePortalParams,
+  PORTAL_TAG_EXIT,
+  PORTAL_TAG_RETURN,
+  type PortalHandle,
+} from "./scene/portal";
 
 // ---------------------------------------------------------------------
 // Boot
@@ -92,16 +102,25 @@ if (queryParams.get("reset") === "1") {
     /* private browsing — nothing to reset */
   }
 }
+// Vibe Jam 2026 portal protocol: ?portal=true means another game just
+// flung the player here through the Vibeverse. Per spec, drop straight
+// into the desk view (no splash, no peel) and place a return portal.
+// Stored params are forwarded onto exit-portal navigation, both back to
+// the source game (via `ref`) and forward to the Vibe Jam hub.
+const PORTAL_BOOT = parsePortalParams(queryParams);
+
 if (queryParams.get("mobile") === "1" || isMobile()) {
   // Mobile users get a dismissable card explaining the desktop trade-off
   // and a "Play simplified" button. The gate's promise resolves only
   // when they pick "Play simplified"; copy/share keep the gate up by
-  // design.
+  // design. The mobile gate fires BEFORE the portal-arrival skip-splash
+  // path so narrow+touch devices still see the desktop-only message.
   void mountMobileGate(root).then(() => bootGame({ simplified: true }));
-} else if (isSkipIntro()) {
-  // Returning visitor opted in to "Skip intro" in Settings. Boot the game
-  // immediately. WebAudio will resume on the first hover/click during
-  // investigation (audio module attaches its own listeners).
+} else if (PORTAL_BOOT.arrivedViaPortal || isSkipIntro()) {
+  // Portal arrival OR returning visitor who opted in to "Skip intro" in
+  // Settings: boot the game immediately. WebAudio resumes on the first
+  // hover/click during investigation. Portal arrivals also skip the
+  // page-peel intro per the vibej.am spec ("instantly drop into desk").
   bootGame({ simplified: false });
 } else {
   // Show the title splash first; once the user clicks/keys, boot the game.
@@ -451,7 +470,9 @@ function bootGameInner(simplified: boolean): void {
       envelope: project(diorama.evidenceEnvelopeRoot),
       reagent: project(diorama.reagentTray),
       lamp: project(diorama.lamp),
+      portal_exit: project(exitPortal.group),
     };
+    if (returnPortal) out.portal_return = project(returnPortal.group);
     // Project the centroid of every hoverable that carries one of the
     // launcher tags so the headless playtest can find a definitive
     // on-screen pixel for each clickable prop. Use bounding-box center
@@ -490,6 +511,24 @@ function bootGameInner(simplified: boolean): void {
   };
   diorama.root.visible = false; // hidden during the page-peel intro
   scene.add(diorama.root);
+
+  // ---- Vibe Jam 2026 portal --------------------------------------------
+  // Always show the EXIT portal so anyone visiting can hop to the Vibe Jam
+  // hub. The RETURN portal is added only when the player arrived via
+  // ?portal=true (per the spec, the source game's host comes in on `ref`).
+  const portalArrived = PORTAL_BOOT.arrivedViaPortal;
+  const exitPortal: PortalHandle = createExitPortal(scene);
+  // Portal must be hidden during the page-peel intro otherwise it
+  // appears as a floating ring in front of the lifted page. Skip-intro
+  // and portal-arrival paths set this back to visible below.
+  exitPortal.group.visible = false;
+  let returnPortal: PortalHandle | null = null;
+  if (portalArrived) {
+    const refHost = PORTAL_BOOT.stored.ref ?? "";
+    if (refHost) {
+      returnPortal = createReturnPortal(scene, refHost);
+    }
+  }
 
   const mascot = createMascotMesh();
   // Default to intro-scale (small, OS-cursor-sized). Investigation-time the
@@ -975,8 +1014,43 @@ function bootGameInner(simplified: boolean): void {
     }
   }
 
+  /** Raycast against just the portal meshes; portal clicks navigate away. */
+  function tryHandlePortalClick(clientX: number, clientY: number): boolean {
+    const targets: THREE.Object3D[] = [];
+    if (exitPortal.group.visible) targets.push(exitPortal.group);
+    if (returnPortal?.group.visible) targets.push(returnPortal.group);
+    if (targets.length === 0) return false;
+    const rect = renderer.domElement.getBoundingClientRect();
+    deskInteractionNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    deskInteractionNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    deskInteractionRay.setFromCamera(deskInteractionNdc, cameraRig.camera);
+    const hits = deskInteractionRay.intersectObjects(targets, true);
+    for (const h of hits) {
+      const tag = h.object?.userData?.tag;
+      if (tag === PORTAL_TAG_EXIT) {
+        const url = buildExitUrl(PORTAL_BOOT.stored);
+        console.info(`[bug-detective] portal exit → ${url}`);
+        window.location.href = url;
+        return true;
+      }
+      if (tag === PORTAL_TAG_RETURN) {
+        const refHost = PORTAL_BOOT.stored.ref ?? "";
+        const url = buildReturnUrl(refHost, PORTAL_BOOT.stored);
+        if (url) {
+          console.info(`[bug-detective] portal return → ${url}`);
+          window.location.href = url;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   function handleDeskPointerDown(e: PointerEvent): void {
     if (deskMinigame || runnerSession) return;
+    // Portals work in any phase (including the boot-into-desk path); check
+    // them before the desk dispatch so a click on the ring always wins.
+    if (tryHandlePortalClick(e.clientX, e.clientY)) return;
     if (state.phase.kind !== "investigating") return;
     const hit = pickDeskInteractionHit(e.clientX, e.clientY);
     const tag = hit?.object?.userData?.tag;
@@ -1548,6 +1622,10 @@ function bootGameInner(simplified: boolean): void {
   function revealDeskCaseReadables(): void {
     diorama.caseFileSheet.visible = true;
     diorama.flags.envelopeOpen = true;
+    // Portals appear with the desk so the ring isn't visible against the
+    // page-peel intro. Once revealed they stay up for the rest of the
+    // session.
+    exitPortal.group.visible = true;
   }
   const caseFileCta = document.createElement("div");
   caseFileCta.id = "bd-casefile-cta";
@@ -1780,6 +1858,8 @@ function bootGameInner(simplified: boolean): void {
 
     cameraRig.update(dtMs);
     diorama.step(elapsed, dtSec);
+    exitPortal.step(elapsed);
+    returnPortal?.step(elapsed);
 
     if (state.phase.kind === "intro" && introStep === "waiting") {
       if (mascot.group.visible) {
@@ -2144,16 +2224,20 @@ function bootGameInner(simplified: boolean): void {
   // directly on the desk. Triggered by:
   //   - Settings → "Skip intro next load" toggle (returning desktop visitors)
   //   - Mobile gate "Play simplified" choice (touch users)
-  // In both cases, the choreography state machine is parked at "done" so
+  //   - Vibe Jam 2026 portal arrival (?portal=true) — per spec the player
+  //     must drop instantly into the desk view with no splash / peel /
+  //     input gate so the multi-game portal hop feels seamless.
+  // In all cases, the choreography state machine is parked at "done" so
   // its switch never runs, and we manually do the same teardown the
   // landing step does (camera pose, diorama visible, HUD + settings
   // shown, bloom on, cursor target = desk, mascot at game scale).
-  if (isSkipIntro() || simplified) {
+  if (isSkipIntro() || simplified || portalArrived) {
     caseFileCta.remove();
     pagePeel.mesh.visible = false;
     diorama.caseFileSheet.visible = true;
     diorama.flags.envelopeOpen = true;
     diorama.root.visible = true;
+    exitPortal.group.visible = true;
     cameraRig.setStatic(GAME_CAMERA_POS, GAME_CAMERA_LOOKAT);
     cursorTracker.setTarget(diorama.desk);
     cursorTracker.setYOffset(MASCOT_FEET_OFFSET * MASCOT_GAME_SCALE);

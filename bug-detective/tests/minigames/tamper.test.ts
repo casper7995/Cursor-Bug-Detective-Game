@@ -58,7 +58,7 @@ describe("tamper round determinism", () => {
     const a = buildTamperRound(123);
     const b = buildTamperRound(123);
     expect(a.scene.id).toBe(b.scene.id);
-    expect(a.tamperedSpotId).toBe(b.tamperedSpotId);
+    expect(a.tamperedSpotIdsThisRound).toEqual(b.tamperedSpotIdsThisRound);
     expect(a.calls).toEqual(b.calls);
   });
 
@@ -76,9 +76,6 @@ describe("tamper round determinism", () => {
     for (const c of r.calls) {
       expect(sceneIds.has(c.tamperedSpotId)).toBe(true);
     }
-    // Round-level tamperedSpotId is the last call's, used by the result-card
-    // teach line as a back-compat hook.
-    expect(r.tamperedSpotId).toBe(r.calls[r.calls.length - 1]!.tamperedSpotId);
   });
 
   it("per-call tampered spot rotates — round avg ≥3 distinct spots over 64 seeds", () => {

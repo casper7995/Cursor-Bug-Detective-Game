@@ -35,6 +35,7 @@ import {
 import {
   type CallVerdict,
   type TamperRound,
+  type TamperSpot,
   TAMPER_CALLS_PER_ROUND,
 } from "./types";
 import { clueTokenForTamper } from "./clueTokens";
@@ -111,6 +112,8 @@ export class TamperSession {
   private readonly renderCtx: CanvasRenderingContext2D;
   private readonly clueWord: string;
   private readonly round: TamperRound;
+  /** O(1) spot lookup — built once at round time, shared by chat/result render. */
+  private readonly spotsById: ReadonlyMap<string, TamperSpot>;
   private readonly verdicts: CallVerdict[] = [];
   private phase: Phase = { kind: "intro", t: 0 };
   private outcome: MiniGameOutcome | null = null;
@@ -119,6 +122,11 @@ export class TamperSession {
   private chatHits: ChatHits | null = null;
   /** Spot id under the cursor in TONIGHT during pick-mode (else null). */
   private hoveredPropId: string | null = null;
+  /** Frozen at result-phase entry — score + variant list don't change after. */
+  private resultMemo: {
+    readonly score: ReturnType<typeof scoreTamperRound>;
+    readonly tamperedVariants: readonly string[];
+  } | null = null;
   private readonly gate = new TutorialGate({
     title: "Spot the difference",
     tagline: "Compare ORIGINAL vs TONIGHT. Bugbot may be wrong about a prop.",
@@ -138,6 +146,7 @@ export class TamperSession {
     this.clueWord = opts.clueWord;
     const seed = namespacedSeed(0x9e3779b1, `tamper:${opts.clueWord}`);
     this.round = buildTamperRound(seed);
+    this.spotsById = new Map(this.round.scene.spots.map((s) => [s.id, s]));
     const c = document.createElement("canvas");
     c.width = W;
     c.height = H;
@@ -393,10 +402,25 @@ export class TamperSession {
     if (this.phase.kind !== "verdict") return;
     const next = this.phase.callIndex + 1;
     if (next >= TAMPER_CALLS_PER_ROUND) {
-      this.phase = { kind: "result", t: 0 };
+      this.enterResultPhase();
       return;
     }
     this.phase = { kind: "call", callIndex: next, t: 0, hover: null };
+  }
+
+  /** Freeze score + variant list once — both are pure functions of inputs that
+   *  don't change during the result phase, so per-frame recompute was waste. */
+  private enterResultPhase(): void {
+    this.phase = { kind: "result", t: 0 };
+    this.resultMemo = this.resultMemo ?? this.computeResultMemo();
+  }
+
+  private computeResultMemo(): NonNullable<typeof this.resultMemo> {
+    const score = scoreTamperRound(this.round, this.verdicts);
+    const tamperedVariants = this.round.tamperedSpotIdsThisRound
+      .map((id) => this.spotsById.get(id)?.tonightIfThisTampered)
+      .filter((v): v is string => typeof v === "string");
+    return { score, tamperedVariants };
   }
 
   private finalizeOutcome(): void {
@@ -507,15 +531,17 @@ export class TamperSession {
     const showRealTamper =
       this.phase.kind === "verdict" || this.phase.kind === "result";
     const pickingSpot = this.phase.kind === "disagree-point";
-    drawDiffCard(
-      ctx,
-      this.round.scene,
-      cur?.call.tamperedSpotId ?? this.round.tamperedSpotId,
-      cur?.call.bugbotPointsAtSpotId ?? null,
+    // Falls back to the *first* call's tamper during intro/instructions —
+    // the panels still render in those phases but no reveal is shown.
+    const activeTamperedSpotId =
+      cur?.call.tamperedSpotId ?? this.round.calls[0]!.tamperedSpotId;
+    drawDiffCard(ctx, this.round.scene, {
+      currentTamperedSpotId: activeTamperedSpotId,
+      pointAtSpotId: cur?.call.bugbotPointsAtSpotId ?? null,
       showRealTamper,
       pickingSpot,
-      pickingSpot ? this.hoveredPropId : null,
-    );
+      hoveredSpotId: pickingSpot ? this.hoveredPropId : null,
+    });
     const diffHint = this.diffHintLine();
     if (diffHint) {
       drawTamperDiffHintGutter(ctx, diffHint);
@@ -562,24 +588,19 @@ export class TamperSession {
     } else if (this.phase.kind === "instructions") {
       drawInstructionCard(ctx, W, H, this.phase.t / INSTRUCTIONS_MAX_S);
     } else if (this.phase.kind === "result") {
-      const r = scoreTamperRound(this.round, this.verdicts);
-      const tamperedVariants = this.round.tamperedSpotIdsThisRound
-        .map(
-          (id) =>
-            this.round.scene.spots.find((s) => s.id === id)
-              ?.tonightIfThisTampered,
-        )
-        .filter((v): v is string => typeof v === "string");
+      // enterResultPhase() always populates resultMemo before kind="result";
+      // the ?? branch only fires if a future code path skips the helper.
+      const memo = this.resultMemo ?? this.computeResultMemo();
       drawResultCard(
         ctx,
         W,
         H,
         {
-          score: r.score,
-          rightCalls: r.rightCalls,
-          caughtLies: r.caughtLies,
-          earnedClue: tamperEarnsDeskClue(r),
-          tamperedVariants,
+          score: memo.score.score,
+          rightCalls: memo.score.rightCalls,
+          caughtLies: memo.score.caughtLies,
+          earnedClue: tamperEarnsDeskClue(memo.score),
+          tamperedVariants: memo.tamperedVariants,
         },
         TAMPER_CALLS_PER_ROUND,
       );

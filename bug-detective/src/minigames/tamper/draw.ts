@@ -161,14 +161,23 @@ function bugbotQuip(call: TamperCall): string {
 // ---------------------------------------------------------------------
 // Diff card — ORIGINAL on top, TONIGHT below
 // ---------------------------------------------------------------------
+export interface DiffCardOverlay {
+  /** Spot id that's the real tamper for *this call*. */
+  readonly currentTamperedSpotId: string;
+  /** When set, draws Bugbot's pointer arrow over this prop in TONIGHT. */
+  readonly pointAtSpotId: string | null;
+  /** Reveal the real tamper (verdict / result phases). */
+  readonly showRealTamper: boolean;
+  /** Pick-mode active — TONIGHT panel gets dashed accent border + hover halos. */
+  readonly pickingSpot: boolean;
+  /** Spot under the cursor in pick-mode (else null). */
+  readonly hoveredSpotId: string | null;
+}
+
 export function drawDiffCard(
   ctx: CanvasRenderingContext2D,
   scene: TamperScene,
-  currentTamperedSpotId: string,
-  pointAtSpotId: string | null,
-  showRealTamper: boolean,
-  pickingSpot: boolean,
-  hoveredSpotId: string | null = null,
+  overlay: DiffCardOverlay,
 ): void {
   const L = TAMPER_LAYOUT;
   drawAiCard(ctx, L.diffX, L.diffY, L.diffW, L.diffH);
@@ -200,28 +209,15 @@ export function drawDiffCard(
   ctx.restore();
 
   const { original, tonight } = getTamperPanelRects();
-  drawScenePanel(
-    ctx,
-    scene,
-    original,
-    "original",
-    currentTamperedSpotId,
-    null,
-    false,
-    false,
-    null,
-  );
-  drawScenePanel(
-    ctx,
-    scene,
-    tonight,
-    "tonight",
-    currentTamperedSpotId,
-    pointAtSpotId,
-    showRealTamper,
-    pickingSpot,
-    hoveredSpotId,
-  );
+  // ORIGINAL panel never carries call-state (no pointer, no reveal, no pick mode).
+  drawScenePanel(ctx, scene, original, "original", {
+    currentTamperedSpotId: overlay.currentTamperedSpotId,
+    pointAtSpotId: null,
+    showRealTamper: false,
+    pickingSpot: false,
+    hoveredSpotId: null,
+  });
+  drawScenePanel(ctx, scene, tonight, "tonight", overlay);
 }
 
 function drawScenePanel(
@@ -229,12 +225,15 @@ function drawScenePanel(
   scene: TamperScene,
   panel: PanelRect,
   half: "original" | "tonight",
-  currentTamperedSpotId: string,
-  pointAtSpotId: string | null,
-  showRealTamper: boolean,
-  pickingSpot: boolean,
-  hoveredSpotId: string | null,
+  overlay: DiffCardOverlay,
 ): void {
+  const {
+    currentTamperedSpotId,
+    pointAtSpotId,
+    showRealTamper,
+    pickingSpot,
+    hoveredSpotId,
+  } = overlay;
   // Panel background — slightly different paper for ORIGINAL vs TONIGHT so
   // the eye registers them as two separate scenes at a glance.
   ctx.save();

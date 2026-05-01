@@ -29,14 +29,9 @@ function pickSceneForSeed(rng: () => number): TamperScene {
 }
 
 /**
- * Build a deterministic 6-call round from the (already-namespaced) seed.
- * - Picks one of the scenes.
- * - Each of the 6 calls rolls its own `tamperedSpotId` so the panel diff
- *   resets every call — knowing call 1's answer tells you nothing about
- *   call 2.
- * - About a third of calls lie (1..3 per seed). Lies cluster in the back
- *   half; lying calls let the player score a +250 catch by clicking the
- *   call's tampered spot (and +100 more if Bugbot was confident).
+ * Build a deterministic 6-call round. Each call rolls its own tampered
+ * spot (independent deck from Bugbot's pointing target) so the panel
+ * diff resets every call. Lies cluster in the back half so tension ramps.
  */
 export function buildTamperRound(seed: number): TamperRound {
   const rng = makeSeededRng(seed);
@@ -44,44 +39,25 @@ export function buildTamperRound(seed: number): TamperRound {
   const spots = scene.spots;
   if (spots.length === 0) throw new Error("scene has no spots");
 
+  // T-10: without-replacement decks so Bugbot doesn't point at — or tamper
+  // — the same prop back-to-back. Independent decks decorrelate the two axes.
+  const pointDeck = makeWithoutReplacementDeck(spots, rng);
+  const tamperDeck = makeWithoutReplacementDeck(spots, rng);
+  const lyingCallIndices = pickIndicesForLies(1 + Math.floor(rng() * 3), rng);
   const calls: TamperCall[] = [];
-  const numLies = 1 + Math.floor(rng() * 3); // 1..3
-  const lyingCallIndices = pickIndicesForLies(numLies, rng);
-  // T-10: sample spots WITHOUT replacement so Bugbot doesn't point at the
-  // same prop back-to-back. Used for the *pointing* axis only.
-  let pointDeck: TamperSpot[] = shuffle(spots, rng);
-  let pointIdx = 0;
-  // Independent deck for the per-call tampered spot — fresh shuffle so the
-  // tampered prop is decorrelated from Bugbot's pointing target.
-  let tamperDeck: TamperSpot[] = shuffle(spots, rng);
-  let tamperIdx = 0;
 
   for (let i = 0; i < TAMPER_CALLS_PER_ROUND; i++) {
-    if (pointIdx >= pointDeck.length) {
-      pointDeck = shuffle(spots, rng);
-      pointIdx = 0;
-    }
-    if (tamperIdx >= tamperDeck.length) {
-      tamperDeck = shuffle(spots, rng);
-      tamperIdx = 0;
-    }
-    const pointSpot = pointDeck[pointIdx++] as TamperSpot;
-    const tamperedSpot = tamperDeck[tamperIdx++] as TamperSpot;
+    const pointSpot = pointDeck();
+    const tamperedSpot = tamperDeck();
     const truthIsTampered = pointSpot.id === tamperedSpot.id;
     const isLying = lyingCallIndices.has(i);
-    const claim: "tampered" | "clean" = isLying
-      ? truthIsTampered
-        ? "clean"
-        : "tampered"
-      : truthIsTampered
-        ? "tampered"
-        : "clean";
-    // Honest calls: uniform 60..99. Lying calls: floor rises with callIndex
-    // so late-round lies tend to land in the 80s–90s (capped so we don't
-    // exceed the 99 ceiling).
+    // Bugbot lies ⇔ claim flips relative to the truth.
+    const claim: "tampered" | "clean" =
+      truthIsTampered !== isLying ? "tampered" : "clean";
+    // Honest: uniform 60..99. Lying: floor rises with callIndex so late lies
+    // land in the 80s–90s (capped at 90 to keep some range).
     const confFloor = isLying ? Math.min(90, 60 + i * 5) : 60;
-    const confSpan = 100 - confFloor;
-    const conf = confFloor + Math.floor(rng() * confSpan); // [floor..99]
+    const conf = confFloor + Math.floor(rng() * (100 - confFloor));
     calls.push({
       callIndex: i,
       tamperedSpotId: tamperedSpot.id,
@@ -92,8 +68,7 @@ export function buildTamperRound(seed: number): TamperRound {
     });
   }
 
-  // Distinct tampered spots (in encounter order) for the result-card teach
-  // line. Falls back to the last call when the round somehow only saw one.
+  // Distinct tampered spots in encounter order — feeds the result-card recap.
   const seen = new Set<string>();
   const tamperedSpotIdsThisRound: string[] = [];
   for (const c of calls) {
@@ -102,13 +77,26 @@ export function buildTamperRound(seed: number): TamperRound {
       tamperedSpotIdsThisRound.push(c.tamperedSpotId);
     }
   }
-  const lastTampered = calls[calls.length - 1]!.tamperedSpotId;
 
-  return {
-    scene,
-    tamperedSpotId: lastTampered,
-    tamperedSpotIdsThisRound,
-    calls,
+  return { scene, tamperedSpotIdsThisRound, calls };
+}
+
+/**
+ * Stateful "deck" — returns the next spot, reshuffling when exhausted.
+ * Same shuffle is used for both the pointing axis and the tamper axis.
+ */
+function makeWithoutReplacementDeck(
+  spots: readonly TamperSpot[],
+  rng: () => number,
+): () => TamperSpot {
+  let deck = shuffle(spots, rng);
+  let idx = 0;
+  return () => {
+    if (idx >= deck.length) {
+      deck = shuffle(spots, rng);
+      idx = 0;
+    }
+    return deck[idx++] as TamperSpot;
   };
 }
 

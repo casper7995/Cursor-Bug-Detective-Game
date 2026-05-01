@@ -59,12 +59,6 @@ export type CallVerdict =
 
 export interface TamperRound {
   readonly scene: TamperScene;
-  /**
-   * Backwards-compat hook for the result-card teach line. Set to the **last**
-   * call's `tamperedSpotId`; the result-card lists the unique set of tampered
-   * props in `tamperedSpotIdsThisRound` for the player.
-   */
-  readonly tamperedSpotId: string;
   /** Distinct tampered spots seen across this round, in encounter order. */
   readonly tamperedSpotIdsThisRound: readonly string[];
   /** 6 calls Bugbot makes during the round. */

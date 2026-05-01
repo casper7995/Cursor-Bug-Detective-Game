@@ -5,3 +5,8 @@
 artifacts/qa-runs
 test-results
 playwright-report
+
+# Local launch artifacts (jam submission packet, screenshots) — kept out
+# of the repo; regenerate via the launch runbook.
+SUBMISSION.md
+launch-screenshots/

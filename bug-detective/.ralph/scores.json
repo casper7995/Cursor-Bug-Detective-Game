@@ -1,5 +1,5 @@
 {
-  "iteration": 38,
+  "iteration": 39,
   "max_iterations": null,
   "target": 90,
   "games": {
@@ -36,12 +36,12 @@
       ]
     },
     "runner": {
-      "current": 65,
+      "current": 83,
       "target": 90,
       "history": [
-        { "iter": 0, "score": 65, "source": "averaged from two reviewers (58 / 72)", "validated": true }
-      ],
-      "pending_changes": ["iter-5 READY/GO intro overlay", "iter-9 coyote-time + jump buffer"]
+        { "iter": 0, "score": 65, "source": "averaged from two reviewers (58 / 72)", "validated": true },
+        { "iter": 36, "score": 83, "source": "iter-5/9/14/15/16/17/18 batch validated: R-1 READY/GO + R-2 coyote/buffer + R-3 plank pulse + R-4 boost lines + R-6 shutter + R-9 canvas clear + R-10/11/12 HUD polish + R-5 snippet pool + R-8 truncate-on-word. 5+ attempts, cleared 388m daily.", "validated": true, "delta": 18 }
+      ]
     }
   },
   "phase_1_complete": true,

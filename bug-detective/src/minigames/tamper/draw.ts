@@ -15,7 +15,12 @@ import {
   type Rect,
 } from "../desk/aiCard";
 import type { TamperCall, TamperScene, TamperSpot } from "./types";
+import { TAMPER_CLUE_MIN_RIGHT_VERDICTS } from "./types";
 import { spotById } from "./round";
+import {
+  TAMPER_INTRO_CARD,
+  tamperIntroInstructionLayout,
+} from "./instructionCardLayout";
 
 export type TamperChatActionMode =
   | "active"
@@ -25,16 +30,14 @@ export type TamperChatActionMode =
   | "hidden"
   | "idle";
 
-/** One-line label for the Bugbot call (plain language, names the prop). */
+/** Plain-English question per call: did the highlighted prop really change? */
 export function bugbotRowClaimLine(
   call: TamperCall,
   scene: TamperScene,
 ): string {
   const spot = scene.spots.find((s) => s.id === call.bugbotPointsAtSpotId);
   const name = spot?.label ?? "this prop";
-  return call.bugbotClaim === "tampered"
-    ? `Bugbot says: the ${name} changed`
-    : `Bugbot says: the ${name} is clean`;
+  return `Bugbot circles the ${name} — did it really change?`;
 }
 
 // ---------------------------------------------------------------------
@@ -596,13 +599,13 @@ export function drawChatCard(
       12,
     );
   } else {
-    drawAiButton(ctx, approve, "Bugbot is right", {
+    drawAiButton(ctx, approve, "Yes — it changed", {
       tone: "approve",
       leading: "✓",
       hovered: hover === "approve",
       font: "600 12px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
     });
-    drawAiButton(ctx, reject, "Bugbot is wrong", {
+    drawAiButton(ctx, reject, "No — clean", {
       tone: "reject",
       leading: "✗",
       hovered: hover === "reject",
@@ -611,13 +614,13 @@ export function drawChatCard(
     drawAiButton(
       ctx,
       suggestFix,
-      pickingSpot ? "Pick TONIGHT row…" : "Point to real change",
+      pickingSpot ? "Pick TONIGHT row…" : "No — point real change (+bonus)",
       {
         tone: "ghost",
         leading: "→",
         hovered: hover === "suggestFix",
         disabled: pickingSpot,
-        font: "600 10px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
+        font: "600 9px 'Cursor Gothic', ui-sans-serif, system-ui, sans-serif",
       },
     );
   }
@@ -650,10 +653,10 @@ export function drawIntroCard(
   ctx.save();
   ctx.fillStyle = CURSOR_AI.scrim;
   ctx.fillRect(0, 0, W, H);
-  const w = 380;
-  const h = 150;
+  const { w, h } = TAMPER_INTRO_CARD;
   const x = (W - w) / 2;
   const y = (H - h) / 2;
+  const { progressLineY, bodyStartY } = tamperIntroInstructionLayout(W, H);
   drawAiCard(ctx, x, y, w, h, { radius: 14 });
   drawAiAvatar(ctx, x + 32, y + 38, { size: 28 });
   ctx.fillStyle = CURSOR_AI.ink;
@@ -664,24 +667,16 @@ export function drawIntroCard(
   ctx.fillText(`scene · ${scene.displayName} · Bugbot review`, x + 60, y + 50);
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
-  const bodyY = wrapAndDraw(
-    ctx,
-    "Compare ORIGINAL vs TONIGHT. One prop really changed. Bugbot can be wrong about a prop.",
-    x + 24,
-    y + 82,
-    w - 48,
-    16,
-  );
+  const lineH = 15;
+  const para1 =
+    "Compare ORIGINAL vs TONIGHT. Bugbot circles one prop each call — did it really change?";
+  const para2 =
+    "Yes / No on the highlighted prop. Faster taps score more. Bonus for pointing at the real change when Bugbot is off.";
+  let yy = wrapAndDraw(ctx, para1, x + 24, bodyStartY, w - 48, lineH);
   ctx.fillStyle = CURSOR_AI.inkMute;
-  wrapAndDraw(
-    ctx,
-    "If Bugbot is wrong, use Point to real change, then click the true changed prop.",
-    x + 24,
-    bodyY + 4,
-    w - 48,
-    16,
-  );
-  drawAiProgressLine(ctx, x + 24, y + h - 22, w - 48, progress01);
+  yy = wrapAndDraw(ctx, para2, x + 24, yy + 6, w - 48, lineH);
+  void yy;
+  drawAiProgressLine(ctx, x + 24, progressLineY, w - 48, progress01);
   ctx.restore();
 }
 
@@ -707,9 +702,9 @@ export function drawInstructionCard(
   ctx.fillStyle = CURSOR_AI.ink;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
   const lines = [
-    "First: find the one real change in TONIGHT.",
-    "Then: Bugbot will call out props. Say if Bugbot is right.",
-    "If Bugbot is wrong, click the real changed prop in TONIGHT.",
+    "Each call: Bugbot circles a prop. Did it really change?",
+    "Yes — it changed.    No — clean.    Faster = more score.",
+    "Optional bonus: when No, click the real change in TONIGHT.",
   ];
   let ly = y + 70;
   for (const line of lines) {
@@ -731,8 +726,13 @@ export function drawInstructionCard(
 
 export interface TamperResultCardInfo {
   readonly score: number;
+  /** Strict scoring hits (including correct prop when using Point). */
   readonly rightCalls: number;
+  /** Agree/Disagree direction correct — used for clue and primary accuracy. */
+  readonly rightVerdicts: number;
   readonly caughtLies: number;
+  /** Average remaining-time fraction across right calls (0..1). */
+  readonly avgTimeFrac01: number;
   /** True when the round earned a desk clue token. */
   readonly earnedClue: boolean;
   /**
@@ -762,22 +762,26 @@ export function drawResultCard(
   const variantList =
     info.tamperedVariants.length > 0 ? info.tamperedVariants.join(", ") : "—";
   const teach = info.earnedClue
-    ? `Tampers tonight: ${variantList}.`
-    : `Tampers tonight: ${variantList}. Need 3+ correct AND 1+ caught lie for a clue.`;
+    ? `Tampers tonight: ${variantList}. Faster taps = higher score.`
+    : `Tampers tonight: ${variantList}. Need ${TAMPER_CLUE_MIN_RIGHT_VERDICTS} / ${total} calls right to pin the cipher.`;
+  const speedPct = Math.round(info.avgTimeFrac01 * 100);
 
   drawAiResultStrip(ctx, x, y, w, h, {
     headline: String(info.score),
     headlineCaption: "score",
     stats: [
       {
-        label: "accuracy",
-        value: `${info.rightCalls} / ${total}`,
-        accent: info.rightCalls >= 3 ? CURSOR_AI.green : CURSOR_AI.ink,
+        label: "calls right",
+        value: `${info.rightVerdicts} / ${total}`,
+        accent:
+          info.rightVerdicts >= TAMPER_CLUE_MIN_RIGHT_VERDICTS
+            ? CURSOR_AI.green
+            : CURSOR_AI.ink,
       },
       {
-        label: "caught lies",
-        value: String(info.caughtLies),
-        accent: info.caughtLies > 0 ? CURSOR_AI.green : CURSOR_AI.inkMute,
+        label: "speed",
+        value: `${speedPct}%`,
+        accent: speedPct >= 50 ? CURSOR_AI.green : CURSOR_AI.inkMute,
       },
     ],
     teach,

@@ -6,11 +6,20 @@ import {
   drawAiCard,
   drawAiProgressLine,
   inRect,
+  wrapAndDraw,
   type Rect,
 } from "../desk/aiCard";
 import {
+  ERRAND_INTRO_BODY_PARAS,
+  ERRAND_INTRO_CARD,
+  errandIntroInstructionLayout,
+} from "./errandIntroLayout";
+import { errandAgentLaneBadgeMeta } from "./errandLaneBadge";
+import {
   bossWarningActive,
   clueLockProgress01,
+  laneDefenseFrontEnemy,
+  pickedAgent,
   queueHead,
   type LaneDefenseRuntime,
 } from "./round";
@@ -280,32 +289,70 @@ function drawEnemyGlyph(
   ctx.restore();
 }
 
+function drawLaneAgentChargeRing(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  charge01: number,
+): void {
+  const r = 14.5;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  const c = Math.max(0, Math.min(1, charge01));
+  if (c <= 0) {
+    ctx.restore();
+    return;
+  }
+  ctx.beginPath();
+  ctx.arc(
+    cx,
+    cy,
+    r,
+    -Math.PI / 2,
+    -Math.PI / 2 + Math.max(0.06, c) * Math.PI * 2,
+  );
+  ctx.strokeStyle = c < 0.2 ? "rgba(245,78,0,0.92)" : "rgba(123,224,255,0.9)";
+  ctx.lineWidth = 2.25;
+  ctx.lineCap = "round";
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawDefenderGlyph(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   kind: AgentKind,
+  opts?: { scale?: number; inLane?: boolean },
 ): void {
+  const scale = opts?.scale ?? 1;
+  const inLane = opts?.inLane ?? false;
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.strokeStyle = "rgba(0,0,0,0.25)";
-  ctx.lineWidth = 1;
+  ctx.scale(scale, scale);
+  ctx.lineWidth = inLane ? 1.35 : 1;
+  ctx.strokeStyle = inLane ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.25)";
   switch (kind) {
     case "fixer": {
-      ctx.fillStyle = "#e8f4ee";
+      ctx.fillStyle = inLane ? "#d8f5e6" : "#e8f4ee";
       ctx.fillRect(-10, -8, 20, 14);
       ctx.strokeRect(-10, -8, 20, 14);
-      ctx.fillStyle = "#22aa66";
+      ctx.fillStyle = inLane ? "#12b86a" : "#22aa66";
       ctx.fillRect(-2, -12, 4, 18);
       break;
     }
     case "reviewer": {
-      ctx.fillStyle = "#eef2ff";
+      ctx.fillStyle = inLane ? "#e4e0ff" : "#eef2ff";
       ctx.beginPath();
       ctx.arc(0, 0, 11, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
-      ctx.strokeStyle = "#6d52ff";
+      ctx.strokeStyle = inLane ? "#4020aa" : "#6d52ff";
+      ctx.lineWidth = inLane ? 1.75 : 1.25;
       ctx.setLineDash([2, 2]);
       ctx.beginPath();
       ctx.arc(0, 0, 6, 0, Math.PI * 2);
@@ -314,10 +361,11 @@ function drawDefenderGlyph(
       break;
     }
     case "firewall": {
-      ctx.fillStyle = "rgba(68,136,238,0.2)";
+      ctx.fillStyle = inLane ? "rgba(90,150,255,0.38)" : "rgba(68,136,238,0.2)";
       ctx.fillRect(-10, -10, 20, 18);
       ctx.strokeRect(-10, -10, 20, 18);
-      ctx.strokeStyle = "#4488ee";
+      ctx.strokeStyle = inLane ? "#2060d8" : "#4488ee";
+      ctx.lineWidth = inLane ? 1.6 : 1;
       for (let i = -6; i <= 6; i += 4) {
         ctx.beginPath();
         ctx.moveTo(i, -10);
@@ -327,6 +375,31 @@ function drawDefenderGlyph(
       break;
     }
   }
+  ctx.restore();
+}
+
+function drawLaneKindBadge(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  kind: AgentKind,
+): void {
+  const m = errandAgentLaneBadgeMeta(kind);
+  ctx.save();
+  ctx.font = "800 8px 'Cursor Mono', ui-monospace, monospace";
+  const padX = 4;
+  const w = ctx.measureText(m.abbrev).width + padX * 2;
+  const h = 12;
+  ctx.fillStyle = m.bg;
+  ctx.strokeStyle = m.border;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y - h + 3, w, h, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = m.fg;
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(m.abbrev, x + padX, y);
   ctx.restore();
 }
 
@@ -436,6 +509,79 @@ function drawQueueCard(
   ctx.restore();
 }
 
+function drawAgentAttackBeams(
+  ctx: CanvasRenderingContext2D,
+  rt: LaneDefenseRuntime,
+  lane: LaneIndex,
+  playX0: number,
+  playW: number,
+  cy: number,
+): void {
+  const agentHere = rt.placed.find((p) => p.lane === lane);
+  if (!agentHere) return;
+  if (rt.deployFx.some((fx) => fx.lane === lane)) return;
+
+  const target = laneDefenseFrontEnemy(rt, lane);
+  if (!target) return;
+
+  const hx = playX0 + 24;
+  const px = playX0 + target.x * playW;
+  const pulse = 0.82 + 0.18 * Math.sin(rt.elapsed * 12);
+
+  ctx.save();
+  ctx.lineCap = "round";
+  if (agentHere.kind === "fixer") {
+    ctx.strokeStyle = `rgba(60,255,154,${0.45 * pulse + 0.25})`;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = NEON_GREEN;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(hx, cy);
+    ctx.lineTo(px - 6, cy);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = `rgba(180,255,220,${0.5 * pulse})`;
+    for (let i = 0; i < 3; i++) {
+      const phase = (rt.elapsed * 10 + i * 1.7) % 1;
+      const ix = hx + (px - hx - 8) * (0.2 + phase * 0.75);
+      ctx.beginPath();
+      ctx.arc(ix, cy + (i - 1) * 2, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (agentHere.kind === "reviewer") {
+    ctx.strokeStyle = `rgba(109,82,255,${0.55 * pulse})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 5]);
+    ctx.beginPath();
+    ctx.moveTo(hx, cy - 3);
+    ctx.lineTo(px - 5, cy - 1);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = `rgba(109,82,255,${0.35 * pulse})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(px - 8, cy, 6 + pulse * 2, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = `rgba(108,180,255,${0.5 * pulse})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(hx, cy + 2);
+    ctx.lineTo(px - 8, cy);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(68,136,238,${0.45 * pulse})`;
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 4; k++) {
+      const ay = cy - 6 + k * 4;
+      ctx.beginPath();
+      ctx.moveTo(hx + 6, ay);
+      ctx.lineTo(px - 12, ay);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 function easeOutCubic(t: number): number {
   const inv = 1 - t;
   return 1 - inv * inv * inv;
@@ -454,7 +600,7 @@ function drawDeployLaunchFx(
 
   const L = ERRAND_LAYOUT;
   const startX = L.panelX + L.fieldPadX + L.queueW + 8;
-  const targetX = playLeft + 22;
+  const targetX = playLeft + 24;
   for (const fx of laneFx) {
     const rawT = Math.max(
       0,
@@ -495,6 +641,44 @@ function drawDeployLaunchFx(
     drawDefenderGlyph(ctx, x, y, fx.kind);
     ctx.restore();
   }
+}
+
+function drawDeployToasts(
+  ctx: CanvasRenderingContext2D,
+  rt: LaneDefenseRuntime,
+  playX0: number,
+  playW: number,
+): void {
+  if (rt.deployToasts.length === 0) return;
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "800 9px 'Cursor Mono', ui-monospace, monospace";
+  for (const t of rt.deployToasts) {
+    const rowY = laneRowY(t.lane);
+    const cy = rowY + ERRAND_LAYOUT.laneRowH / 2;
+    const cx = playX0 + playW * 0.5;
+    const u = (rt.elapsed - t.startedAt) / t.duration;
+    const fade = u < 0.18 ? u / 0.18 : u > 0.7 ? Math.max(0, (1 - u) / 0.3) : 1;
+    ctx.globalAlpha = Math.min(1, fade) * 0.94;
+    const tw = ctx.measureText(t.text).width;
+    const pillW = tw + 18;
+    const pillH = 18;
+    const px = cx - pillW / 2;
+    const py = cy - 38;
+    ctx.fillStyle = "rgba(10,14,22,0.88)";
+    ctx.beginPath();
+    ctx.roundRect(px, py, pillW, pillH, 5);
+    ctx.fill();
+    ctx.strokeStyle = NEON_CYAN;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "#e9fbff";
+    ctx.fillText(t.text, cx, py + 13);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = "left";
+  ctx.restore();
 }
 
 /** Primary playfield (lanes + Agent Queue + meters). */
@@ -591,7 +775,7 @@ export function drawLaneDefenseField(
     : rt.wavePause > 0
       ? `WAVE PAUSE · NEXT ${rt.wave + 1}`
       : rt.clueLocked
-        ? `WAVE ${rt.wave} · CLUE LOCKED`
+        ? `WAVE ${rt.wave} · CLUE SECURED`
         : `WAVE ${rt.wave} · ${Math.round(clueP * 100)}% TO CLUE`;
   ctx.fillStyle = "#ffd7c7";
   ctx.font = "700 8px 'Cursor Mono', ui-monospace, monospace";
@@ -599,7 +783,10 @@ export function drawLaneDefenseField(
   ctx.fillStyle = "rgba(231,250,255,0.8)";
   ctx.font = "700 9px 'Cursor Mono', ui-monospace, monospace";
   ctx.fillText(
-    `FOCUS ${Math.floor(rt.focus).toString().padStart(3, "0")}`,
+    `FOCUS ${Math.floor(rt.focus).toString().padStart(3, "0")} · t ${Math.min(
+      LANE_DEFENSE.clueLockSeconds,
+      Math.floor(rt.elapsed),
+    )}/${LANE_DEFENSE.clueLockSeconds}s`,
     L.panelX + L.panelW - 138,
     L.panelY + 44,
   );
@@ -639,7 +826,7 @@ export function drawLaneDefenseField(
     enemiesByLane[e.lane].push(e);
   }
 
-  const headKind = queueHead(rt)?.kind ?? null;
+  const headKind = pickedAgent(rt)?.kind ?? queueHead(rt)?.kind ?? null;
   const order = queueDisplayOrder(rt);
   const queueRects = laneDefenseQueueRects();
   for (let i = 0; i < order.length; i++) {
@@ -700,9 +887,19 @@ export function drawLaneDefenseField(
     const cy = rowY + rowH / 2 + 2;
     const launchActive = rt.deployFx.some((fx) => fx.lane === lane);
     if (agentHere && !launchActive) {
-      drawDefenderGlyph(ctx, playX0 + 22, cy, agentHere.kind);
+      const gx = playX0 + 24;
+      const def = AGENT_TRAY.find((a) => a.kind === agentHere.kind)!;
+      const charge01 =
+        def.activeChargeSec > 0 ? agentHere.chargeSec / def.activeChargeSec : 0;
+      drawLaneAgentChargeRing(ctx, gx, cy, charge01);
+      drawDefenderGlyph(ctx, gx, cy, agentHere.kind, {
+        scale: 1.16,
+        inLane: true,
+      });
+      drawLaneKindBadge(ctx, gx + 18, cy + 12, agentHere.kind);
     }
     drawDeployLaunchFx(ctx, rt, lane as LaneIndex, playX0, playX0 + playW, cy);
+    drawAgentAttackBeams(ctx, rt, lane as LaneIndex, playX0, playW, cy);
 
     const laneAttackers = enemiesByLane[lane as LaneIndex];
     for (const e of laneAttackers) {
@@ -730,6 +927,7 @@ export function drawLaneDefenseField(
     }
   }
 
+  drawDeployToasts(ctx, rt, playX0, playW);
   drawFeedbackFx(ctx, rt, playX0, playW);
 }
 
@@ -788,10 +986,16 @@ export function drawErrandIntro(
   ctx.save();
   ctx.fillStyle = CURSOR_AI.scrim;
   ctx.fillRect(0, 0, W, H);
-  const w = 392;
-  const h = 178;
-  const x = (W - w) / 2;
-  const y = (H - h) / 2;
+  const { w, h } = ERRAND_INTRO_CARD;
+  const lay = errandIntroInstructionLayout(W, H);
+  const {
+    cardLeft: x,
+    cardTop: y,
+    progressLineY,
+    bodyStartY,
+    bodyTextMaxWidth,
+  } = lay;
+
   drawAiCard(ctx, x, y, w, h, { radius: 14 });
   drawAiAvatar(ctx, x + 30, y + 34, { size: 28 });
   ctx.fillStyle = CURSOR_AI.ink;
@@ -800,28 +1004,40 @@ export function drawErrandIntro(
   ctx.fillStyle = CURSOR_AI.inkMute;
   ctx.font = "12px 'Cursor Gothic', sans-serif";
   ctx.fillText(
-    "Three horizontal lanes · Zero-Day bosses · defend the desk",
+    "Three lanes · Zero-Day bosses · defend the desk",
     x + 62,
-    y + 46,
+    y + ERRAND_INTRO_CARD.subtitleBaselineFromTop,
   );
+  ctx.font = "12px 'Cursor Gothic', sans-serif";
+  const lineH = ERRAND_INTRO_CARD.bodyLineHeight;
+  const bodyX = x + 22;
   ctx.fillStyle = CURSOR_AI.ink;
-  ctx.fillText(
-    "Press 1 / 2 / 3 to deploy the ready queue head into a lane.",
-    x + 22,
-    y + 76,
+  let yy = wrapAndDraw(
+    ctx,
+    ERRAND_INTRO_BODY_PARAS[0]!,
+    bodyX,
+    bodyStartY,
+    bodyTextMaxWidth,
+    lineH,
   );
   ctx.fillStyle = CURSOR_AI.inkMute;
-  ctx.fillText(
-    "Click a left-rail Hero to promote it; bugs march right → left.",
-    x + 22,
-    y + 94,
+  yy = wrapAndDraw(
+    ctx,
+    ERRAND_INTRO_BODY_PARAS[1]!,
+    bodyX,
+    yy + 4,
+    bodyTextMaxWidth,
+    lineH,
   );
-  ctx.fillText(
-    "Evidence locks after 3 waves cleared or 60s — then score until defeat.",
-    x + 22,
-    y + 112,
+  wrapAndDraw(
+    ctx,
+    ERRAND_INTRO_BODY_PARAS[2]!,
+    bodyX,
+    yy + 4,
+    bodyTextMaxWidth,
+    lineH,
   );
-  drawAiProgressLine(ctx, x + 22, y + h - 22, w - 44, progress01);
+  drawAiProgressLine(ctx, x + 22, progressLineY, w - 44, progress01);
   ctx.restore();
 }
 
@@ -873,14 +1089,14 @@ export function drawErrandResult(
   ctx.font = "10px 'Cursor Mono', ui-monospace, monospace";
   if (!o.clueLocked) {
     ctx.fillText(
-      "Clue did not lock — need 3 waves cleared or 60s survived before defeat.",
+      "Clue not secured — reach wave 3 or survive 60s before defeat to earn one.",
       x + 24,
       y + 138,
     );
     ctx.fillText("No cipher token is pinned from this run.", x + 24, y + 154);
   } else {
     ctx.fillText(
-      "Clue was locked — returning pins the cipher to your notebook.",
+      "Clue secured — continue pins the cipher to your notebook.",
       x + 24,
       y + 138,
     );
@@ -950,7 +1166,7 @@ export function drawErrandTutorialDiagram(
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   const labelFont = `${Math.max(10, Math.round(11 * scale))}px 'Cursor Mono', monospace`;
-  const heroLabels = ["Fixer", "Reviewer", "Firewall"] as const;
+  const heroLabels = ["Q · Fixer", "W · Reviewer", "E · Firewall"] as const;
   const laneKeys = ["1 — top", "2 — mid", "3 — bot"] as const;
 
   for (let i = 0; i < LANE_COUNT; i++) {

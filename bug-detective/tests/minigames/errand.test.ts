@@ -22,6 +22,7 @@ import {
   laneDefenseTrayRects,
 } from "../../src/minigames/errand/draw";
 import { clueTokenForErrand } from "../../src/minigames/errand/clueTokens";
+import { AGENT_TRAY } from "../../src/minigames/errand/types";
 
 describe("lane defense errand", () => {
   it("namespacedSeed is stable", () => {
@@ -36,15 +37,19 @@ describe("lane defense errand", () => {
     const b = buildWaveSpawnRoster(99, 1);
     expect(a).toEqual(b);
     // Wave 1 is the only guaranteed non-boss wave under current cadence
-    // (firstBossWave = 2). Body count is 3 + wave * 2.
+    // (firstBossWave = 4). Body count is 3 + wave * 2.
     expect(a.length).toBe(3 + 1 * 2);
   });
 
   it("first boss arrives on the configured wave", () => {
     const wave1 = buildWaveSpawnRoster(7, 1);
     const wave2 = buildWaveSpawnRoster(7, 2);
+    const wave3 = buildWaveSpawnRoster(7, 3);
+    const wave4 = buildWaveSpawnRoster(7, 4);
     expect(wave1.some((p) => p.kind === "zeroDay")).toBe(false);
-    expect(wave2.some((p) => p.kind === "zeroDay")).toBe(true);
+    expect(wave2.some((p) => p.kind === "zeroDay")).toBe(false);
+    expect(wave3.some((p) => p.kind === "zeroDay")).toBe(false);
+    expect(wave4.some((p) => p.kind === "zeroDay")).toBe(true);
   });
 
   it("survivalNotebookLock matches waves or time gate", () => {
@@ -124,6 +129,37 @@ describe("lane defense errand", () => {
       { kind: "fixer", lane: 0, startedAt: 0 },
     ]);
     expect(rt.nextDeployFxId).toBe(2);
+    expect(rt.deployToasts).toMatchObject([
+      { lane: 0, text: "Fixer deployed", startedAt: 0 },
+    ]);
+    expect(rt.nextDeployToastId).toBe(2);
+  });
+
+  it("deploy toasts expire after their window", () => {
+    let rt = createLaneDefenseRuntime(1);
+    rt = laneDefenseDeployToLane(rt, 0);
+    expect(rt.deployToasts.length).toBe(1);
+    rt = stepLaneDefenseRuntime(rt, 0.4);
+    expect(rt.deployToasts.length).toBe(1);
+    rt = stepLaneDefenseRuntime(rt, 0.5);
+    expect(rt.deployToasts.length).toBe(0);
+  });
+
+  it("promoted Reviewer deploy preserves kind on lane", () => {
+    let rt = createLaneDefenseRuntime(8);
+    rt = laneDefensePromoteAgent(rt, "reviewer");
+    expect(queueHead(rt)?.kind).toBe("reviewer");
+    rt = laneDefenseDeployToLane(rt, 1);
+    expect(rt.placed.find((p) => p.lane === 1)?.kind).toBe("reviewer");
+    expect(rt.deployToasts[0]?.text).toBe("Reviewer deployed");
+  });
+
+  it("promoted Firewall deploy preserves kind on lane", () => {
+    let rt = createLaneDefenseRuntime(9);
+    rt = laneDefensePromoteAgent(rt, "firewall");
+    rt = laneDefenseDeployToLane(rt, 2);
+    expect(rt.placed.find((p) => p.lane === 2)?.kind).toBe("firewall");
+    expect(rt.deployToasts[0]?.text).toBe("Firewall deployed");
   });
 
   it("deployment launch effects expire after their animation window", () => {
@@ -143,6 +179,27 @@ describe("lane defense errand", () => {
     expect(queueHead(rt)?.kind).toBe("firewall");
     rt = laneDefenseDeployToLane(rt, 1);
     expect(queueHead(rt)?.kind).toBe("fixer");
+  });
+
+  it("Q/W/E pick stays sticky after deploy and blocks 1/2/3 on recharge", () => {
+    let rt = createLaneDefenseRuntime(1);
+    rt = laneDefensePromoteAgent(rt, "firewall");
+    rt = laneDefenseDeployToLane(rt, 1);
+    expect(rt.placed.find((p) => p.lane === 1)?.kind).toBe("firewall");
+    // Selection survives the deploy.
+    expect(rt.queue.find((q) => q.kind === "firewall")?.promoted).toBe(true);
+    expect(rt.queue.find((q) => q.kind === "fixer")?.promoted).toBe(false);
+    // Pressing 1/2/3 again while Firewall is still recharging must NOT
+    // silently fall back to deploying Fixer in another lane.
+    expect(laneDefenseDeployBlockReason(rt, 0)).toBe("recharging");
+    const before = rt.placed.length;
+    rt = laneDefenseDeployToLane(rt, 0);
+    expect(rt.placed.length).toBe(before);
+    // Switching the pick to Fixer (Q) lets the player deploy Fixer immediately.
+    rt = laneDefensePromoteAgent(rt, "fixer");
+    expect(laneDefenseDeployBlockReason(rt, 0)).toBe("none");
+    rt = laneDefenseDeployToLane(rt, 0);
+    expect(rt.placed.find((p) => p.lane === 0)?.kind).toBe("fixer");
   });
 
   it("queue deployment no-ops when all heroes are recharging", () => {
@@ -203,6 +260,109 @@ describe("lane defense errand", () => {
     expect(u.x).toBe(1);
     expect(u.lane).toBe(1);
   });
+
+  it("focus and capacity regenerate during inter-wave pause", () => {
+    let rt = createLaneDefenseRuntime(1);
+    rt = {
+      ...rt,
+      focus: 10,
+      capacity: 10,
+      wavePause: 1.0,
+    };
+    rt = stepLaneDefenseRuntime(rt, 0.5);
+    expect(rt.focus).toBeGreaterThan(10);
+    expect(rt.capacity).toBeGreaterThan(10);
+    expect(rt.wavePause).toBeGreaterThan(0);
+  });
+
+  it("reviewer applies chip DPS to front enemy", () => {
+    let rt = createLaneDefenseRuntime(12);
+    rt = {
+      ...rt,
+      placed: [{ lane: 0, kind: "reviewer", chargeSec: 999 }],
+      enemies: [spawnEnemyUnit(201, 0, "syntaxBug")],
+    };
+    const before = rt.enemies[0]!.hp;
+    rt = stepLaneDefenseRuntime(rt, 1.0);
+    const lost = before - rt.enemies[0]!.hp;
+    expect(lost).toBeGreaterThan(8);
+    expect(lost).toBeLessThan(10);
+  });
+
+  it("firewall burst DPS outdamages fixer on front enemy", () => {
+    let rt = createLaneDefenseRuntime(13);
+    const tank = {
+      ...spawnEnemyUnit(301, 1, "syntaxBug"),
+      x: 0.85,
+      baseSpeed: 0,
+      hp: 200,
+      maxHp: 200,
+    };
+    rt = {
+      ...rt,
+      placed: [{ lane: 1, kind: "firewall", chargeSec: 999 }],
+      enemies: [tank],
+    };
+    const before = rt.enemies[0]!.hp;
+    rt = stepLaneDefenseRuntime(rt, 1.0);
+    const lost = before - rt.enemies[0]!.hp;
+    expect(lost).toBeGreaterThan(36);
+    expect(lost).toBeLessThan(40);
+  });
+
+  it("fixer kills a zero-day from spawn line before it reaches the desk", () => {
+    let rt = createLaneDefenseRuntime(14);
+    rt = {
+      ...rt,
+      placed: [{ lane: 0, kind: "fixer", chargeSec: 999 }],
+      enemies: [{ ...spawnEnemyUnit(401, 0, "zeroDay"), x: 1, baseSpeed: 0 }],
+    };
+    rt = stepLaneDefenseRuntime(rt, 18);
+    expect(rt.enemies.some((e) => e.kind === "zeroDay")).toBe(false);
+  });
+});
+
+describe("lane agent uptime (charge)", () => {
+  it("deploy seeds charge from tray activeChargeSec", () => {
+    let rt = createLaneDefenseRuntime(1);
+    rt = laneDefenseDeployToLane(rt, 0);
+    const p = rt.placed.find((x) => x.lane === 0)!;
+    const def = AGENT_TRAY.find((a) => a.kind === p.kind)!;
+    expect(p.chargeSec).toBe(def.activeChargeSec);
+  });
+
+  it("charge drains during a wave and removes the hero when depleted", () => {
+    let rt = createLaneDefenseRuntime(1);
+    rt = laneDefenseDeployToLane(rt, 0);
+    const dur = AGENT_TRAY.find((a) => a.kind === "fixer")!.activeChargeSec;
+    rt = stepLaneDefenseRuntime(rt, dur + 0.05);
+    expect(rt.placed.some((p) => p.lane === 0)).toBe(false);
+  });
+
+  it("redeploying the same lane refreshes charge", () => {
+    let rt = createLaneDefenseRuntime(1);
+    rt = laneDefenseDeployToLane(rt, 0);
+    const full = AGENT_TRAY.find((a) => a.kind === "fixer")!.activeChargeSec;
+    expect(rt.placed[0]!.chargeSec).toBe(full);
+    rt = stepLaneDefenseRuntime(rt, 5);
+    expect(rt.placed[0]!.chargeSec).toBeCloseTo(full - 5, 5);
+    rt = stepLaneDefenseRuntime(rt, 2);
+    rt = laneDefenseDeployToLane(rt, 0);
+    expect(rt.placed.find((p) => p.lane === 0)!.chargeSec).toBe(full);
+  });
+
+  it("charge does not drain during inter-wave pause", () => {
+    let rt = createLaneDefenseRuntime(1);
+    rt = laneDefenseDeployToLane(rt, 0);
+    const before = rt.placed[0]!.chargeSec;
+    rt = { ...rt, wavePause: 1.0, focus: 10, capacity: 10 };
+    rt = stepLaneDefenseRuntime(rt, 0.5);
+    expect(rt.placed[0]!.chargeSec).toBe(before);
+  });
+
+  it("clue wave gate still reachable on time path (no agents required)", () => {
+    expect(survivalNotebookLock(1, 60)).toBe(true);
+  });
 });
 
 describe("enemy resistance / vulnerability rules", () => {
@@ -212,7 +372,7 @@ describe("enemy resistance / vulnerability rules", () => {
     // front of the lane just inside DPS range.
     rt = {
       ...rt,
-      placed: [{ lane: 0, kind: "fixer" }],
+      placed: [{ lane: 0, kind: "fixer", chargeSec: 999 }],
       enemies: [
         spawnEnemyUnit(101, 0, "phishingPacket"),
         spawnEnemyUnit(102, 0, "syntaxBug"),
@@ -223,47 +383,64 @@ describe("enemy resistance / vulnerability rules", () => {
     rt = stepLaneDefenseRuntime(rt, 1.0);
     const phish = rt.enemies.find((e) => e.id === 101);
     expect(phish).toBeDefined();
-    // 1s of fixer DPS at 13 dps with 0.5 mul = 6.5 hp lost; allow ±1.
+    // 1s of fixer DPS at 14 dps with 0.5 mul = 7 hp lost.
     const lost = beforePhishHp - phish!.hp;
-    expect(lost).toBeGreaterThan(5.5);
+    expect(lost).toBeGreaterThan(6.5);
     expect(lost).toBeLessThan(7.5);
   });
 
-  it("regression bug leaks twice as hard with no firewall", () => {
-    // Build a minimal runtime where one regression bug is at x=0 with a
-    // firewall present, and another with no firewall.
-    const noFw = createLaneDefenseRuntime(22);
-    const withFw = {
-      ...createLaneDefenseRuntime(22),
-      placed: [{ lane: 0, kind: "firewall" as const }],
-    };
-    const placeBug = (rt: typeof noFw): typeof noFw => ({
-      ...rt,
-      enemies: [{ ...spawnEnemyUnit(1, 0, "regressionBug"), x: 0 }],
-    });
-    const a = stepLaneDefenseRuntime(placeBug(noFw), 1 / 60);
-    const b = stepLaneDefenseRuntime(placeBug(withFw), 1 / 60);
-    // No-firewall took 2x leak; with-firewall took 0.5x. Total HP delta
-    // (capacity + base) for noFw should be ~4x with-fw.
-    const hpDelta = (rt: typeof noFw): number =>
-      noFw.capacity - rt.capacity + (noFw.baseHealth - rt.baseHealth);
-    expect(hpDelta(a)).toBeGreaterThan(hpDelta(b) * 2);
+  it("firewall lane uptime is shorter than fixer (burst vs sustain)", () => {
+    const fw = AGENT_TRAY.find((a) => a.kind === "firewall")!;
+    const fx = AGENT_TRAY.find((a) => a.kind === "fixer")!;
+    expect(fw.activeChargeSec).toBeLessThan(fx.activeChargeSec);
+    expect(fw.cost).toBeGreaterThan(fx.cost);
   });
 
+  it("firewall out-damages fixer over a 3s window on the same target", () => {
+    const mkTank = (id: number) => ({
+      ...spawnEnemyUnit(id, 0, "syntaxBug"),
+      x: 0.85,
+      baseSpeed: 0,
+      hp: 500,
+      maxHp: 500,
+    });
+    const enemyFw = mkTank(501);
+    const enemyFx = mkTank(502);
+    const baseRt = createLaneDefenseRuntime(44);
+    let rtFw = {
+      ...baseRt,
+      placed: [{ lane: 0, kind: "firewall" as const, chargeSec: 999 }],
+      enemies: [enemyFw],
+    };
+    let rtFx = {
+      ...baseRt,
+      placed: [{ lane: 0, kind: "fixer" as const, chargeSec: 999 }],
+      enemies: [enemyFx],
+    };
+    rtFw = stepLaneDefenseRuntime(rtFw, 3.0);
+    rtFx = stepLaneDefenseRuntime(rtFx, 3.0);
+    const eFw = rtFw.enemies.find((e) => e.id === 501);
+    const eFx = rtFx.enemies.find((e) => e.id === 502);
+    expect(eFw).toBeDefined();
+    expect(eFx).toBeDefined();
+    const lostFw = enemyFw.hp - eFw!.hp;
+    const lostFx = enemyFx.hp - eFx!.hp;
+    expect(lostFw).toBeGreaterThan(lostFx * 2);
+  });
   it("syntax bug DPS path is unaffected by the new resistance rules", () => {
     let rt = createLaneDefenseRuntime(33);
     rt = {
       ...rt,
-      placed: [{ lane: 0, kind: "fixer" }],
+      placed: [{ lane: 0, kind: "fixer", chargeSec: 999 }],
       enemies: [spawnEnemyUnit(7, 0, "syntaxBug")],
     };
     const before = rt.enemies[0]!.hp;
     rt = stepLaneDefenseRuntime(rt, 1.0);
     const after = rt.enemies[0]?.hp ?? 0;
     const lost = before - after;
-    // 1s × 13 fixerDps × 1.0 mul = 13.
-    expect(lost).toBeGreaterThan(12);
-    expect(lost).toBeLessThan(14);
+    // 1s × 14 fixerDps × 1.0 mul = 14.
+    expect(lost).toBeGreaterThan(13.5);
+    expect(lost).toBeLessThan(14.5);
   });
 });
 

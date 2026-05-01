@@ -38,7 +38,7 @@ export interface AnomalyDef {
   readonly revealText: string;
   /** The string shown on the correct answer button. */
   readonly correctChoice: string;
-  /** Pool of near-miss labels (≥4) — picker chooses 2 distractors. */
+  /** Pool of near-miss labels (≥4) — picker chooses 3 distractors. */
   readonly distractorPool: readonly string[];
   /** Mutate the diorama to introduce the anomaly. */
   readonly apply: (objects: DioramaObjects) => void;
@@ -46,7 +46,7 @@ export interface AnomalyDef {
 
 export interface PickedAnomaly {
   readonly def: AnomalyDef;
-  /** 3 strings ordered for display in the answer panel. */
+  /** 4 strings ordered for display in the answer panel (correct + 3 close distractors). */
   readonly choices: readonly string[];
   /** Index into `choices` of the correct answer. */
   readonly correctIndex: number;
@@ -372,17 +372,19 @@ export function pickAnomaly(seed: number): PickedAnomaly {
     const bo = overlapsClues(b) ? 1 : 0;
     return bo - ao;
   });
+  // 3 distractors → 4-choice case file. Prefer rows that overlap the
+  // four cipher clue tokens (they share a beat with the truth) so the
+  // puzzle bites instead of being a giveaway.
   const overlapPick = ranked.filter((d) => overlapsClues(d));
   const restPick = ranked.filter((d) => !overlapPick.includes(d));
   const distractors: string[] = [];
-  if (overlapPick.length >= 2) {
-    distractors.push(overlapPick[0]!, overlapPick[1]!);
-  } else {
-    distractors.push(...overlapPick);
-    for (const r of restPick) {
-      if (distractors.length >= 2) break;
-      if (!distractors.includes(r)) distractors.push(r);
-    }
+  for (const d of overlapPick) {
+    if (distractors.length >= 3) break;
+    if (!distractors.includes(d)) distractors.push(d);
+  }
+  for (const r of restPick) {
+    if (distractors.length >= 3) break;
+    if (!distractors.includes(r)) distractors.push(r);
   }
 
   // Build [correct, d1, d2] then shuffle deterministically; track correctIndex.

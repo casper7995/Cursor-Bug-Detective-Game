@@ -52,6 +52,125 @@ export function hitDeskHelpButton(
   return inRect(gameX, gameY, r);
 }
 
+/** Room above card bottom for footer line + padding (matches draw baseline ~h-13). */
+const TUTORIAL_FOOTER_RESERVE = 28;
+const TUTORIAL_MIN_DIAGRAM_H = 36;
+
+export interface TutorialLayoutResult {
+  readonly cardRect: { x: number; y: number; w: number; h: number };
+  readonly startRect: { x: number; y: number; w: number; h: number };
+  readonly diagramBounds: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null;
+}
+
+/**
+ * Pure layout for tests and TutorialGate: bottom-anchors Start + footer inside the card
+ * and shrinks or omits the diagram when the canvas is short (e.g. 320px-tall minigame).
+ */
+export function computeTutorialLayout(
+  W: number,
+  H: number,
+  cardW: number,
+  content: Pick<TutorialContent, "drawDiagram" | "diagramHeight">,
+  bulletsBlock: number,
+): TutorialLayoutResult {
+  const padTop = 22;
+  const titleBlock = 28;
+  const taglineBlock = 24;
+  const headerH = padTop + titleBlock + taglineBlock;
+  const maxCardH = H - 24;
+  const btnW = 176;
+  const btnH = 38;
+  const gapDiagramToBtn = 14;
+  const diagramGap = 12;
+
+  const bulletEndU = headerH + bulletsBlock;
+  const desiredDiagram =
+    typeof content.drawDiagram === "function"
+      ? (content.diagramHeight ?? 92)
+      : 0;
+
+  const stackNoDiagram =
+    bulletEndU + 8 + gapDiagramToBtn + btnH + TUTORIAL_FOOTER_RESERVE;
+
+  const maxDiagramEnvelope = Math.max(
+    0,
+    maxCardH -
+      bulletEndU -
+      diagramGap -
+      gapDiagramToBtn -
+      btnH -
+      TUTORIAL_FOOTER_RESERVE,
+  );
+
+  let gapAfterBullets: 8 | 12 = 8;
+  let diagramH = 0;
+  if (desiredDiagram > 0) {
+    diagramH = Math.min(desiredDiagram, maxDiagramEnvelope);
+    if (diagramH >= TUTORIAL_MIN_DIAGRAM_H) gapAfterBullets = diagramGap;
+    else diagramH = 0;
+  }
+
+  const stackWithDiagram =
+    bulletEndU +
+    gapAfterBullets +
+    diagramH +
+    gapDiagramToBtn +
+    btnH +
+    TUTORIAL_FOOTER_RESERVE;
+  const ch = Math.min(maxCardH, Math.max(stackNoDiagram, stackWithDiagram));
+
+  const cardX = (W - cardW) / 2;
+  const cardY = (H - ch) / 2;
+
+  const startY = cardY + ch - TUTORIAL_FOOTER_RESERVE - btnH;
+  const diagramBottom = startY - gapDiagramToBtn;
+
+  const clampDiagram = (): void => {
+    const topMin = cardY + bulletEndU + gapAfterBullets;
+    diagramH = Math.min(diagramH, Math.max(0, diagramBottom - topMin));
+    if (diagramH < TUTORIAL_MIN_DIAGRAM_H) {
+      diagramH = 0;
+      gapAfterBullets = 8;
+      const topMin2 = cardY + bulletEndU + gapAfterBullets;
+      diagramH = Math.min(desiredDiagram, Math.max(0, diagramBottom - topMin2));
+      if (diagramH < TUTORIAL_MIN_DIAGRAM_H) diagramH = 0;
+      else gapAfterBullets = diagramGap;
+    }
+  };
+  clampDiagram();
+
+  const diagramTop =
+    diagramH > 0
+      ? diagramBottom - diagramH
+      : cardY + bulletEndU + gapAfterBullets;
+
+  const diagramBounds =
+    diagramH > 0
+      ? {
+          x: cardX + 18,
+          y: diagramTop,
+          w: cardW - 36,
+          h: diagramH,
+        }
+      : null;
+
+  return {
+    cardRect: { x: cardX, y: cardY, w: cardW, h: ch },
+    startRect: {
+      x: cardX + (cardW - btnW) / 2,
+      y: startY,
+      w: btnW,
+      h: btnH,
+    },
+    diagramBounds,
+  };
+}
+
 export class TutorialGate {
   private static readonly BULLET_LINE_SKIP = 17;
   private static readonly BULLET_GAP_AFTER = 4;
@@ -154,62 +273,11 @@ export class TutorialGate {
   private layout(W: number, H: number): void {
     this.panelRect = { x: 0, y: 0, w: W, h: H };
     const cw = Math.min(460, W - 48);
-    const padTop = 22;
-    const titleBlock = 28;
-    const taglineBlock = 24;
     const bulletsBlock = this.estimateBulletsBlock(cw);
-    const diagramGap = this.content.drawDiagram ? 12 : 0;
-    const diagramBlock = this.content.drawDiagram
-      ? (this.content.diagramHeight ?? 92)
-      : 0;
-    const gapDiagramToBtn = 14;
-    const buttonBlock = 38;
-    const footerBlock = 34;
-    const padBottom = 16;
-    const ch = Math.min(
-      H - 24,
-      padTop +
-        titleBlock +
-        taglineBlock +
-        bulletsBlock +
-        diagramGap +
-        diagramBlock +
-        gapDiagramToBtn +
-        buttonBlock +
-        footerBlock +
-        padBottom,
-    );
-    this.cardRect = {
-      x: (W - cw) / 2,
-      y: (H - ch) / 2,
-      w: cw,
-      h: ch,
-    };
-    const btnW = 176;
-    const btnH = buttonBlock;
-    const diagramTop =
-      this.cardRect.y +
-      padTop +
-      titleBlock +
-      taglineBlock +
-      bulletsBlock +
-      diagramGap;
-    if (this.content.drawDiagram && diagramBlock > 0) {
-      this.diagramBounds = {
-        x: this.cardRect.x + 18,
-        y: diagramTop,
-        w: this.cardRect.w - 36,
-        h: diagramBlock,
-      };
-    } else {
-      this.diagramBounds = null;
-    }
-    this.startRect = {
-      x: this.cardRect.x + (this.cardRect.w - btnW) / 2,
-      y: diagramTop + diagramBlock + gapDiagramToBtn,
-      w: btnW,
-      h: btnH,
-    };
+    const laid = computeTutorialLayout(W, H, cw, this.content, bulletsBlock);
+    this.cardRect = laid.cardRect;
+    this.diagramBounds = laid.diagramBounds;
+    this.startRect = laid.startRect;
     this.innerCloseRect = {
       x: this.cardRect.x + this.cardRect.w - 36,
       y: this.cardRect.y + 10,

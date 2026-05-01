@@ -65,16 +65,27 @@ export interface TamperRound {
   readonly calls: readonly TamperCall[];
 }
 
-/** Score weights — total clamped to [0, 1000]. */
+/**
+ * Score weights — total clamped to [0, 1000]. Direction-correct calls earn a
+ * flat base plus a speed bonus scaled by how much call time was left when the
+ * verdict landed; pointing at the real change adds a small precision bonus.
+ * Wrong calls do NOT subtract — the game competes on accuracy and speed,
+ * not on punishing missed taps.
+ */
 export const TAMPER_SCORE = {
-  RIGHT_CALL: 150,
-  WRONG_CALL: -75,
-  CAUGHT_LIE: 250,
-  /** Extra reward when the caught lie was high-confidence (>= 85%). */
-  CONFIDENT_CATCH_BONUS: 100,
+  /** Per right call (Yes/No matches reality on the highlighted prop). */
+  RIGHT_CALL_BASE: 80,
+  /** Max time bonus per right call (multiplied by remaining time fraction). */
+  TIME_BONUS_MAX: 70,
+  /** Bonus when player additionally points at the real change with disagree-point. */
+  POINT_BONUS: 40,
+  WRONG_CALL: 0,
 } as const;
 
-/** Threshold used to decide whether a caught lie earns the confident-catch bonus. */
+/** Threshold kept for back-compat (no longer changes scoring). */
 export const TAMPER_CONFIDENT_THRESHOLD = 85;
 
 export const TAMPER_CALLS_PER_ROUND = 6;
+
+/** Minimum Agree/Disagree direction correct (of 6) to pin the desk clue. */
+export const TAMPER_CLUE_MIN_RIGHT_VERDICTS = 4;

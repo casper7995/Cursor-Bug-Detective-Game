@@ -9,7 +9,7 @@ import {
   type TamperScene,
   type TamperSpot,
   TAMPER_CALLS_PER_ROUND,
-  TAMPER_CONFIDENT_THRESHOLD,
+  TAMPER_CLUE_MIN_RIGHT_VERDICTS,
   TAMPER_SCORE,
 } from "./types";
 
@@ -43,28 +43,34 @@ export function buildTamperRound(seed: number): TamperRound {
   // — the same prop back-to-back. Independent decks decorrelate the two axes.
   const pointDeck = makeWithoutReplacementDeck(spots, rng);
   const tamperDeck = makeWithoutReplacementDeck(spots, rng);
-  const lyingCallIndices = pickIndicesForLies(1 + Math.floor(rng() * 3), rng);
   const calls: TamperCall[] = [];
 
+  // Bias roughly half the calls so Bugbot points at the real change (keeps
+  // both Yes/No verdicts in play across a round). The deck pulls already give
+  // a fair distribution; we let RNG decide and only nudge when needed.
   for (let i = 0; i < TAMPER_CALLS_PER_ROUND; i++) {
-    const pointSpot = pointDeck();
+    let pointSpot = pointDeck();
     const tamperedSpot = tamperDeck();
-    const truthIsTampered = pointSpot.id === tamperedSpot.id;
-    const isLying = lyingCallIndices.has(i);
-    // Bugbot lies ⇔ claim flips relative to the truth.
-    const claim: "tampered" | "clean" =
-      truthIsTampered !== isLying ? "tampered" : "clean";
-    // Honest: uniform 60..99. Lying: floor rises with callIndex so late lies
-    // land in the 80s–90s (capped at 90 to keep some range).
-    const confFloor = isLying ? Math.min(90, 60 + i * 5) : 60;
-    const conf = confFloor + Math.floor(rng() * (100 - confFloor));
+    if (i < 2 && pointSpot.id !== tamperedSpot.id) {
+      // Force the first call (and sometimes the second) to be a "Yes" so
+      // tutorial flow trains the most common case first.
+      if (i === 0) pointSpot = tamperedSpot;
+    }
+    const circledIsReal = pointSpot.id === tamperedSpot.id;
+    // Bugbot's claim is purely cosmetic chatter now — it always frames the
+    // pointed prop as the suspect. The player judges whether the highlighted
+    // prop actually changed; the chat line is flavor, not a logic puzzle.
+    const claim: "tampered" | "clean" = "tampered";
+    const conf = 60 + Math.floor(rng() * 40);
     calls.push({
       callIndex: i,
       tamperedSpotId: tamperedSpot.id,
       bugbotPointsAtSpotId: pointSpot.id,
       bugbotClaim: claim,
       bugbotConfidencePct: conf,
-      bugbotIsLying: isLying,
+      // Kept for back-compat: "lying" now means "Bugbot pointed at the wrong
+      // prop." Scoring no longer reads this field.
+      bugbotIsLying: !circledIsReal,
     });
   }
 
@@ -120,166 +126,161 @@ function shuffle<T>(items: readonly T[], rng: () => number): T[] {
   return out;
 }
 
-function pickIndicesForLies(n: number, rng: () => number): Set<number> {
-  const out = new Set<number>();
-  let safety = 0;
-  const target = Math.min(n, TAMPER_CALLS_PER_ROUND);
-  while (out.size < target && safety < 50) {
-    const backHalf = rng() < 0.7;
-    const idx = backHalf
-      ? 3 + Math.floor(rng() * 3) // 3..5
-      : Math.floor(rng() * 3); // 0..2
-    out.add(idx);
-    safety++;
-  }
-  return out;
-}
-
 export interface CallScore {
   readonly delta: number;
   readonly rightCall: boolean;
+  /** Player additionally pointed at the real changed prop (precision bonus). */
+  readonly pointBonus: boolean;
+  /** Back-compat flags — always false in the new model. */
   readonly caughtLie: boolean;
-  /** True when caughtLie AND Bugbot's confidence was at/above the threshold. */
   readonly confidentCatch: boolean;
 }
 
 /**
- * Decide if a player's verdict on a single call is correct. The "agree"/
- * "disagree" pair is symmetric:
- *   - Bugbot is honest → AGREE wins.
- *   - Bugbot is lying → DISAGREE wins.
- * "disagree-point" wins like a regular DISAGREE *and* awards CAUGHT_LIE if
- * the spot the player clicked matches the real tampered spot AND Bugbot was
- * lying. Pointing to the wrong spot is treated as a wrong call (penalty).
- *
- * Catching a lie at high confidence (>= TAMPER_CONFIDENT_THRESHOLD) earns an
- * additional CONFIDENT_CATCH_BONUS — the louder Bugbot is when wrong, the
- * more it's worth to call it out.
+ * Did Bugbot circle the prop that actually changed in TONIGHT? Drives every
+ * verdict — the question the player answers each call.
  */
-export function scoreCall(call: TamperCall, verdict: CallVerdict): CallScore {
-  const honest = !call.bugbotIsLying;
-  switch (verdict.kind) {
-    case "agree": {
-      const right = honest;
-      return {
-        delta: right ? TAMPER_SCORE.RIGHT_CALL : TAMPER_SCORE.WRONG_CALL,
-        rightCall: right,
-        caughtLie: false,
-        confidentCatch: false,
-      };
-    }
-    case "disagree": {
-      const right = !honest;
-      return {
-        delta: right ? TAMPER_SCORE.RIGHT_CALL : TAMPER_SCORE.WRONG_CALL,
-        rightCall: right,
-        caughtLie: false,
-        confidentCatch: false,
-      };
-    }
-    case "disagree-point": {
-      // Player must (a) be right that Bugbot is lying AND (b) point at the
-      // truly tampered spot for *this call*. Anything less is a wrong call.
-      const right = !honest && verdict.spotId === call.tamperedSpotId;
-      if (right) {
-        const confident =
-          call.bugbotConfidencePct >= TAMPER_CONFIDENT_THRESHOLD;
-        const bonus = confident ? TAMPER_SCORE.CONFIDENT_CATCH_BONUS : 0;
-        return {
-          delta: TAMPER_SCORE.RIGHT_CALL + TAMPER_SCORE.CAUGHT_LIE + bonus,
-          rightCall: true,
-          caughtLie: true,
-          confidentCatch: confident,
-        };
-      }
-      return {
-        delta: TAMPER_SCORE.WRONG_CALL,
-        rightCall: false,
-        caughtLie: false,
-        confidentCatch: false,
-      };
-    }
-    default: {
-      const _: never = verdict;
-      void _;
-      return {
-        delta: 0,
-        rightCall: false,
-        caughtLie: false,
-        confidentCatch: false,
-      };
-    }
+export function circledIsRealChange(call: TamperCall): boolean {
+  return call.bugbotPointsAtSpotId === call.tamperedSpotId;
+}
+
+/**
+ * Direction correctness keyed off the highlighted prop, NOT off Bugbot's
+ * "claim" line. Player rule: hit YES (agree) when the circled prop is the
+ * real change; hit NO (disagree / disagree-point) when it isn't.
+ */
+export function verdictDirectionCorrect(
+  call: TamperCall,
+  verdict: CallVerdict,
+): boolean {
+  const real = circledIsRealChange(call);
+  if (real) return verdict.kind === "agree";
+  return verdict.kind === "disagree" || verdict.kind === "disagree-point";
+}
+
+/**
+ * Per-call score. `timeFrac01` is how much call time was left when the
+ * player committed (1 = fast tap, 0 = let the clock run out). Wrong calls
+ * never go negative — players compete on accuracy + speed.
+ */
+export function scoreCall(
+  call: TamperCall,
+  verdict: CallVerdict,
+  timeFrac01 = 0,
+): CallScore {
+  const right = verdictDirectionCorrect(call, verdict);
+  if (!right) {
+    return {
+      delta: TAMPER_SCORE.WRONG_CALL,
+      rightCall: false,
+      pointBonus: false,
+      caughtLie: false,
+      confidentCatch: false,
+    };
   }
+  const t = Math.max(0, Math.min(1, timeFrac01));
+  let delta =
+    TAMPER_SCORE.RIGHT_CALL_BASE + Math.round(TAMPER_SCORE.TIME_BONUS_MAX * t);
+  let pointBonus = false;
+  if (
+    verdict.kind === "disagree-point" &&
+    !circledIsRealChange(call) &&
+    verdict.spotId === call.tamperedSpotId
+  ) {
+    delta += TAMPER_SCORE.POINT_BONUS;
+    pointBonus = true;
+  }
+  return {
+    delta,
+    rightCall: true,
+    pointBonus,
+    caughtLie: pointBonus,
+    confidentCatch: false,
+  };
 }
 
 export interface TamperResult {
   readonly score: number;
+  /** Calls where the verdict matched reality (Yes/No on circled prop). */
   readonly rightCalls: number;
+  /** Same as rightCalls — kept for back-compat with the result UI. */
+  readonly rightVerdicts: number;
   readonly wrongCalls: number;
+  /** Number of right calls that also pointed at the real change for bonus. */
   readonly caughtLies: number;
   readonly accuracy01: number;
+  /** Average remaining-time fraction across right calls (0..1). */
+  readonly avgTimeFrac01: number;
 }
 
-/** Sum + clamp the per-call deltas. */
+/**
+ * Sum + clamp the per-call deltas. `timeFracs` is parallel to `verdicts`;
+ * a missing entry counts as 0 (no speed bonus).
+ */
 export function scoreTamperRound(
   round: TamperRound,
   verdicts: readonly CallVerdict[],
+  timeFracs: readonly number[] = [],
 ): TamperResult {
   let total = 0;
   let right = 0;
   let wrong = 0;
-  let caught = 0;
+  let bonus = 0;
+  let timeAcc = 0;
   const n = Math.min(round.calls.length, verdicts.length);
   for (let i = 0; i < n; i++) {
     const call = round.calls[i] as TamperCall;
     const v = verdicts[i] as CallVerdict;
-    const r = scoreCall(call, v);
+    const t = timeFracs[i] ?? 0;
+    const r = scoreCall(call, v, t);
     total += r.delta;
-    if (r.rightCall) right++;
-    else wrong++;
-    if (r.caughtLie) caught++;
+    if (r.rightCall) {
+      right++;
+      timeAcc += Math.max(0, Math.min(1, t));
+    } else {
+      wrong++;
+    }
+    if (r.pointBonus) bonus++;
   }
   const score = Math.max(0, Math.min(1000, total));
   return {
     score,
     rightCalls: right,
+    rightVerdicts: right,
     wrongCalls: wrong,
-    caughtLies: caught,
+    caughtLies: bonus,
     accuracy01: n > 0 ? right / n : 0,
+    avgTimeFrac01: right > 0 ? timeAcc / right : 0,
   };
 }
 
-/** Desk clue: need solid calls plus at least one caught lie. */
+/** Desk clue: enough correct Agree/Disagree calls (see TAMPER_CLUE_MIN_RIGHT_VERDICTS). */
 export function tamperEarnsDeskClue(result: TamperResult): boolean {
-  return result.rightCalls >= 3 && result.caughtLies >= 1;
+  return result.rightVerdicts >= TAMPER_CLUE_MIN_RIGHT_VERDICTS;
 }
 
 /**
- * One-line result flash after each call, tied to the chosen verdict
- * and `scoreCall`’s `rightCall` / `caughtLie` / `confidentCatch`.
+ * One-line result flash after each call. Plain English: the question is
+ * always "did the highlighted prop change?"; the line just confirms or denies.
  */
 export function tamperVerdictFeedbackLine(
   verdict: CallVerdict,
-  o: { rightCall: boolean; caughtLie: boolean; confidentCatch?: boolean },
+  o: {
+    rightCall: boolean;
+    caughtLie?: boolean;
+    pointBonus?: boolean;
+    confidentCatch?: boolean;
+  },
 ): string {
-  if (o.caughtLie) {
-    return o.confidentCatch
-      ? "Caught a confident lie!"
-      : "Caught: you pointed to the real change.";
-  }
+  const point = o.pointBonus ?? o.caughtLie ?? false;
+  if (point) return "Nice — you pointed at the real change.";
   if (o.rightCall) {
-    if (verdict.kind === "agree") {
-      return "Correct: Bugbot was right.";
-    }
-    return "Correct: Bugbot was wrong.";
+    if (verdict.kind === "agree") return "Correct — that prop changed.";
+    return "Correct — that prop is clean.";
   }
-  if (verdict.kind === "disagree-point") {
-    return "That was not the changed prop.";
-  }
-  if (verdict.kind === "agree") {
-    return "Miss — Bugbot was wrong about this prop.";
-  }
-  return "Miss — Bugbot was right about this prop.";
+  if (verdict.kind === "disagree-point") return "That wasn’t the real change.";
+  if (verdict.kind === "agree") return "Miss — that prop didn’t change.";
+  return "Miss — that prop actually changed.";
 }
 
 export function spotById(scene: TamperScene, id: string): TamperSpot | null {

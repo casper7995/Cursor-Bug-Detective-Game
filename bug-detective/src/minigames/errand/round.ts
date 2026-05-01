@@ -134,6 +134,9 @@ export function buildWaveSpawnRoster(
 }
 
 export function spawnIntervalForWave(wave: number): number {
+  if (wave <= 3) {
+    return Math.max(1.05, 2.25 - wave * 0.08);
+  }
   return Math.max(0.85, 2.05 - wave * 0.07);
 }
 
@@ -216,6 +219,15 @@ function pullU(rt: LaneDefenseRuntime): number {
   return u;
 }
 
+/** Short-lived lane-centre label after a successful deploy (readability). */
+export interface DeployToastEffect {
+  readonly id: number;
+  readonly lane: LaneIndex;
+  readonly text: string;
+  readonly startedAt: number;
+  readonly duration: number;
+}
+
 export interface LaneDefenseRuntime {
   seed: number;
   rng: number;
@@ -242,6 +254,8 @@ export interface LaneDefenseRuntime {
   queue: AgentQueueEntry[];
   deployFx: DeployEffect[];
   nextDeployFxId: number;
+  deployToasts: DeployToastEffect[];
+  nextDeployToastId: number;
   feedbackFx: FeedbackEffect[];
   nextFeedbackFxId: number;
   /** Frame counter that decays each step; renderer uses for BASE-meter shake. */
@@ -303,6 +317,8 @@ export function createLaneDefenseRuntime(seed: number): LaneDefenseRuntime {
     })),
     deployFx: [],
     nextDeployFxId: 1,
+    deployToasts: [],
+    nextDeployToastId: 1,
     feedbackFx: [],
     nextFeedbackFxId: 1,
     baseHitShake: 0,
@@ -339,11 +355,29 @@ export function laneDefensePromoteAgent(
   };
 }
 
+/**
+ * The hero the player has explicitly selected (Q/W/E or queue click).
+ * Sticky across deploys — survives recharge so 1/2/3 keeps targeting the
+ * last pick instead of silently falling back to Fixer.
+ */
+export function pickedAgent(rt: LaneDefenseRuntime): AgentQueueEntry | null {
+  return rt.queue.find((q) => q.promoted) ?? null;
+}
+
+/**
+ * The hero that 1/2/3 would deploy: the explicit pick when present,
+ * otherwise the lowest-index ready hero (first-time/no-pick fallback).
+ */
+function deployTarget(rt: LaneDefenseRuntime): AgentQueueEntry | null {
+  return pickedAgent(rt) ?? queueHead(rt);
+}
+
 /** Why lane deploy might no-op (used for player-facing hints). */
 export type LaneDeployBlock =
   | "none"
   | "defeated"
   | "no_head"
+  | "recharging"
   | "focus"
   | "field_cap";
 
@@ -352,9 +386,10 @@ export function laneDefenseDeployBlockReason(
   lane: LaneIndex,
 ): LaneDeployBlock {
   if (rt.defeated) return "defeated";
-  const head = queueHead(rt);
-  if (head === null) return "no_head";
-  const def = AGENT_TRAY.find((a) => a.kind === head.kind);
+  const target = deployTarget(rt);
+  if (target === null) return "no_head";
+  if (target.readyAt > rt.elapsed) return "recharging";
+  const def = AGENT_TRAY.find((a) => a.kind === target.kind);
   if (!def || rt.focus < def.cost) return "focus";
   const hadLane = rt.placed.some((p) => p.lane === lane);
   const occupiedOther = rt.placed.filter((p) => p.lane !== lane).length;
@@ -368,16 +403,20 @@ export function laneDefenseDeployToLane(
   lane: LaneIndex,
 ): LaneDefenseRuntime {
   if (laneDefenseDeployBlockReason(rt, lane) !== "none") return rt;
-  const head = queueHead(rt);
-  if (head === null) return rt;
-  const def = AGENT_TRAY.find((a) => a.kind === head.kind);
+  const target = deployTarget(rt);
+  if (target === null) return rt;
+  const def = AGENT_TRAY.find((a) => a.kind === target.kind);
   if (!def) return rt;
 
   return {
     ...rt,
     placed: rt.placed
       .filter((p) => p.lane !== lane)
-      .concat({ lane, kind: def.kind }),
+      .concat({
+        lane,
+        kind: def.kind,
+        chargeSec: def.activeChargeSec,
+      }),
     deployFx: rt.deployFx.concat({
       id: rt.nextDeployFxId,
       kind: def.kind,
@@ -386,6 +425,14 @@ export function laneDefenseDeployToLane(
       duration: 0.62,
     }),
     nextDeployFxId: rt.nextDeployFxId + 1,
+    deployToasts: rt.deployToasts.concat({
+      id: rt.nextDeployToastId,
+      lane,
+      text: `${def.label} deployed`,
+      startedAt: rt.elapsed,
+      duration: 0.78,
+    }),
+    nextDeployToastId: rt.nextDeployToastId + 1,
     feedbackFx: rt.feedbackFx.concat({
       id: rt.nextFeedbackFxId,
       kind: "spend",
@@ -397,9 +444,7 @@ export function laneDefenseDeployToLane(
     }),
     nextFeedbackFxId: rt.nextFeedbackFxId + 1,
     queue: rt.queue.map((q) =>
-      q.kind === def.kind
-        ? { ...q, readyAt: rt.elapsed + def.recharge, promoted: false }
-        : q,
+      q.kind === def.kind ? { ...q, readyAt: rt.elapsed + def.recharge } : q,
     ),
     focus: rt.focus - def.cost,
     focusSpent: rt.focusSpent + def.cost,
@@ -441,6 +486,14 @@ function frontEnemy(
   return best;
 }
 
+/** Front-most enemy in a lane (matches simulation targeting). */
+export function laneDefenseFrontEnemy(
+  rt: LaneDefenseRuntime,
+  lane: LaneIndex,
+): EnemyUnit | null {
+  return frontEnemy(rt.enemies, lane);
+}
+
 function reviewerSlowLanes(placed: readonly PlacedAgent[]): Set<LaneIndex> {
   const s = new Set<LaneIndex>();
   for (const p of placed) {
@@ -461,11 +514,15 @@ export function stepLaneDefenseRuntime(
     placed: rt.placed.map((p) => ({ ...p })),
     queue: rt.queue.map((q) => ({ ...q })),
     deployFx: rt.deployFx.map((fx) => ({ ...fx })),
+    deployToasts: rt.deployToasts.map((fx) => ({ ...fx })),
     feedbackFx: rt.feedbackFx.map((fx) => ({ ...fx })),
   };
 
   next.elapsed += dt;
   next.deployFx = next.deployFx.filter(
+    (fx) => next.elapsed - fx.startedAt < fx.duration,
+  );
+  next.deployToasts = next.deployToasts.filter(
     (fx) => next.elapsed - fx.startedAt < fx.duration,
   );
   next.feedbackFx = next.feedbackFx.filter(
@@ -475,6 +532,14 @@ export function stepLaneDefenseRuntime(
   next.clueLocked = survivalNotebookLock(next.wave, next.elapsed);
 
   if (next.wavePause > 0) {
+    next.focus = Math.min(
+      LANE_DEFENSE.focusMax,
+      next.focus + LANE_DEFENSE.focusRegenPerSec * dt,
+    );
+    next.capacity = Math.min(
+      LANE_DEFENSE.capacityMax,
+      next.capacity + LANE_DEFENSE.capacityRegenPerSec * dt,
+    );
     next.wavePause -= dt;
     if (next.wavePause <= 0) {
       next.wavePause = 0;
@@ -508,13 +573,21 @@ export function stepLaneDefenseRuntime(
   const slow = reviewerSlowLanes(next.placed);
 
   for (const p of next.placed) {
-    const front = frontEnemy(next.enemies, p.lane);
-    if (!front || front.hp <= 0) continue;
+    const enemyFront = frontEnemy(next.enemies, p.lane);
+    if (!enemyFront || enemyFront.hp <= 0) continue;
     if (p.kind === "fixer") {
-      const mul = ENEMY_STATS[front.kind].fixerDpsMul ?? 1;
-      front.hp -= LANE_DEFENSE.fixerDps * mul * dt;
+      const mul = ENEMY_STATS[enemyFront.kind].fixerDpsMul ?? 1;
+      enemyFront.hp -= LANE_DEFENSE.fixerDps * mul * dt;
+    } else if (p.kind === "reviewer") {
+      enemyFront.hp -= LANE_DEFENSE.reviewerChipDps * dt;
+    } else if (p.kind === "firewall") {
+      enemyFront.hp -= LANE_DEFENSE.firewallChipDps * dt;
     }
   }
+
+  next.placed = next.placed
+    .map((p) => ({ ...p, chargeSec: p.chargeSec - dt }))
+    .filter((p) => p.chargeSec > 0);
 
   const summons: EnemyUnit[] = [];
   for (const e of next.enemies) {
@@ -558,15 +631,6 @@ export function stepLaneDefenseRuntime(
   for (const e of next.enemies) {
     if (e.x <= 0) {
       let dmg = e.leakDamage;
-      const firewallHere = next.placed.some(
-        (p) => p.lane === e.lane && p.kind === "firewall",
-      );
-      if (firewallHere) {
-        dmg *= LANE_DEFENSE.firewallLeakMul;
-      } else {
-        // Some archetypes punish the absence of a Firewall.
-        dmg *= ENEMY_STATS[e.kind].noFirewallLeakMul ?? 1;
-      }
       let cap = next.capacity;
       const absorb = Math.min(cap, dmg);
       cap -= absorb;

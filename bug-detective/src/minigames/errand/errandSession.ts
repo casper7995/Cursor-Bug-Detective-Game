@@ -18,6 +18,7 @@ import {
   laneDefenseDeskScore,
   laneDefensePromoteAgent,
   namespacedSeed,
+  pickedAgent,
   queueHead,
   stepLaneDefenseRuntime,
   type LaneDefenseRuntime,
@@ -79,12 +80,13 @@ export class ErrandSession {
     tagline:
       "Hold three lanes against inbound defects—including Zero-Day bosses.",
     howToLines: [
-      "Lanes: press 1–3, QWE, or numpad — top, middle, bottom (matches numbers on each lane row).",
-      "FOCUS (top-right) must be ≥ the Hero cost. WAIT = hero ready; earn more FOCUS before deploying.",
-      "Bugs march from the right. Deploy replaces that lane's hero. Click a left rail card to promote another hero first.",
-      "Evidence locks after 3 waves cleared or 60s survived.",
+      "Q / W / E pick a hero (Fixer / Reviewer / Firewall).",
+      "1 / 2 / 3 deploy that hero to top / mid / bottom lane.",
+      "Fixer = cheap, long uptime, steady beam. Reviewer = slow + chip. Firewall = burst nuke, short uptime.",
+      "Spend FOCUS on heroes; READY ring = available, WAIT = recharging.",
+      "Clue secures at wave 3 or 60s survived; then X / Esc pins the cipher.",
     ],
-    diagramHeight: 102,
+    diagramHeight: 84,
     drawDiagram: drawErrandTutorialDiagram,
     storageKey: "bd:miniTutorial:errand",
   });
@@ -130,17 +132,23 @@ export class ErrandSession {
     const block = laneDefenseDeployBlockReason(this.rt, laneHit);
     if (block !== "none") {
       sfxErrandReject();
-      const head = queueHead(this.rt);
-      const def = head
-        ? AGENT_TRAY.find((a) => a.kind === head.kind)
+      const picked = pickedAgent(this.rt) ?? queueHead(this.rt);
+      const def = picked
+        ? AGENT_TRAY.find((a) => a.kind === picked.kind)
         : undefined;
       if (block === "focus" && def) {
         this.flashFooter(
-          `Need ${def.cost} focus — have ${Math.floor(this.rt.focus)} (regenerates).`,
+          `Need ${def.cost} FOCUS (have ${Math.floor(this.rt.focus)}) — wait or pick Fixer (Q).`,
           2200,
         );
+      } else if (block === "recharging" && def) {
+        const wait = Math.max(0, picked!.readyAt - this.rt.elapsed);
+        this.flashFooter(
+          `${def.label} recharging (${wait.toFixed(1)}s) — hold or pick Q/W/E.`,
+          1800,
+        );
       } else if (block === "no_head") {
-        this.flashFooter("Hero recharging — wait for READY on the ring.", 1800);
+        this.flashFooter("All heroes recharging — hold the line.", 1800);
       } else if (block === "field_cap") {
         this.flashFooter(
           "Max heroes on field — deploy into a lane to swap.",
@@ -153,6 +161,13 @@ export class ErrandSession {
     if (next === this.rt) return false;
     this.rt = next;
     sfxErrandDispatch();
+    const placed = this.rt.placed.find((p) => p.lane === laneHit)!;
+    const def = AGENT_TRAY.find((a) => a.kind === placed.kind)!;
+    const laneName = ["top", "mid", "bottom"][laneHit]!;
+    this.flashFooter(
+      `${def.label} deployed (${laneName}) — works front bug until uptime ends.`,
+      1600,
+    );
     return true;
   }
 
@@ -197,7 +212,11 @@ export class ErrandSession {
         return;
       }
       if (hitDeskCloseButton(p.x, p.y)) {
-        this.onExit();
+        if (this.phase.kind === "play" && this.rt.clueLocked) {
+          this.pinClueOutcomeAndEnd();
+        } else {
+          this.onExit();
+        }
         return;
       }
       if (hitDeskHelpButton(p.x, p.y, W)) {
@@ -233,6 +252,11 @@ export class ErrandSession {
           e.preventDefault();
           return;
         }
+        if (this.phase.kind === "play" && this.rt.clueLocked) {
+          this.pinClueOutcomeAndEnd();
+          e.preventDefault();
+          return;
+        }
         this.onExit();
         return;
       }
@@ -245,6 +269,37 @@ export class ErrandSession {
         return;
       }
       if (this.phase.kind !== "play") return;
+      // Split mapping (per user request): Q/W/E pick the hero, 1/2/3 deploy
+      // to the chosen lane. Numpad mirrors digit keys for laptop / numpad
+      // users; the previous "any of these → deploy this lane" combined
+      // mapping was confusing once heroes had distinct cooldowns.
+      const heroKeys: Record<string, AgentKind> = {
+        KeyQ: "fixer",
+        KeyW: "reviewer",
+        KeyE: "firewall",
+      };
+      const heroPick = heroKeys[e.code];
+      if (heroPick !== undefined) {
+        const before = pickedAgent(this.rt)?.kind ?? null;
+        this.rt = laneDefensePromoteAgent(this.rt, heroPick);
+        const def = AGENT_TRAY.find((a) => a.kind === heroPick)!;
+        const entry = this.rt.queue.find((q) => q.kind === heroPick)!;
+        const ready = entry.readyAt <= this.rt.elapsed;
+        if (before !== heroPick) {
+          sfxErrandGrab();
+          if (ready) {
+            this.flashFooter(`${def.label} selected — press 1/2/3 to deploy.`);
+          } else {
+            const wait = Math.max(0, entry.readyAt - this.rt.elapsed);
+            this.flashFooter(
+              `${def.label} selected — recharging (${wait.toFixed(1)}s).`,
+              1600,
+            );
+          }
+        }
+        e.preventDefault();
+        return;
+      }
       const laneKeys: Record<string, LaneIndex> = {
         Digit1: 0,
         Digit2: 1,
@@ -252,9 +307,6 @@ export class ErrandSession {
         Numpad1: 0,
         Numpad2: 1,
         Numpad3: 2,
-        KeyQ: 0,
-        KeyW: 1,
-        KeyE: 2,
       };
       const laneIdx = laneKeys[e.code];
       if (laneIdx !== undefined) {
@@ -340,17 +392,28 @@ export class ErrandSession {
     this.draw();
   }
 
-  private finalizeDefeatOutcome(): void {
+  private pinClueOutcomeAndEnd(): void {
     if (this.outcome) return;
-    if (!this.rt.defeated) return;
-    const deskScore = laneDefenseDeskScore(this.rt);
     if (!this.rt.clueLocked) {
       this.onExit();
       return;
     }
     this.outcome = {
       clueToken: clueTokenForErrand(this.clueWord),
-      score: deskScore,
+      score: laneDefenseDeskScore(this.rt),
+    };
+  }
+
+  private finalizeDefeatOutcome(): void {
+    if (this.outcome) return;
+    if (!this.rt.defeated) return;
+    if (!this.rt.clueLocked) {
+      this.onExit();
+      return;
+    }
+    this.outcome = {
+      clueToken: clueTokenForErrand(this.clueWord),
+      score: laneDefenseDeskScore(this.rt),
     };
   }
 
@@ -407,11 +470,14 @@ export class ErrandSession {
     if (this.transientFooter) return this.transientFooter;
     switch (this.phase.kind) {
       case "play":
-        return "1–3 / QWE / numpad → lanes · FOCUS ≥ card · queue click = promote · ESC";
+        if (this.rt.clueLocked) {
+          return "CLUE SECURED · X / Esc pins cipher · keep redeploying before uptime ends";
+        }
+        return "Q/W/E pick hero · 1/2/3 deploy lane · FOCUS ≥ card · Esc exit";
       case "defeat":
         return this.rt.clueLocked
           ? "cipher pins on click / Space / Enter / Esc"
-          : "clue never locked · click / Esc — exit without cipher";
+          : "clue not secured · Esc — exit without cipher";
       default:
         return null;
     }

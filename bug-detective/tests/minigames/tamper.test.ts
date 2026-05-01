@@ -101,83 +101,88 @@ describe("tamper round determinism", () => {
   });
 });
 
-describe("tamper scoring", () => {
-  function agreeAll(): CallVerdict[] {
-    return Array.from({ length: TAMPER_CALLS_PER_ROUND }, () => ({
-      kind: "agree" as const,
-    }));
+describe("tamper scoring (direct Yes/No on highlighted prop)", () => {
+  function rightVerdictForCall(
+    c: ReturnType<typeof buildTamperRound>["calls"][number],
+  ): CallVerdict {
+    return c.bugbotPointsAtSpotId === c.tamperedSpotId
+      ? { kind: "agree" as const }
+      : { kind: "disagree" as const };
   }
 
-  it("answering each call correctly scores 6 * 150 = 900", () => {
+  it("perfect taps with no time bonus = 6 × RIGHT_CALL_BASE (480)", () => {
+    const r = buildTamperRound(7);
+    const verdicts: CallVerdict[] = r.calls.map(rightVerdictForCall);
+    const result = scoreTamperRound(r, verdicts);
+    expect(result.rightCalls).toBe(6);
+    expect(result.rightVerdicts).toBe(6);
+    expect(result.score).toBe(480);
+  });
+
+  it("perfect speed (timeFrac=1 each) caps at 6 × (BASE + TIME_BONUS_MAX) = 900", () => {
+    const r = buildTamperRound(7);
+    const verdicts: CallVerdict[] = r.calls.map(rightVerdictForCall);
+    const times = verdicts.map(() => 1);
+    const result = scoreTamperRound(r, verdicts, times);
+    expect(result.score).toBe(900);
+    expect(result.avgTimeFrac01).toBe(1);
+  });
+
+  it("inverted Yes/No (always wrong) scores 0 — wrong calls do NOT subtract", () => {
     const r = buildTamperRound(7);
     const verdicts: CallVerdict[] = r.calls.map((c) =>
-      c.bugbotIsLying
+      c.bugbotPointsAtSpotId === c.tamperedSpotId
         ? { kind: "disagree" as const }
         : { kind: "agree" as const },
     );
     const result = scoreTamperRound(r, verdicts);
-    expect(result.score).toBe(900);
-    expect(result.rightCalls).toBe(6);
-    expect(result.caughtLies).toBe(0);
-  });
-
-  it("answering every call wrong scores 0 (clamped from -450)", () => {
-    const r = buildTamperRound(7);
-    const verdicts: CallVerdict[] = r.calls.map((c) =>
-      c.bugbotIsLying
-        ? { kind: "agree" as const }
-        : { kind: "disagree" as const },
-    );
-    const result = scoreTamperRound(r, verdicts);
     expect(result.score).toBe(0);
     expect(result.rightCalls).toBe(0);
+    expect(result.rightVerdicts).toBe(0);
   });
 
-  it("disagree-point with the wrong spot is treated as a wrong call", () => {
+  it("disagree-point with the wrong spot still counts the No, no penalty", () => {
     const r = buildTamperRound(99);
-    const lyingCallIdx = r.calls.findIndex((c) => c.bugbotIsLying);
-    expect(lyingCallIdx).toBeGreaterThanOrEqual(0);
-    const lyingCall = r.calls[lyingCallIdx]!;
+    const idx = r.calls.findIndex(
+      (c) => c.bugbotPointsAtSpotId !== c.tamperedSpotId,
+    );
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const call = r.calls[idx]!;
     const wrongSpot =
-      r.scene.spots.find((s) => s.id !== lyingCall.tamperedSpotId)?.id ?? "";
-    expect(wrongSpot).not.toBe("");
-    const v = scoreCall(lyingCall, {
-      kind: "disagree-point",
-      spotId: wrongSpot,
-    });
-    expect(v.rightCall).toBe(false);
-    expect(v.delta).toBeLessThan(0);
+      r.scene.spots.find((s) => s.id !== call.tamperedSpotId)?.id ?? "";
+    const v = scoreCall(call, { kind: "disagree-point", spotId: wrongSpot }, 1);
+    expect(v.rightCall).toBe(true);
+    expect(v.pointBonus).toBe(false);
+    expect(v.delta).toBe(80 + 70);
   });
 
-  it("3 right + 3 caught lies clamps to 1000", () => {
+  it("disagree-point at the real change adds POINT_BONUS", () => {
+    const r = buildTamperRound(99);
+    const idx = r.calls.findIndex(
+      (c) => c.bugbotPointsAtSpotId !== c.tamperedSpotId,
+    );
+    const call = r.calls[idx]!;
+    const v = scoreCall(
+      call,
+      { kind: "disagree-point", spotId: call.tamperedSpotId },
+      1,
+    );
+    expect(v.rightCall).toBe(true);
+    expect(v.pointBonus).toBe(true);
+    expect(v.delta).toBe(80 + 70 + 40);
+  });
+
+  it("score clamps at 1000", () => {
     const r = buildTamperRound(7);
-    // Build a synthetic verdict pattern where the first 3 calls are correct
-    // (agree-when-honest / disagree-when-lying) and the next 3 are
-    // caught-lie hits where applicable. Total raw = 3*150 + 3*(150+250) =
-    // 450 + 1200 = 1650 → clamp 1000.
-    const verdicts: CallVerdict[] = r.calls.map((c, i) => {
-      if (i < 3) {
-        return c.bugbotIsLying
-          ? { kind: "disagree" as const }
-          : { kind: "agree" as const };
-      }
-      if (c.bugbotIsLying) {
-        return { kind: "disagree-point" as const, spotId: c.tamperedSpotId };
-      }
-      // Honest call in the second half — agree to avoid penalty.
-      return { kind: "agree" as const };
-    });
-    const result = scoreTamperRound(r, verdicts);
-    expect(result.score).toBeGreaterThanOrEqual(450);
+    const verdicts: CallVerdict[] = r.calls.map((c) =>
+      c.bugbotPointsAtSpotId === c.tamperedSpotId
+        ? { kind: "agree" as const }
+        : { kind: "disagree-point" as const, spotId: c.tamperedSpotId },
+    );
+    const times = verdicts.map(() => 1);
+    const result = scoreTamperRound(r, verdicts, times);
     expect(result.score).toBeLessThanOrEqual(1000);
-  });
-
-  it("agree-all baseline only scores honest calls", () => {
-    const r = buildTamperRound(7);
-    const result = scoreTamperRound(r, agreeAll());
-    const expectedHonest = r.calls.filter((c) => !c.bugbotIsLying).length;
-    const expectedDelta = expectedHonest * 150 + (6 - expectedHonest) * -75;
-    expect(result.score).toBe(Math.max(0, Math.min(1000, expectedDelta)));
+    expect(result.score).toBeGreaterThanOrEqual(900);
   });
 });
 
@@ -197,10 +202,9 @@ describe("tamper helpers", () => {
 });
 
 describe("tamper copy helpers", () => {
-  it("bugbotRowClaimLine names the prop in plain English", () => {
+  it("bugbotRowClaimLine asks the Yes/No question on the highlighted prop", () => {
     const scene = TAMPER_SCENES[0]!;
     const s0 = scene.spots[0]!;
-    const s1 = scene.spots[1]!;
     expect(
       bugbotRowClaimLine(
         {
@@ -212,52 +216,31 @@ describe("tamper copy helpers", () => {
         },
         scene,
       ),
-    ).toBe(`Bugbot says: the ${s0.label} changed`);
-    expect(
-      bugbotRowClaimLine(
-        {
-          callIndex: 0,
-          bugbotPointsAtSpotId: s1.id,
-          bugbotClaim: "clean",
-          bugbotConfidencePct: 70,
-          bugbotIsLying: false,
-        },
-        scene,
-      ),
-    ).toBe(`Bugbot says: the ${s1.label} is clean`);
+    ).toBe(`Bugbot circles the ${s0.label} — did it really change?`);
   });
 
-  it("tamperVerdictFeedbackLine matches the rule the player just applied", () => {
+  it("tamperVerdictFeedbackLine reflects circled-prop truth, not Bugbot framing", () => {
     expect(
-      tamperVerdictFeedbackLine(
-        { kind: "agree" },
-        { rightCall: true, caughtLie: false },
-      ),
-    ).toBe("Correct: Bugbot was right.");
+      tamperVerdictFeedbackLine({ kind: "agree" }, { rightCall: true }),
+    ).toBe("Correct — that prop changed.");
     expect(
-      tamperVerdictFeedbackLine(
-        { kind: "disagree" },
-        { rightCall: true, caughtLie: false },
-      ),
-    ).toBe("Correct: Bugbot was wrong.");
+      tamperVerdictFeedbackLine({ kind: "disagree" }, { rightCall: true }),
+    ).toBe("Correct — that prop is clean.");
     expect(
       tamperVerdictFeedbackLine(
         { kind: "disagree-point", spotId: "x" },
-        { rightCall: true, caughtLie: true },
+        { rightCall: true, pointBonus: true },
       ),
-    ).toBe("Caught: you pointed to the real change.");
+    ).toBe("Nice — you pointed at the real change.");
     expect(
       tamperVerdictFeedbackLine(
         { kind: "disagree-point", spotId: "x" },
-        { rightCall: false, caughtLie: false },
+        { rightCall: false },
       ),
-    ).toBe("That was not the changed prop.");
+    ).toBe("That wasn’t the real change.");
     expect(
-      tamperVerdictFeedbackLine(
-        { kind: "disagree-point", spotId: "x" },
-        { rightCall: true, caughtLie: true, confidentCatch: true },
-      ),
-    ).toBe("Caught a confident lie!");
+      tamperVerdictFeedbackLine({ kind: "agree" }, { rightCall: false }),
+    ).toBe("Miss — that prop didn’t change.");
   });
 });
 
@@ -289,43 +272,19 @@ describe("spotPropAt hit-testing", () => {
   });
 });
 
-describe("tamper confident-catch bonus", () => {
-  it("awards +100 when caught lie has confidence >= 85", () => {
-    const lyingCallHi = {
+describe("tamper time bonus", () => {
+  it("speed scales the bonus linearly: 0 → +0, 1 → +TIME_BONUS_MAX", () => {
+    const call = {
       callIndex: 0,
       tamperedSpotId: "real",
-      bugbotPointsAtSpotId: "irrelevant",
-      bugbotClaim: "clean" as const,
-      bugbotConfidencePct: 92,
-      bugbotIsLying: true,
+      bugbotPointsAtSpotId: "real",
+      bugbotClaim: "tampered" as const,
+      bugbotConfidencePct: 80,
+      bugbotIsLying: false,
     };
-    const r = scoreCall(lyingCallHi, {
-      kind: "disagree-point",
-      spotId: "real",
-    });
-    expect(r.rightCall).toBe(true);
-    expect(r.caughtLie).toBe(true);
-    expect(r.confidentCatch).toBe(true);
-    // RIGHT_CALL (150) + CAUGHT_LIE (250) + CONFIDENT_CATCH_BONUS (100) = 500.
-    expect(r.delta).toBe(500);
-  });
-
-  it("does NOT award the bonus when confidence < 85", () => {
-    const lyingCallLo = {
-      callIndex: 0,
-      tamperedSpotId: "real",
-      bugbotPointsAtSpotId: "irrelevant",
-      bugbotClaim: "clean" as const,
-      bugbotConfidencePct: 70,
-      bugbotIsLying: true,
-    };
-    const r = scoreCall(lyingCallLo, {
-      kind: "disagree-point",
-      spotId: "real",
-    });
-    expect(r.caughtLie).toBe(true);
-    expect(r.confidentCatch).toBe(false);
-    expect(r.delta).toBe(400);
+    expect(scoreCall(call, { kind: "agree" }, 0).delta).toBe(80);
+    expect(scoreCall(call, { kind: "agree" }, 1).delta).toBe(80 + 70);
+    expect(scoreCall(call, { kind: "agree" }, 0.5).delta).toBe(80 + 35);
   });
 });
 

@@ -37,6 +37,7 @@ import {
   type TamperRound,
   type TamperSpot,
   TAMPER_CALLS_PER_ROUND,
+  TAMPER_CLUE_MIN_RIGHT_VERDICTS,
 } from "./types";
 import { clueTokenForTamper } from "./clueTokens";
 import {
@@ -115,8 +116,12 @@ export class TamperSession {
   /** O(1) spot lookup — built once at round time, shared by chat/result render. */
   private readonly spotsById: ReadonlyMap<string, TamperSpot>;
   private readonly verdicts: CallVerdict[] = [];
+  /** Remaining-time fraction (0..1) for each verdict, parallel to `verdicts`. */
+  private readonly verdictTimeFracs: number[] = [];
   private phase: Phase = { kind: "intro", t: 0 };
   private outcome: MiniGameOutcome | null = null;
+  /** Prevents double onExit / double outcome from result timeout + click. */
+  private resultSheetDismissed = false;
   private pointerBound = false;
   /** Cached hit-rects from the most recent draw — re-used by pointer events. */
   private chatHits: ChatHits | null = null;
@@ -129,11 +134,13 @@ export class TamperSession {
   } | null = null;
   private readonly gate = new TutorialGate({
     title: "Spot the difference",
-    tagline: "Compare ORIGINAL vs TONIGHT. Bugbot may be wrong about a prop.",
+    tagline: "Bugbot circles a prop each call — did it really change?",
     howToLines: [
-      "Find the one prop that really changed in TONIGHT (icon shifts shape).",
-      "You get 6 calls — say whether Bugbot is right about the highlighted prop.",
-      "If Bugbot is wrong, use Point to real change, then click the true changed prop in TONIGHT.",
+      "Compare ORIGINAL ↔ TONIGHT. Bugbot circles one prop per call.",
+      "Hit Yes if it really changed; No if it's clean.",
+      "Faster taps score more — speed is the differentiator.",
+      "Optional: when No, point to the real change for a bonus.",
+      `Need ${String(TAMPER_CLUE_MIN_RIGHT_VERDICTS)} / 6 calls right to pin the lamp clue.`,
     ],
     drawDiagram: drawTamperTutorialDiagram,
     storageKey: "bd:miniTutorial:tamper",
@@ -279,7 +286,7 @@ export class TamperSession {
         // when the player clicks to skip — otherwise no-clue rounds dismiss
         // before the player sees what was tampered.
         if (this.phase.t >= RESULT_MIN_READ_S) {
-          this.finalizeOutcome();
+          this.dismissResultSheet();
         }
         return;
       }
@@ -351,6 +358,15 @@ export class TamperSession {
           this.gate.dismissFromKey();
           return;
         }
+        if (this.phase.kind === "result") {
+          e.preventDefault();
+          e.stopPropagation();
+          if (this.phase.t < RESULT_MIN_READ_S) {
+            this.phase = { kind: "result", t: RESULT_MIN_READ_S };
+          }
+          this.dismissResultSheet();
+          return;
+        }
         this.onExit();
         return;
       }
@@ -382,8 +398,16 @@ export class TamperSession {
     const callIndex = this.phase.callIndex;
     const call = this.round.calls[callIndex];
     if (!call) return;
+    // Compute how much call-time was left when the verdict landed. The point
+    // sub-phase consumes its own short window; treat the time fraction as the
+    // residual of the original CALL_DURATION_S since pickPhase entry.
+    const phaseT = this.phase.t;
+    const denom =
+      this.phase.kind === "call" ? CALL_DURATION_S : POINT_DURATION_S;
+    const timeFrac01 = Math.max(0, Math.min(1, 1 - phaseT / denom));
     this.verdicts.push(v);
-    const r = scoreCall(call, v);
+    this.verdictTimeFracs.push(timeFrac01);
+    const r = scoreCall(call, v, timeFrac01);
     sfxTamperVerdict(r);
     this.phase = { kind: "verdict", callIndex, t: 0, result: r, verdict: v };
   }
@@ -416,24 +440,42 @@ export class TamperSession {
   }
 
   private computeResultMemo(): NonNullable<typeof this.resultMemo> {
-    const score = scoreTamperRound(this.round, this.verdicts);
+    const score = scoreTamperRound(
+      this.round,
+      this.verdicts,
+      this.verdictTimeFracs,
+    );
     const tamperedVariants = this.round.tamperedSpotIdsThisRound
       .map((id) => this.spotsById.get(id)?.tonightIfThisTampered)
       .filter((v): v is string => typeof v === "string");
     return { score, tamperedVariants };
   }
 
-  private finalizeOutcome(): void {
-    if (this.outcome) return;
-    const result = scoreTamperRound(this.round, this.verdicts);
-    if (!tamperEarnsDeskClue(result)) {
-      this.onExit();
+  /**
+   * End of the result card: pin a cipher if thresholds met, else return to desk.
+   * When a clue is earned, only set `outcome`; `main.ts` consumes it and then
+   * tears down the overlay (Esc must not call onExit in that case).
+   */
+  private dismissResultSheet(): void {
+    if (this.phase.kind !== "result") return;
+    if (this.resultSheetDismissed) return;
+    if (this.phase.t < RESULT_MIN_READ_S) return;
+    this.resultSheetDismissed = true;
+    const result = scoreTamperRound(
+      this.round,
+      this.verdicts,
+      this.verdictTimeFracs,
+    );
+    if (tamperEarnsDeskClue(result)) {
+      if (!this.outcome) {
+        this.outcome = {
+          clueToken: clueTokenForTamper(this.clueWord),
+          score: result.score,
+        };
+      }
       return;
     }
-    this.outcome = {
-      clueToken: clueTokenForTamper(this.clueWord),
-      score: result.score,
-    };
+    this.onExit();
   }
 
   step(dtSec: number): void {
@@ -499,7 +541,7 @@ export class TamperSession {
       }
       case "result": {
         this.phase = { kind: "result", t: this.phase.t + dtSec };
-        if (this.phase.t >= RESULT_AUTOCLOSE_S) this.finalizeOutcome();
+        if (this.phase.t >= RESULT_AUTOCLOSE_S) this.dismissResultSheet();
         break;
       }
       default: {
@@ -598,7 +640,9 @@ export class TamperSession {
         {
           score: memo.score.score,
           rightCalls: memo.score.rightCalls,
+          rightVerdicts: memo.score.rightVerdicts,
           caughtLies: memo.score.caughtLies,
+          avgTimeFrac01: memo.score.avgTimeFrac01,
           earnedClue: tamperEarnsDeskClue(memo.score),
           tamperedVariants: memo.tamperedVariants,
         },
@@ -692,13 +736,7 @@ function inRect(
   return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
 
-function formatScoreDelta(r: {
-  confidentCatch: boolean;
-  caughtLie: boolean;
-  rightCall: boolean;
-}): string {
-  if (r.confidentCatch) return "+500";
-  if (r.caughtLie) return "+400";
-  if (r.rightCall) return "+150";
-  return "−75";
+function formatScoreDelta(r: { delta: number; rightCall: boolean }): string {
+  if (!r.rightCall) return "—";
+  return `+${r.delta}`;
 }

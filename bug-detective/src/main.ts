@@ -29,7 +29,6 @@ import {
 import { renderShareCard, tweetIntent, shareCardBlob } from "./ui/shareCard";
 import { renderLeaderboardPanel } from "./ui/leaderboard";
 import { createPostFx } from "./three/postFx";
-import { gradeFinalAccusation } from "./game/answerGrader";
 import {
   type AmbientContext,
   setAmbientContext,
@@ -1253,14 +1252,8 @@ function bootGameInner(simplified: boolean): void {
     mascotController.resetAt(mascot.group.position.clone(), 0);
   }
 
-  answerPanel.onSubmitText((text) => {
-    const g = gradeFinalAccusation(text, picked);
-    if (g.kind === "vague" || g.kind === "ambiguous") {
-      answerPanel.setFormHint(g.message);
-      return;
-    }
+  answerPanel.onSubmitChoice(({ correct }) => {
     sfxUiClick();
-    const correct = g.kind === "correct";
     state.submit(correct);
     answerPanel.hide();
     if (state.phase.kind === "results") {
@@ -1452,8 +1445,25 @@ function bootGameInner(simplified: boolean): void {
       .map((p) => p?.clueToken.toUpperCase())
       .filter(Boolean)
       .join(" · ");
-    answerPanel.show("Make the call — which anomaly is live?", ev);
+    answerPanel.show({
+      prompt: "Make the call — which anomaly is live?",
+      evidenceLine: ev,
+      choices: picked.choices,
+      correctIndex: picked.correctIndex,
+    });
   }
+
+  answerPanel.onCancel(() => {
+    if (state.phase.kind !== "answering") {
+      answerPanel.hide();
+      return;
+    }
+    sfxUiClick();
+    state.cancelAnswering();
+    answerPanel.hide();
+    hud.setStatusText("sweep the desk — trust the tooltip");
+    hud.setExplorationHint("hit Make the call when you're sure");
+  });
 
   function restartRound(): void {
     // Always tear down runner / desk overlay. A lingering canvas (e.g. after a
@@ -1928,11 +1938,14 @@ function bootGameInner(simplified: boolean): void {
       }
       mascot.setStride(0, 0);
     } else if (state.phase.kind === "investigating" && deskMinigame) {
-      deskMinigame.session.step(dtSec);
+      const deskMini = deskMinigame;
+      deskMini.session.step(dtSec);
       // Esc / MenuBack: handled inside each desk session (tutorial gate vs exit).
-      const out = deskMinigame.session.getOutcome();
+      // Capture `deskMini` before `step`: Tamper may call onExit during step when
+      // no clue is earned, which clears `deskMinigame` before getOutcome runs.
+      const out = deskMini.session.getOutcome();
       if (out) {
-        const kind = deskMinigame.kind;
+        const kind = deskMini.kind;
         const slot: "sentence" | "errand" | "tamper" =
           kind === "sentence"
             ? "sentence"
@@ -1953,7 +1966,7 @@ function bootGameInner(simplified: boolean): void {
           hud.setNotebook(state.phase.notebook);
           hud.setSessionScores(getSessionScoreboardView());
           hud.setStatusText(
-            `clue locked · ${out.clueToken.toUpperCase()}${deskNewBest ? ` · ${GAME_SCORE_LABEL[slot]} new best` : ""} — sweep the desk`,
+            `clue secured · ${out.clueToken.toUpperCase()}${deskNewBest ? ` · ${GAME_SCORE_LABEL[slot]} new best` : ""} — sweep the desk`,
           );
         }
         sfxClueFound();

@@ -37,6 +37,9 @@ export type Phase =
   | {
       kind: "answering";
       startedAt: number;
+      /** Original investigating start time — preserved so cancelAnswering can
+       *  resume the desk timer cleanly without giving the player a free reset. */
+      investigatingStartedAt: number;
       notebook: NotebookState;
       elapsedMs: number;
       monitorDailyClear: boolean;
@@ -117,10 +120,28 @@ export class GameState {
     const elapsedMs = Math.max(0, now - inv.startedAt);
     this.phase = {
       kind: "answering",
-      startedAt: inv.startedAt,
+      startedAt: now,
+      investigatingStartedAt: inv.startedAt,
       notebook: inv.notebook,
       elapsedMs,
       monitorDailyClear: inv.monitorDailyClear,
+    };
+    return true;
+  }
+
+  /**
+   * Cancel the answer panel and return to investigating without losing the
+   * notebook or the original timer. Lets players keep researching after they
+   * second-guess themselves at the case-file step.
+   */
+  cancelAnswering(): boolean {
+    if (this.phase.kind !== "answering") return false;
+    const ans = this.phase;
+    this.phase = {
+      kind: "investigating",
+      startedAt: ans.investigatingStartedAt,
+      notebook: ans.notebook,
+      monitorDailyClear: ans.monitorDailyClear,
     };
     return true;
   }

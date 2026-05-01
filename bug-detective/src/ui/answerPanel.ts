@@ -1,27 +1,54 @@
+/**
+ * Final-call panel: a multiple-choice case file. Player picks the line
+ * consistent with all four cipher clues. Esc / "Back to desk" returns
+ * to investigating (notebook preserved) so the panel never traps players.
+ */
+
 export interface AnswerPanel {
   readonly element: HTMLElement;
-  show(prompt: string, evidenceLine?: string): void;
+  /**
+   * Open with the case prompt + evidence cipher line + ordered choice list.
+   * `correctIndex` is the index into `choices` of the right pick.
+   */
+  show(args: {
+    prompt: string;
+    evidenceLine?: string;
+    choices: readonly string[];
+    correctIndex: number;
+  }): void;
   hide(): void;
   setFormHint(message: string | null): void;
-  onSubmitText(handler: (text: string) => void): void;
-  focusInput(): void;
+  /** Fires with `correct = true` only when the right choice was selected. */
+  onSubmitChoice(
+    handler: (result: { correct: boolean; index: number }) => void,
+  ): void;
+  /** Fires when the player presses Esc or the "Back to desk" button. */
+  onCancel(handler: () => void): void;
   destroy(): void;
 }
 
 const STYLE_OVERLAY =
   "position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(26,24,18,0.88);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);pointer-events:auto;z-index:10;";
 const STYLE_PANEL =
-  "background:#14120b;color:#efe7d7;padding:24px 28px;border-radius:18px;border:1px solid rgba(245,78,0,0.35);box-shadow:0 18px 48px rgba(0,0,0,0.55);min-width:360px;max-width:520px;width:90%;font-family:'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;";
+  "background:#14120b;color:#efe7d7;padding:22px 26px 18px;border-radius:18px;border:1px solid rgba(245,78,0,0.35);box-shadow:0 18px 48px rgba(0,0,0,0.55);min-width:360px;max-width:540px;width:92%;font-family:'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;";
 const STYLE_PROMPT =
-  "font:600 18px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;margin:0 0 18px;color:#f54e00;letter-spacing:0.02em;";
+  "font:600 18px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;margin:0 0 6px;color:#f54e00;letter-spacing:0.02em;";
+const STYLE_SUB =
+  "font:500 12px 'Berkeley Mono',ui-monospace,monospace;margin:0 0 14px;color:#a89072;letter-spacing:0.04em;line-height:1.5;";
 const STYLE_HINT =
-  "font:500 12px 'Berkeley Mono',ui-monospace,monospace;margin:0 0 8px;color:#c08532;letter-spacing:0.02em;line-height:1.4;min-height:1.2em;";
+  "font:500 12px 'Berkeley Mono',ui-monospace,monospace;margin:0 0 12px;color:#c08532;letter-spacing:0.04em;line-height:1.4;min-height:1.2em;";
 const STYLE_FORM_ERR =
   "font:500 12px 'Berkeley Mono',ui-monospace,monospace;margin:8px 0 0;color:#e8a050;letter-spacing:0.02em;line-height:1.4;min-height:1.2em;";
-const STYLE_TA =
-  "width:100%;min-height:88px;max-height:200px;resize:vertical;padding:12px 14px;border-radius:12px;background:#1a1812;color:#efe7d7;border:1px solid rgba(245,78,0,0.45);font:500 15px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;box-sizing:border-box;";
-const STYLE_SUBMIT =
-  "display:block;width:100%;margin:14px 0 0;padding:14px 16px;border-radius:12px;background:#1a1812;color:#efe7d7;border:1px solid rgba(245,78,0,0.45);font:500 15px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;cursor:pointer;text-align:center;";
+const STYLE_CHOICE_LIST =
+  "display:flex;flex-direction:column;gap:8px;margin:0;";
+const STYLE_CHOICE_BTN =
+  "display:flex;gap:12px;align-items:center;width:100%;padding:13px 16px;border-radius:12px;background:#1a1812;color:#efe7d7;border:1px solid rgba(245,78,0,0.30);font:500 14px 'Cursor Gothic',ui-sans-serif,system-ui,sans-serif;cursor:pointer;text-align:left;letter-spacing:0.01em;transition:border-color 0.12s ease, background 0.12s ease;";
+const STYLE_CHOICE_TAG =
+  "font:600 11px 'Berkeley Mono',ui-monospace,monospace;color:#c08532;letter-spacing:0.12em;flex-shrink:0;min-width:24px;";
+const STYLE_FOOTER =
+  "display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:12px;font:500 11px 'Berkeley Mono',ui-monospace,monospace;color:#8a7556;letter-spacing:0.04em;";
+const STYLE_BACK =
+  "padding:8px 14px;border-radius:10px;background:transparent;color:#a89072;border:1px solid rgba(168,144,114,0.35);font:500 12px 'Berkeley Mono',ui-monospace,monospace;cursor:pointer;letter-spacing:0.06em;";
 
 export function createAnswerPanel(container: HTMLElement): AnswerPanel {
   const overlay = document.createElement("div");
@@ -37,50 +64,104 @@ export function createAnswerPanel(container: HTMLElement): AnswerPanel {
   promptEl.style.cssText = STYLE_PROMPT;
   panel.appendChild(promptEl);
 
+  const subEl = document.createElement("p");
+  subEl.style.cssText = STYLE_SUB;
+  subEl.textContent = "One line is consistent with every cipher you cracked.";
+  panel.appendChild(subEl);
+
   const evidenceEl = document.createElement("p");
   evidenceEl.style.cssText = STYLE_HINT;
   panel.appendChild(evidenceEl);
 
-  const textarea = document.createElement("textarea");
-  textarea.setAttribute("autocomplete", "off");
-  textarea.setAttribute("autocapitalize", "sentences");
-  textarea.style.cssText = STYLE_TA;
-  textarea.placeholder = "Name the object and the wrong detail…";
-  panel.appendChild(textarea);
+  const choiceList = document.createElement("div");
+  choiceList.style.cssText = STYLE_CHOICE_LIST;
+  panel.appendChild(choiceList);
 
   const formErr = document.createElement("p");
   formErr.style.cssText = STYLE_FORM_ERR;
   panel.appendChild(formErr);
 
-  const submitBtn = document.createElement("button");
-  submitBtn.type = "button";
-  submitBtn.textContent = "Submit accusation";
-  submitBtn.style.cssText = STYLE_SUBMIT;
-  panel.appendChild(submitBtn);
+  const footer = document.createElement("div");
+  footer.style.cssText = STYLE_FOOTER;
+  panel.appendChild(footer);
 
-  let handler: ((text: string) => void) | null = null;
+  const backBtn = document.createElement("button");
+  backBtn.type = "button";
+  backBtn.textContent = "← back to desk";
+  backBtn.style.cssText = STYLE_BACK;
+  footer.appendChild(backBtn);
+
+  const escHint = document.createElement("span");
+  escHint.textContent = "esc · back to desk";
+  footer.appendChild(escHint);
+
+  let choiceHandler:
+    | ((result: { correct: boolean; index: number }) => void)
+    | null = null;
+  let cancelHandler: (() => void) | null = null;
+  let correctIndex = -1;
 
   function setFormHint(message: string | null): void {
     formErr.textContent = message ?? "";
   }
 
-  function show(prompt: string, evidenceLine?: string): void {
-    promptEl.textContent = prompt;
-    if (evidenceLine && evidenceLine.length > 0) {
+  /** Two-letter case tag for each row; deliberately not "A/B/C/D" so the
+   *  copy reads like an evidence file rather than a quiz. */
+  function tagFor(index: number): string {
+    return `0${index + 1}`;
+  }
+
+  function clearChoices(): void {
+    choiceList.replaceChildren();
+  }
+
+  function buildChoiceButton(text: string, index: number): HTMLButtonElement {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.style.cssText = STYLE_CHOICE_BTN;
+    const tag = document.createElement("span");
+    tag.style.cssText = STYLE_CHOICE_TAG;
+    tag.textContent = tagFor(index);
+    const label = document.createElement("span");
+    label.textContent = text;
+    btn.append(tag, label);
+    btn.addEventListener("mouseenter", () => {
+      btn.style.borderColor = "rgba(245,78,0,0.65)";
+      btn.style.background = "#221d12";
+    });
+    btn.addEventListener("mouseleave", () => {
+      btn.style.borderColor = "rgba(245,78,0,0.30)";
+      btn.style.background = "#1a1812";
+    });
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const correct = index === correctIndex;
+      choiceHandler?.({ correct, index });
+    });
+    return btn;
+  }
+
+  function show(args: {
+    prompt: string;
+    evidenceLine?: string;
+    choices: readonly string[];
+    correctIndex: number;
+  }): void {
+    promptEl.textContent = args.prompt;
+    if (args.evidenceLine && args.evidenceLine.length > 0) {
       evidenceEl.style.display = "";
-      evidenceEl.textContent = `four clues, one culprit: ${evidenceLine}`;
+      evidenceEl.textContent = `cipher · ${args.evidenceLine}`;
     } else {
       evidenceEl.style.display = "none";
       evidenceEl.textContent = "";
     }
-    textarea.value = "";
+    correctIndex = args.correctIndex;
+    clearChoices();
+    args.choices.forEach((c, i) => {
+      choiceList.appendChild(buildChoiceButton(c, i));
+    });
     setFormHint(null);
     overlay.style.display = "flex";
-    window.setTimeout(() => textarea.focus(), 0);
-  }
-
-  function focusInput(): void {
-    textarea.focus();
   }
 
   function hide(): void {
@@ -88,30 +169,29 @@ export function createAnswerPanel(container: HTMLElement): AnswerPanel {
     setFormHint(null);
   }
 
-  function onSubmitText(h: (text: string) => void): void {
-    handler = h;
+  function onSubmitChoice(
+    h: (result: { correct: boolean; index: number }) => void,
+  ): void {
+    choiceHandler = h;
   }
 
-  function doSubmit(): void {
-    const t = textarea.value.replace(/\r\n/g, "\n").trim();
-    handler?.(t);
+  function onCancel(h: () => void): void {
+    cancelHandler = h;
   }
 
-  submitBtn.addEventListener("click", (e) => {
+  backBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    doSubmit();
-  });
-  textarea.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      doSubmit();
-    }
+    cancelHandler?.();
   });
 
+  // Capture-phase Esc handler so the panel always wins over deeper
+  // listeners (some host browsers route keys oddly during overlays).
   const onKey = (e: KeyboardEvent): void => {
     if (overlay.style.display === "none") return;
     if (e.key === "Escape") {
+      e.preventDefault();
       e.stopPropagation();
+      cancelHandler?.();
     }
   };
   window.addEventListener("keydown", onKey, true);
@@ -126,8 +206,8 @@ export function createAnswerPanel(container: HTMLElement): AnswerPanel {
     show,
     hide,
     setFormHint,
-    onSubmitText,
-    focusInput,
+    onSubmitChoice,
+    onCancel,
     destroy,
   };
 }

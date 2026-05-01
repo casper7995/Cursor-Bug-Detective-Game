@@ -67,30 +67,41 @@ describe("desk mini clue gating helpers", () => {
     ).toBe(false);
   });
 
-  it("tamper requires ≥3 right calls and ≥1 caught lie", () => {
+  it("tamper pins clue at 4+ correct Yes/No calls on the highlighted prop", () => {
     const r = buildTamperRound(7);
-    const honest: CallVerdict[] = r.calls.map((c) =>
-      c.bugbotIsLying
-        ? { kind: "disagree" as const }
-        : { kind: "agree" as const },
+    const perfect: CallVerdict[] = r.calls.map((c) =>
+      c.bugbotPointsAtSpotId === c.tamperedSpotId
+        ? { kind: "agree" as const }
+        : { kind: "disagree" as const },
     );
-    const perfect = scoreTamperRound(r, honest);
-    expect(tamperEarnsDeskClue(perfect)).toBe(false);
+    const full = scoreTamperRound(r, perfect);
+    expect(full.rightVerdicts).toBe(TAMPER_CALLS_PER_ROUND);
+    expect(tamperEarnsDeskClue(full)).toBe(true);
 
-    const lyingIdx = r.calls.findIndex((c) => c.bugbotIsLying);
-    expect(lyingIdx).toBeGreaterThanOrEqual(0);
-    const lyingCall = r.calls[lyingIdx]!;
-    const withCatch = honest.map((v, i) =>
-      i === lyingIdx
+    const flip = (call: (typeof r.calls)[number]): CallVerdict =>
+      call.bugbotPointsAtSpotId === call.tamperedSpotId
+        ? { kind: "disagree" as const }
+        : { kind: "agree" as const };
+    const threeBad = perfect.map((v, i) => (i < 3 ? flip(r.calls[i]!) : v));
+    const low = scoreTamperRound(r, threeBad);
+    expect(low.rightVerdicts).toBe(3);
+    expect(tamperEarnsDeskClue(low)).toBe(false);
+
+    const offIdx = r.calls.findIndex(
+      (c) => c.bugbotPointsAtSpotId !== c.tamperedSpotId,
+    );
+    expect(offIdx).toBeGreaterThanOrEqual(0);
+    const offCall = r.calls[offIdx]!;
+    const pointingCatch = perfect.map((v, i) =>
+      i === offIdx
         ? ({
             kind: "disagree-point",
-            spotId: lyingCall.tamperedSpotId,
+            spotId: offCall.tamperedSpotId,
           } as CallVerdict)
         : v,
     );
-    const caught = scoreTamperRound(r, withCatch);
+    const caught = scoreTamperRound(r, pointingCatch);
     expect(caught.caughtLies).toBeGreaterThanOrEqual(1);
-    expect(caught.rightCalls).toBe(TAMPER_CALLS_PER_ROUND);
     expect(tamperEarnsDeskClue(caught)).toBe(true);
   });
 });

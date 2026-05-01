@@ -20,29 +20,38 @@ export interface AgentTrayDef {
   readonly cost: number;
   /** Seconds before this Hero can return to the head of the queue. */
   readonly recharge: number;
+  /**
+   * Lane uptime per deploy — drains while the wave is active; at 0 the hero
+   * leaves the lane (forces refresh / triage instead of infinite AFK beams).
+   */
+  readonly activeChargeSec: number;
 }
 
 export const AGENT_TRAY: readonly AgentTrayDef[] = [
   {
     kind: "fixer",
     label: "Fixer",
-    blurb: "Steady repair beam on the front threat in this lane.",
-    cost: 25,
-    recharge: 1.6,
+    blurb: "Cheap, sustained. Long uptime, fast recharge — steady repair beam.",
+    cost: 20,
+    recharge: 1.4,
+    activeChargeSec: 18,
   },
   {
     kind: "reviewer",
     label: "Reviewer",
-    blurb: "Slows everything pushing through this lane.",
-    cost: 35,
+    blurb: "Slows the lane and chips. Mid cost, mid uptime.",
+    cost: 30,
     recharge: 2.2,
+    activeChargeSec: 12,
   },
   {
     kind: "firewall",
     label: "Firewall",
-    blurb: "Halves desk damage when leaks slip past in this lane.",
-    cost: 45,
-    recharge: 2.8,
+    blurb:
+      "Burst nuker — biggest DPS for a few seconds. Save FOCUS for fat bugs and bosses.",
+    cost: 42,
+    recharge: 3.2,
+    activeChargeSec: 6,
   },
 ] as const;
 
@@ -57,12 +66,6 @@ export interface EnemyArchetype {
    * multiple Fixers across lanes. Defaults to 1.
    */
   readonly fixerDpsMul?: number;
-  /**
-   * Multiplier on leak damage when NO Firewall is present in the leaked
-   * lane. >1 punishes "no Firewall" play, encouraging the Firewall pick on
-   * waves heavy in this enemy. Defaults to 1.
-   */
-  readonly noFirewallLeakMul?: number;
 }
 
 export const ENEMY_STATS: Record<EnemyKind, EnemyArchetype> = {
@@ -72,8 +75,6 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyArchetype> = {
     speed: 0.11,
     leakDamage: 12,
     isBoss: false,
-    // Heavy hitter — without Firewall to soften, leaks twice as hard.
-    noFirewallLeakMul: 2,
   },
   phishingPacket: {
     maxHp: 18,
@@ -84,13 +85,18 @@ export const ENEMY_STATS: Record<EnemyKind, EnemyArchetype> = {
     fixerDpsMul: 0.5,
   },
   ransomwareBlob: { maxHp: 110, speed: 0.055, leakDamage: 18, isBoss: false },
-  zeroDay: { maxHp: 380, speed: 0.075, leakDamage: 32, isBoss: true },
+  zeroDay: { maxHp: 240, speed: 0.058, leakDamage: 30, isBoss: true },
 };
 
 /** Lane-local agent (at most one per lane in v1). */
 export interface PlacedAgent {
   readonly lane: LaneIndex;
   readonly kind: AgentKind;
+  /**
+   * Remaining active dispatch time (seconds). When it reaches 0 after a step,
+   * the agent is removed from the lane. Not drained during inter-wave pause.
+   */
+  chargeSec: number;
 }
 
 export interface EnemyUnit {
@@ -115,19 +121,21 @@ export const LANE_DEFENSE = {
   capacityRegenPerSec: 5.5,
   startingCapacity: 56,
   focusMax: 100,
-  focusRegenPerSec: 8.5,
-  startingFocus: 48,
+  focusRegenPerSec: 11.5,
+  startingFocus: 62,
   maxPlacedAgents: 3,
-  /** DPS onto front enemy in lane. */
-  fixerDps: 13,
-  reviewerSlowMul: 0.52,
-  /** Leak damage multiplier when a firewall is present in that lane. */
-  firewallLeakMul: 0.5,
-  bossSummonInterval: 11,
+  /** Primary DPS from Fixer onto front enemy (see `fixerDpsMul` on archetypes). */
+  fixerDps: 14,
+  /** Chip DPS from Reviewer while slowing the lane — no enemy resist multiplier. */
+  reviewerChipDps: 9,
+  /** Burst DPS from Firewall on front threat (short lane uptime). */
+  firewallChipDps: 38,
+  reviewerSlowMul: 0.5,
+  bossSummonInterval: 14,
   bossWarningLeadSec: 9,
   interWavePauseSec: 1.85,
   /** First wave that spawns a Zero-Day (after warning). */
-  firstBossWave: 2,
+  firstBossWave: 4,
   /** Notebook locks once current wave index reaches this (1-based) or time gate hits. */
   clueLockWaves: 3,
   clueLockSeconds: 60,

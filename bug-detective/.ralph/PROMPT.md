@@ -8,7 +8,7 @@ All 4 minigames score **≥90/100** on the rubric at `.ralph/rubric.md`, validat
 
 ## Hard rules
 
-1. **Working directory:** `/Users/caspe/conductor/workspaces/cursor-crew/main/bug-detective`. cd here at the start of every iteration.
+1. **Working directory:** `$REPO_ROOT/bug-detective` (repository clone root + `/bug-detective`). `cd` here at the start of every iteration.
 2. **State of truth:** `.ralph/scores.json`. Read it at iteration start, write it before exit.
 3. **Backlogs:** `.ralph/backlog/<game>.md` lists prioritized items. Mark `[done]`, `[blocked]`, or leave open.
 4. **Validation must be real gameplay.** Use the Agent tool with `general-purpose` and the eval template at `.ralph/eval/_template.md` (substituting the game name). The reviewer MUST play in Playwright and report `validated: true` or your iteration is void.

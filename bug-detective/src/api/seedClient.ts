@@ -26,7 +26,7 @@ export function fallbackSeed(date: string): number {
   return h >>> 0;
 }
 
-/** Mulberry-32-flavored PRNG seeded from a uint32 (matches shooting-game). */
+/** Mulberry-32-flavored PRNG seeded from a uint32 (stable with server seed format). */
 export function makeSeededRng(seed: number): () => number {
   let s = seed >>> 0;
   return (): number => {

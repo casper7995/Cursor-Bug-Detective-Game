@@ -1,12 +1,12 @@
 # Bug Detective — Deployment Runbook
 
-Follow this when deploying the jam build to Cloudflare. The plan is to
-**replace the existing shooting-game site** on Cloudflare Pages with the
-Bug Detective build.
+Follow this when deploying the jam build to **Cloudflare Pages** and the
+leaderboard **Worker**.
 
 ## Prerequisites
 
-- Cloudflare account with the existing `shooting-game` Pages project.
+- Cloudflare account with **Workers + KV** and a **Pages** project (create one
+  if you don't have one yet).
 - Cloudflare Workers + KV access (for the leaderboard).
 - `wrangler` CLI authenticated locally (`npx wrangler login`).
 
@@ -46,9 +46,9 @@ call from anywhere.
 
 ---
 
-## 2. Re-point Cloudflare Pages at `bug-detective/`
+## 2. Configure Cloudflare Pages for `bug-detective/`
 
-In the Pages dashboard for the existing project:
+In the Pages dashboard for your project:
 
 | Setting | New value |
 | --- | --- |
@@ -58,12 +58,7 @@ In the Pages dashboard for the existing project:
 | Environment variable | `VITE_LEADERBOARD_API=https://bug-detective-api.<account>.workers.dev` |
 
 Then trigger a new deploy (push to `main` or "Retry deployment" in the
-dashboard). The site will be replaced in place — same Pages project,
-same custom domain (if any).
-
-If you need to roll back to the shooting-game build, the old build
-command and output directory are documented in
-[`shooting-game/README.md`](../shooting-game/README.md).
+dashboard). Custom domains attach to the Pages project as usual.
 
 ---
 

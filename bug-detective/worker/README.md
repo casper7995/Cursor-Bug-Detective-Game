@@ -1,7 +1,6 @@
 # Bug Detective Worker
 
-Daily seed + leaderboard for Bug Detective. Forked from
-`shooting-game/worker/index.ts`.
+Daily seed + leaderboard for Bug Detective.
 
 ## Endpoints
 

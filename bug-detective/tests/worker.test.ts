@@ -1,8 +1,8 @@
 /**
  * Worker handler integration test using a minimal in-memory KV stub.
  *
- * The worker is forked from shooting-game/worker/index.ts so the smoke
- * tests focus on Bug Detective's specific differences:
+ * Smoke tests for the leaderboard worker (shared daily-seed behavior with client).
+ * Tests focus on Bug Detective's specific differences:
  *   - puzzleId routing (default = "bug-detective-v1")
  *   - cluesUsed/elapsedMs validation (400 on out-of-range)
  *   - tiebreaker sort order: score desc, cluesUsed asc, elapsedMs asc, ts asc
@@ -135,7 +135,9 @@ describe("worker /leaderboard tiebreakers", () => {
     for (const e of entries) {
       await call(env, "POST", "/score", { date, ...e });
     }
-    const lb = (await (await call(env, "GET", `/leaderboard?date=${date}`)).json()) as {
+    const lb = (await (
+      await call(env, "GET", `/leaderboard?date=${date}`)
+    ).json()) as {
       scores: Array<{ name: string; score: number }>;
     };
     expect(lb.scores.map((s) => s.name)).toEqual(["A", "D", "B", "C"]);
@@ -159,7 +161,9 @@ describe("worker /leaderboard tiebreakers", () => {
       elapsedMs: 5000,
       name: "other",
     });
-    const lb = (await (await call(env, "GET", `/leaderboard?date=${date}`)).json()) as {
+    const lb = (await (
+      await call(env, "GET", `/leaderboard?date=${date}`)
+    ).json()) as {
       scores: Array<{ name: string }>;
     };
     expect(lb.scores.map((s) => s.name)).toEqual(["default"]);

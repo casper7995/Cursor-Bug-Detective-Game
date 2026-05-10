@@ -145,10 +145,32 @@ test.describe("Ralph-loop smoke (Chromium)", () => {
         /* ignore */
       }
     });
-    const mon2 = (await resolveHoverPts(page, ["monitor-screen"]))[
-      "monitor-screen"
-    ]!;
-    await page.mouse.click(mon2.x, mon2.y);
+    await expect(page.locator(".bd-runner")).toBeHidden({ timeout: 25_000 });
+    await expect(page.locator("#hud")).toBeVisible({ timeout: 15_000 });
+
+    await expect(async () => {
+      await page.evaluate(() => {
+        try {
+          localStorage.removeItem("bd:miniTutorial:runner");
+        } catch {
+          /* ignore */
+        }
+      });
+      await page.waitForTimeout(420);
+      const hoverPtsLate = (await resolveHoverPts(page)) as Record<
+        (typeof TAG_LIST)[number],
+        { x: number; y: number }
+      >;
+      const mon2 = hoverPtsLate["monitor-screen"]!;
+      await page.mouse.move(mon2.x, mon2.y);
+      await page.waitForTimeout(100);
+      await page.mouse.down();
+      await page.mouse.up();
+      await page.waitForTimeout(220);
+      const vis = await page.locator("#bd-runner-tutorial").isVisible();
+      if (!vis) throw new Error("runner tutorial missing after monitor click");
+    }).toPass({ timeout: 45_000, intervals: [800] });
+
     await page.getByTestId("bd-runner-tutorial-dismiss").click();
     await page.keyboard.press("Escape");
     await page.waitForTimeout(800);

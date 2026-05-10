@@ -3,7 +3,7 @@
 A reviewer subagent gets this template + the rubric. The agent **must** play the game in Playwright (or document why it could not), produce per-category scores summing to 0–100, and save screenshots.
 
 ## Inputs to the reviewer
-- Repo at `/Users/caspe/conductor/workspaces/cursor-crew/main`
+- Repo root: `$REPO_ROOT` (parent of the `bug-detective/` folder)
 - Read `bug-detective/.ralph/rubric.md` for the rubric
 - Read `bug-detective/.ralph/scores.json` for the prior score
 - Read `bug-detective/.ralph/backlog/<game>.md` for what was done this iteration

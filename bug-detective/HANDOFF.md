@@ -132,10 +132,8 @@ bug-detective/
   chokes on the GLSL during your Safari smoke test, swap the
   `ShaderMaterial` for a `MeshBasicMaterial` and animate opacity (a
   five-line change documented in VALIDATION.md).
-- **Cloudflare Pages replaces the shooting-game site** (per your
-  direction). Both projects stay in the repo; only the Pages build
-  settings change. Old shooting-game settings documented in
-  `shooting-game/README.md` for trivial rollback.
+- **Cloudflare Pages** build should point at `bug-detective/` (see
+  `DEPLOY.md` for build command, output dir, and env vars).
 - **Bloom is disabled during the page-peel intro.** Otherwise the
   bright fake-page texture caused full-screen glow. Re-enabled when
   landing completes.

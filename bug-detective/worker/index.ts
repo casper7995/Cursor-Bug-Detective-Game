@@ -1,7 +1,7 @@
 /**
  * Bug Detective leaderboard + daily seed worker.
  *
- * Forked from shooting-game/worker/index.ts. Differences:
+ * Evolved from an earlier internal worker. Differences:
  *  - KV binding name: BUG_LB (was LB)
  *  - Key prefix: bd:<date>:<puzzleId> (was lb:<date>:<character>)
  *  - puzzleId replaces character (default = "bug-detective-v1")
@@ -40,7 +40,7 @@ function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** FNV-1a → uint32. Identical to shooting-game's daily seed for consistency. */
+/** FNV-1a → uint32 (shared daily-seed algorithm across client + worker). */
 function dailySeed(date: string): number {
   let h = 2166136261;
   for (let i = 0; i < date.length; i++) {

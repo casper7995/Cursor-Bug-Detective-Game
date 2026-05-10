@@ -15,7 +15,7 @@
 - **E-10**: Footer hint shortened: "1/2/3 deploy lane · click queue to promote · ESC exit"
 
 ## Reviewer score
-**58 → 64 (+6)**, validated by Playwright agent (10 screenshots saved to `/Users/caspe/minigame-review/errand/iter-3/`).
+**58 → 64 (+6)**, validated by Playwright agent (10 screenshots saved under a local review output directory).
 
 ## Two regressions found in same iteration (both fixed before commit)
 - **R1: Boss ribbon overlay BASE/CAP meters** — original placement at `panelY + 28` clashed with the meter labels at `panelY + 26`. **Fixed**: moved ribbon to span the playfield top (`fieldTopOffset - 14`), pulsing with `Math.sin(elapsed * 6)`, doesn't overlap header.

@@ -1,3 +1,5 @@
+> **Audience:** Maintainer and Cursor-agent notes only. Humans contributing to this repo should follow [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Learned User Preferences
 
 - When the user asks to play, test, or check out the game, start the dev server in the background and open the URL in the Cursor embedded browser via the `cursor-ide-browser` MCP rather than just printing a link.
@@ -15,8 +17,8 @@
 
 ## Learned Workspace Facts
 
-- Repo is a flat monorepo at github.com/casper7995/cursor-crew with three self-contained app folders at the root: `shooting-game/` (Canvas jam game), `tower-defense/` (Three.js Defrag Run), and `bug-detective/` (active Vibe Jam 2026 build). For playtests when the user does not name a specific app, use `bug-detective/` rather than assuming another root app.
-- Each app owns its own `package.json`, configs, and dev/test/build scripts; always `cd` into the app folder before running commands. `bug-detective/` is the active development target: Three.js + Vite + Vitest with a Cloudflare Worker under `bug-detective/worker/` that accepts a `puzzleId` to serve separate leaderboards (daily vs runner). Ahead of jam ship or CI-like checks there, **`npm run verify`** bundles unit tests, Playwright e2e, production build, and the jam widget script—it is stricter than `npm run build` alone.
+- This repository publishes **Bug Detective** only (`bug-detective/` at repo root); run all installs and npm scripts from that folder (`cd bug-detective`).
+- Stack: Three.js + Vite + Vitest; Cloudflare Worker under `bug-detective/worker/` accepts a `puzzleId` for separate leaderboards (daily vs runner). **`npm run verify`** runs unit tests, **Playwright e2e (chromium + firefox + webkit)**, production build, and the jam-widget check — stricter than `npm run build` alone.
 - The Vite dev server in this workspace usually binds to `http://127.0.0.1:5175/` because ports 5173 and 5174 are typically already in use.
 - The Bug Detective **QA cockpit** (cloud agent / artifacts / Gemini loop UI) is **not** Vite: run `npm run qa:cockpit` from `bug-detective/` and open **`http://127.0.0.1:5875/`** (override with `QA_COCKPIT_PORT`). Use that single server for the cockpit; `npm run dev` is only the 3D game. If the page fails to load (`ERR_CONNECTION_REFUSED`) or the default port is already in use, start the cockpit or choose a free port with `QA_COCKPIT_PORT`.
 - `docs/mcp-cursor-cloud.md` records the current MCP guidance: Cursor Cloud Agents MCP toggles are separate from local `~/.cursor/mcp.json`; Supabase hosted MCP can use PAT `Authorization` headers on clients that support custom headers; Vercel's hosted MCP at `https://mcp.vercel.com` is OAuth-based, and "app redirect URL is invalid" points to a Cursor/Vercel redirect allowlist issue rather than repo code.

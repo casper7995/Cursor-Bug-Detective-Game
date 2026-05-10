@@ -12,3 +12,8 @@ bug-detective/playwright-report
 
 # Prevent accidental commit of a root-level MCP config (use ~/.cursor/mcp.json for personal tools)
 /mcp.json
+
+# IDE / local agent state (never publish)
+.cursor/hooks/state/
+.cursor/debug*.log
+.cursor/plans/

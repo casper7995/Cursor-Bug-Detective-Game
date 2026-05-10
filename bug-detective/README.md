@@ -22,12 +22,52 @@ Run all commands from this folder (`bug-detective/`).
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173
+npm run dev          # Default Vite URL is usually http://localhost:5173/ (see port note below)
 npm test             # vitest
 npm run build        # tsc + vite → dist/
 npm run preview      # serve production build locally
-npm run verify       # tests + build + jam-widget assertion
 ```
+
+### Port note (dev vs Playwright)
+
+- Plain `npm run dev` uses **Vite defaults** (typically port **5173**).
+- **`npm run e2e`**, **`npm run verify`**, and [`playwright.config.ts`](playwright.config.ts)
+  expect **`http://127.0.0.1:5175`**. Playwright starts its own dev server on that port unless
+  you already have one listening (see `reuseExistingServer` in CI vs local).
+- To manually match Playwright’s port:
+
+  ```bash
+  npm run dev -- --host 127.0.0.1 --port 5175 --strictPort
+  ```
+
+### Full gate (`verify`)
+
+`npm run verify` runs, in order:
+
+1. `npm test` (Vitest)
+2. `npm run e2e` — Playwright across **chromium**, **firefox**, and **webkit**
+3. `npm run build`
+4. `scripts/check-jam-widget.sh` — ensures the jam widget survived the build
+
+Install browsers once:
+
+```bash
+npx playwright install
+```
+
+## Optional: QA cockpit and API keys
+
+Maintainer / CI-assist flows (Gemini video assessment, Cursor cloud agent loop, QA cockpit server)
+read env vars from **`.env`** (see [`.env.example`](.env.example)). **You do not need any API keys**
+to play the game locally or to run `npm test` / `npm run build`.
+
+- **QA cockpit** (not the Vite game server): `npm run qa:cockpit` → open **`http://127.0.0.1:5875/`**
+  (`QA_COCKPIT_PORT` to override).
+
+Never commit `.env` or secrets.
+
+Repo-wide contributor expectations: [`../CONTRIBUTING.md`](../CONTRIBUTING.md),
+[`../SECURITY.md`](../SECURITY.md).
 
 ## Leaderboard worker
 
@@ -57,9 +97,11 @@ daily seed and skips network leaderboard calls.
 
 ## Cloudflare Pages
 
-This repo's existing Pages project is configured to build Bug Detective:
+Typical Pages settings:
 
 - **Build command**: `cd bug-detective && npm install && npm run build`
 - **Output directory**: `bug-detective/dist`
 - **Production branch**: `main`
-- **Env var**: `VITE_LEADERBOARD_API` = the worker URL above
+- **Env var**: `VITE_LEADERBOARD_API` = your deployed worker URL
+
+Full runbook: [`DEPLOY.md`](DEPLOY.md).

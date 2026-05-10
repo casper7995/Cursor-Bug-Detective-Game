@@ -10,7 +10,7 @@ dist
 bug-detective/test-results
 bug-detective/playwright-report
 
-# Prevent accidental commit of a root-level MCP config (use ~/.cursor/mcp.json for personal tools)
+# Optional local tooling config (keep secrets out of git)
 /mcp.json
 
 # IDE / local agent state (never publish)

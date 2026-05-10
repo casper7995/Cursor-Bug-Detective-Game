@@ -55,19 +55,9 @@ Install browsers once:
 npx playwright install
 ```
 
-## Optional: QA cockpit and API keys
+Copy [`.env.example`](.env.example) to `.env` only when setting `VITE_LEADERBOARD_API` for the live worker. **Not required** for local play (the game uses an offline daily-seed fallback).
 
-Maintainer / CI-assist flows (Gemini video assessment, Cursor cloud agent loop, QA cockpit server)
-read env vars from **`.env`** (see [`.env.example`](.env.example)). **You do not need any API keys**
-to play the game locally or to run `npm test` / `npm run build`.
-
-- **QA cockpit** (not the Vite game server): `npm run qa:cockpit` → open **`http://127.0.0.1:5875/`**
-  (`QA_COCKPIT_PORT` to override).
-
-Never commit `.env` or secrets.
-
-Repo-wide contributor expectations: [`../CONTRIBUTING.md`](../CONTRIBUTING.md),
-[`../SECURITY.md`](../SECURITY.md).
+Repo-wide contributor expectations: [`../CONTRIBUTING.md`](../CONTRIBUTING.md), [`../SECURITY.md`](../SECURITY.md).
 
 ## Leaderboard worker
 

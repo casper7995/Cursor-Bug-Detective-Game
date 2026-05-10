@@ -31,11 +31,7 @@ First time running E2E or `verify`:
 npx playwright install
 ```
 
-## Optional: QA cockpit and cloud tooling
-
-Gemini assessment, Cursor API flows, and the QA cockpit server use env vars documented in [`bug-detective/.env.example`](bug-detective/.env.example). **You do not need these** to run the game or plain `npm test` / local play.
-
-Never commit `.env`, API keys, or tokens.
+Never commit `.env`, API keys, or tokens beyond what you intentionally document in [`.env.example`](bug-detective/.env.example).
 
 ## Deploy / worker / Pages
 
@@ -46,6 +42,6 @@ See [`bug-detective/DEPLOY.md`](bug-detective/DEPLOY.md) and [`bug-detective/wor
 - Describe what changed and how you tested it.
 - Prefer small, focused changes; run `npm test` at minimum before opening a PR, and **`npm run verify`** before larger changes.
 
-## Maintainer note
+## Maintainer notes
 
-[`AGENTS.md`](AGENTS.md) is Cursor-oriented maintainer preferences, not substitute for this file.
+Optional product/engineering context: [`MAINTAINERS.md`](MAINTAINERS.md) (not needed to contribute).
